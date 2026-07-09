@@ -87,3 +87,24 @@ Vérifier ensuite dans Supabase que la table `audit_log` contient bien les actio
    curl -X POST "$RENDER_URL/api/cron/facturation-mensuelle" -H "x-cron-secret: $CRON_SECRET"
    ```
    (ou un service externe qui appelle ce endpoint chaque 1er du mois).
+
+## Lot 4 — Encaissements, lettrage, relances
+
+- `POST /api/reglements` — enregistre un paiement `{ mode, montant, resident_id? }` ; lettrage auto (plus anciennes factures) si `affectations` absent.
+- `GET  /api/reglements` — liste (filtre resident_id).
+- `PUT  /api/reglements/:id/statut-cheque` — suivi chèque (recu/remis/encaisse).
+- `DELETE /api/reglements/:id` — annule un règlement (admin) et recalcule les factures.
+- `POST /api/reglements/facture/:id/lien-paiement` — génère un lien Stripe Checkout.
+- `POST /api/webhooks/stripe` — reçoit les paiements Stripe (règlement + lettrage auto).
+- `GET  /api/relances/impayes` — factures impayées + balance âgée (0-30, 31-60, 61-90, 90+).
+- `GET  /api/relances` — historique des relances.
+- `POST /api/relances/run` — envoie les relances des factures en retard (e-mail Brevo).
+
+### Automatisation (Render Cron Jobs)
+- Facturation : `POST $URL/api/cron/facturation-mensuelle` (mensuel).
+- Relances : `POST $URL/api/cron/relances` (hebdomadaire) — en-tête `x-cron-secret`.
+
+### Variables d'env optionnelles
+- Stripe : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_APP_URL`.
+- Brevo (relances e-mail) : `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`.
+Sans ces clés, le paiement en ligne et l'envoi d'e-mails sont simplement désactivés (le reste fonctionne).

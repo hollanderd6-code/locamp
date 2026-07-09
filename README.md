@@ -19,4 +19,5 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 - **Lot 1 — Cœur métier** : emplacements, fiches résidents, carte interactive, GED. ✅
 - **Lot 2 — Contrats** : modèles, génération PDF, signature simple + PDF scellé. ✅
 - **Lot 3 — Facturation** : facturation mensuelle auto, taxe de séjour, avoirs, PDF conforme. ✅
-- Lot 4 — Encaissements, lettrage, relances. ⏳
+- **Lot 4 — Encaissements** : paiements multi-modes, lettrage, Stripe, relances, balance âgée. ✅
+- Lot 5 — Comptabilité : lettrage avancé, export FEC, tableau de bord. ⏳
