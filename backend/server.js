@@ -8,6 +8,10 @@ const residentsRoutes = require('./routes/residents');
 const documentsRoutes = require('./routes/documents');
 const contratsRoutes = require('./routes/contrats');
 const contratModelesRoutes = require('./routes/contratModeles');
+const facturesRoutes = require('./routes/factures');
+const taxeSejourRoutes = require('./routes/taxeSejour');
+const campingRoutes = require('./routes/camping');
+const cronRoutes = require('./routes/cron');
 
 const app = express();
 app.use(cors());
@@ -18,11 +22,15 @@ app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOSt
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/camping', campingRoutes);
 app.use('/api/emplacements', emplacementsRoutes);
 app.use('/api/residents', residentsRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/contrats', contratsRoutes);
 app.use('/api/contrat-modeles', contratModelesRoutes);
+app.use('/api/factures', facturesRoutes);
+app.use('/api/taxe-sejour', taxeSejourRoutes);
+app.use('/api/cron', cronRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Route introuvable' }));

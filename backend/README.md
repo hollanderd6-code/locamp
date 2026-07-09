@@ -68,3 +68,22 @@ npm run dev            # démarre avec rechargement auto
    ```
 
 Vérifier ensuite dans Supabase que la table `audit_log` contient bien les actions `create` et `login`.
+
+## Lot 3 — Facturation (endpoints)
+
+- `POST /api/factures/run-mensuel` `{ periode?: "YYYY-MM" }` — génère les factures des contrats actifs (admin/gestionnaire).
+- `GET  /api/factures` — liste (filtres: resident_id, contrat_id, statut, periode).
+- `POST /api/factures` — facture manuelle ponctuelle `{ resident_id, lignes[] }`.
+- `POST /api/factures/:id/avoir` — émet un avoir et annule la facture d'origine.
+- `GET  /api/factures/:id/pdf` — lien signé du PDF (généré à la demande).
+- `GET  /api/taxe-sejour/etat?annee=2026` — total de taxe de séjour collectée par mois.
+- `GET  /api/camping` · `PUT /api/camping/parametres` — infos et paramètres (barème taxe, TVA, mentions).
+
+### Facturation automatique (Render Cron Job)
+
+1. Ajouter la variable d'env `CRON_SECRET`.
+2. Render → New → **Cron Job**, planification mensuelle (ex. `0 6 1 * *`), commande :
+   ```
+   curl -X POST "$RENDER_URL/api/cron/facturation-mensuelle" -H "x-cron-secret: $CRON_SECRET"
+   ```
+   (ou un service externe qui appelle ce endpoint chaque 1er du mois).

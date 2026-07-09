@@ -116,4 +116,96 @@ function buildContratPdf({ camping = {}, resident = {}, emplacement = {}, contra
   });
 }
 
-module.exports = { buildContratPdf, mergeClauses, fmtDate, fmtEur };
+// Construit le PDF d'une facture (ou avoir si statut='avoir'). Mentions légales FR.
+function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const params = (camping.parametres && camping.parametres.facturation) || {};
+      const isAvoir = facture.statut === 'avoir';
+      const doc = new PDFDocument({ size: 'A4', margin: 56 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // Émetteur
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(13).text(camping.raison_sociale || camping.nom || 'Camping');
+      doc.font('Helvetica').fontSize(8.5).fillColor('#555');
+      if (camping.adresse) doc.text(camping.adresse);
+      const legal = [camping.siret ? `SIRET ${camping.siret}` : null, camping.tva ? `TVA ${camping.tva}` : null]
+        .filter(Boolean).join('  ·  ');
+      if (legal) doc.text(legal);
+
+      // Titre + méta (à droite)
+      doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(18)
+        .text(isAvoir ? 'AVOIR' : 'FACTURE', 360, 56, { width: 182, align: 'right' });
+      doc.fillColor('#222').font('Helvetica').fontSize(9);
+      doc.text(`N° ${facture.numero || '—'}`, 360, undefined, { width: 182, align: 'right' });
+      doc.text(`Date : ${fmtDate(facture.date_emission)}`, 360, undefined, { width: 182, align: 'right' });
+      if (facture.periode) doc.text(`Période : ${facture.periode}`, 360, undefined, { width: 182, align: 'right' });
+
+      // Client
+      const clientY = 150;
+      doc.fillColor('#666').font('Helvetica-Bold').fontSize(8).text('FACTURÉ À', 56, clientY);
+      doc.fillColor('#222').font('Helvetica').fontSize(10);
+      doc.text(`${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', 56, undefined);
+      if (resident.adresse) doc.text(resident.adresse, 56, undefined);
+      if (resident.email) doc.text(resident.email, 56, undefined);
+
+      // Tableau
+      let y = clientY + 54;
+      const X = { des: 56, qte: 320, pu: 372, tva: 452, tot: 508 };
+      doc.rect(56, y, 486, 20).fill(GREEN);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
+      doc.text('Désignation', X.des + 4, y + 6);
+      doc.text('Qté', X.qte, y + 6);
+      doc.text('PU HT', X.pu, y + 6);
+      doc.text('TVA', X.tva, y + 6);
+      doc.text('Total HT', X.tot, y + 6);
+      y += 24;
+
+      doc.font('Helvetica').fontSize(9);
+      (facture.lignes || []).forEach((l, i) => {
+        const q = Number(l.quantite || 1);
+        const pu = Number(l.pu_ht || 0);
+        const ht = l.montant_ht != null ? Number(l.montant_ht) : q * pu;
+        const hDes = doc.heightOfString(String(l.designation || ''), { width: 258 });
+        const rowH = Math.max(hDes, 12) + 6;
+        if (i % 2 === 1) { doc.rect(56, y - 3, 486, rowH).fillOpacity(0.05).fill(GREEN).fillOpacity(1); }
+        doc.fillColor('#222').font('Helvetica').fontSize(9);
+        doc.text(String(l.designation || ''), X.des + 4, y, { width: 258 });
+        doc.text(String(q), X.qte, y);
+        doc.text(fmtEur(pu), X.pu, y);
+        doc.text(`${Number(l.taux_tva || 0)} %`, X.tva, y);
+        doc.text(fmtEur(ht), X.tot, y);
+        y += rowH;
+      });
+
+      // Totaux
+      y += 12;
+      const totRow = (label, val, bold) => {
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 11 : 9).fillColor(bold ? GREEN : '#222');
+        doc.text(label, 360, y, { width: 100, align: 'right' });
+        doc.text(fmtEur(val), 462, y, { width: 80, align: 'right' });
+        y += bold ? 18 : 15;
+      };
+      totRow('Total HT', facture.total_ht);
+      totRow('TVA', facture.total_tva);
+      totRow('Total TTC', facture.total_ttc, true);
+
+      // Mentions légales
+      y += 22;
+      doc.fillColor('#666').font('Helvetica').fontSize(7.5);
+      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) doc.text(params.mention_tva, 56, y, { width: 486 });
+      doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}`, 56, undefined, { width: 486 });
+      doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement.', 56, undefined, { width: 486 });
+      if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', 56, undefined, { width: 486 });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+module.exports = { buildContratPdf, buildFacturePdf, mergeClauses, fmtDate, fmtEur };
