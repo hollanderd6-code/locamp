@@ -13,6 +13,8 @@ const facturesRoutes = require('./routes/factures');
 const taxeSejourRoutes = require('./routes/taxeSejour');
 const reglementsRoutes = require('./routes/reglements');
 const relancesRoutes = require('./routes/relances');
+const comptaRoutes = require('./routes/compta');
+const dashboardRoutes = require('./routes/dashboard');
 const cronRoutes = require('./routes/cron');
 const { stripeWebhook } = require('./routes/webhooks');
 
@@ -39,6 +41,8 @@ app.use('/api/factures', facturesRoutes);
 app.use('/api/taxe-sejour', taxeSejourRoutes);
 app.use('/api/reglements', reglementsRoutes);
 app.use('/api/relances', relancesRoutes);
+app.use('/api/compta', comptaRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/cron', cronRoutes);
 
 // 404

@@ -108,3 +108,12 @@ Vérifier ensuite dans Supabase que la table `audit_log` contient bien les actio
 - Stripe : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_APP_URL`.
 - Brevo (relances e-mail) : `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`.
 Sans ces clés, le paiement en ligne et l'envoi d'e-mails sont simplement désactivés (le reste fonctionne).
+
+## Lot 5 — Comptabilité et tableau de bord
+
+- `GET /api/compta/fec?debut=YYYY-MM-DD&fin=YYYY-MM-DD` — export FEC (fichier normalisé, admin/comptabilite).
+- `GET /api/compta/export.csv?debut&fin` — écritures en CSV générique (import Sage/EBP à mapper).
+- `GET /api/compta/ecritures?debut&fin` — écritures en JSON + totaux débit/crédit (contrôle d'équilibre).
+- `GET /api/dashboard` — occupation, CA du mois, impayés + balance âgée, encaissements par mode, alertes.
+
+Plan comptable configurable via `PUT /api/camping/parametres` (clé `comptabilite` : journaux, comptes 411/706/44571/447, comptes par mode de règlement). Défauts fournis. **À valider avec l'expert-comptable.**
