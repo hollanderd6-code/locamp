@@ -10,6 +10,7 @@ function auth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Token manquant' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    if (payload.typ === 'resident') return res.status(403).json({ error: 'Token non autorisé ici' });
     req.user = { uid: payload.uid, email: payload.email };
     next();
   } catch {
@@ -60,4 +61,20 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { auth, campingScope, requireRole };
+// 4) Auth PORTAIL LOCATAIRE : vérifie un JWT de type 'resident'.
+//    -> req.resident = { id, camping_id, email }
+function authResident(req, res, next) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Token manquant' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (payload.typ !== 'resident') return res.status(403).json({ error: 'Token invalide' });
+    req.resident = { id: payload.rid, camping_id: payload.cid, email: payload.email };
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Token invalide ou expiré' });
+  }
+}
+
+module.exports = { auth, campingScope, requireRole, authResident };

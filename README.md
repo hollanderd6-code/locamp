@@ -21,4 +21,5 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 - **Lot 3 — Facturation** : facturation mensuelle auto, taxe de séjour, avoirs, PDF conforme. ✅
 - **Lot 4 — Encaissements** : paiements multi-modes, lettrage, Stripe, relances, balance âgée. ✅
 - **Lot 5 — Comptabilité** : export FEC, écritures partie double, lettrage, tableau de bord. ✅
+- **Portail locataire** : connexion par lien magique, factures, paiement en ligne, documents. ✅
 

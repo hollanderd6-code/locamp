@@ -117,3 +117,18 @@ Sans ces clés, le paiement en ligne et l'envoi d'e-mails sont simplement désac
 - `GET /api/dashboard` — occupation, CA du mois, impayés + balance âgée, encaissements par mode, alertes.
 
 Plan comptable configurable via `PUT /api/camping/parametres` (clé `comptabilite` : journaux, comptes 411/706/44571/447, comptes par mode de règlement). Défauts fournis. **À valider avec l'expert-comptable.**
+
+## Portail locataire
+
+Espace self-service pour les résidents, authentification par **lien magique** (sans mot de passe), distincte de celle du personnel (token de type `resident`, étanche).
+
+- `POST /api/portail/demande-acces` `{ email }` — envoie un lien magique par e-mail (réponse générique, pas d'énumération). Avec `PORTAIL_DEV=true` et sans Brevo, renvoie le lien dans la réponse (tests).
+- `POST /api/portail/session` `{ token }` — échange le lien magique contre une session (7 j).
+- `GET  /api/portail/moi` — profil + emplacement du résident connecté.
+- `GET  /api/portail/factures` — ses factures (avec reste dû).
+- `GET  /api/portail/factures/:id/pdf` — PDF de sa facture (lien signé).
+- `POST /api/portail/factures/:id/payer` — paiement en ligne Stripe.
+- `GET  /api/portail/documents` · `GET /api/portail/documents/:id/url` — ses documents.
+- `POST /api/portail/documents` — dépôt d'un document (multipart).
+
+Toutes les routes sont strictement limitées au résident et à son camping. Actions journalisées dans l'audit.
