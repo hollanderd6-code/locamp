@@ -6,6 +6,8 @@ const authRoutes = require('./routes/auth');
 const emplacementsRoutes = require('./routes/emplacements');
 const residentsRoutes = require('./routes/residents');
 const documentsRoutes = require('./routes/documents');
+const contratsRoutes = require('./routes/contrats');
+const contratModelesRoutes = require('./routes/contratModeles');
 
 const app = express();
 app.use(cors());
@@ -19,6 +21,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/emplacements', emplacementsRoutes);
 app.use('/api/residents', residentsRoutes);
 app.use('/api/documents', documentsRoutes);
+app.use('/api/contrats', contratsRoutes);
+app.use('/api/contrat-modeles', contratModelesRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Route introuvable' }));

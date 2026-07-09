@@ -4,8 +4,8 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 
 ## Structure
 
-- `backend/` — API Node/Express + Supabase (auth JWT, multi-tenant, journal d'audit, emplacements, résidents, GED).
-- `db/` — migrations SQL (à exécuter dans la console SQL de Supabase, dans l'ordre).
+- `backend/` — API Node/Express + Supabase (auth JWT, multi-tenant, audit, emplacements, résidents, GED, contrats + signature/PDF).
+- `db/` — migrations SQL (à exécuter dans Supabase, dans l'ordre).
 
 ## Démarrage
 
@@ -17,5 +17,5 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 
 - **Lot 0 — Socle** : multi-tenant, utilisateurs, rôles, RLS, journal d'audit. ✅
 - **Lot 1 — Cœur métier** : emplacements, fiches résidents, carte interactive, GED. ✅
-- Lot 2 — Contrats et signature électronique. ⏳
+- **Lot 2 — Contrats** : modèles, génération PDF, signature simple + PDF scellé. ✅
 - Lot 3 — Facturation mensuelle automatique + taxe de séjour. ⏳
