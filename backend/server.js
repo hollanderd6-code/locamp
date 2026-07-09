@@ -3,6 +3,9 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
+const emplacementsRoutes = require('./routes/emplacements');
+const residentsRoutes = require('./routes/residents');
+const documentsRoutes = require('./routes/documents');
 
 const app = express();
 app.use(cors());
@@ -13,6 +16,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOSt
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/emplacements', emplacementsRoutes);
+app.use('/api/residents', residentsRoutes);
+app.use('/api/documents', documentsRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Route introuvable' }));
