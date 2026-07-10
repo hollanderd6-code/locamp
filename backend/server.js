@@ -34,6 +34,26 @@ app.use(express.json({ limit: '2mb' }));
 // Front admin (fichiers statiques)
 app.use(express.static('public'));
 
+// ---------- Relances automatiques quotidiennes ----------
+// Pour chaque camping ayant activé parametres.relances.auto, relance les factures
+// en retard (au plus une relance par facture tous les 7 jours).
+async function relancesAutomatiques() {
+  try {
+    const { runRelances } = require('./lib/relances');
+    const { supabase } = require('./lib/supabase');
+    const { data: campings } = await supabase.from('campings').select('id,nom,parametres');
+    for (const c of (campings || [])) {
+      if (c.parametres?.relances?.auto !== true) continue;
+      try {
+        const out = await runRelances(c.id, { cooldownJours: 7 });
+        if (out.envoyees) console.log(`[relances auto] ${c.nom || c.id} : ${out.envoyees} envoyée(s)`);
+      } catch (e) { console.error('[relances auto]', c.id, e.message); }
+    }
+  } catch (e) { console.error('[relances auto]', e.message); }
+}
+setTimeout(relancesAutomatiques, 90 * 1000);              // au démarrage (après 90 s)
+setInterval(relancesAutomatiques, 12 * 60 * 60 * 1000);   // puis toutes les 12 h
+
 // Compat liens magiques déjà envoyés : /portail/connexion?token=... -> /portail/?token=...
 app.get('/portail/connexion', (req, res) => {
   const t = req.query.token ? `?token=${encodeURIComponent(req.query.token)}` : '';

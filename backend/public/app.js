@@ -118,17 +118,57 @@ window.addEventListener('hashchange', route);
 /* ================= VUES ================= */
 
 async function vueDashboard() {
-  const d = await api('/api/dashboard');
+  const [d, imp, presRes, msgRes, { residents }] = await Promise.all([
+    api('/api/dashboard'),
+    api('/api/relances/impayes').catch(() => null),
+    api('/api/prestations?statut=en_cours').catch(() => ({ prestations: [] })),
+    api('/api/messages/non-lus').catch(() => ({ total: 0 })),
+    api('/api/residents').catch(() => ({ residents: [] })),
+  ]);
   const st = d.factures_mois.par_statut || {};
+  const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
+  const aFacturer = (presRes.prestations || []).filter((p) => p.type !== 'caution')
+    .reduce((s, p) => s + Number(p.montant_ttc), 0);
+  const enRetard = imp ? imp.impayes.filter((f) => f.en_retard) : [];
+
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div><span class="muted">${dfr(d.genere_le)}</span></div>
     <div class="kpis">
       <div class="kpi"><div class="v">${d.occupation.occupes}/${d.occupation.total}</div><div class="l">Emplacements occupés (${d.occupation.taux} %)</div></div>
       <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
       <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div><div class="l">Impayés (${d.impayes.nombre} factures)</div></div>
+      <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div><div class="l">Prestations à facturer</div></div>
+      <div class="kpi ${msgRes.total > 0 ? 'warn' : ''}"><div class="v">${msgRes.total}</div><div class="l"><a href="#/messagerie" style="color:inherit">Messages non lus</a></div></div>
       <div class="kpi ${d.alertes.documents_expirant > 0 ? 'warn' : ''}"><div class="v">${d.alertes.documents_expirant}</div><div class="l">Documents à renouveler (30 j)</div></div>
     </div>
+
     <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0">Actions rapides</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="messageRapide()">Prévenir un client (colis…)</button>
+          <button class="btn btn-ghost btn-sm" onclick="messageGroupe()">Message à tous</button>
+          ${enRetard.length ? `<button class="btn btn-primary btn-sm" onclick="relancerImpayes()">Relancer les ${enRetard.length} retard(s)</button>` : ''}
+        </div>
+      </div>
+    </div>
+
+    ${imp && enRetard.length ? `
+    <div class="card" style="margin-top:16px">
+      <h2>Factures en retard</h2>
+      <table style="margin-top:8px"><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th><th></th></tr></thead>
+      <tbody>${enRetard.slice(0, 8).map((f) => `
+        <tr>
+          <td><strong>${esc(f.numero)}</strong></td>
+          <td>${f.resident_id ? `<a href="#/residents/${f.resident_id}" style="color:inherit">${esc(rmap[f.resident_id] || '—')}</a>` : '—'}</td>
+          <td class="right">${eur(f.reste)}</td>
+          <td class="right"><span class="badge en_retard">${f.jours_retard} j</span></td>
+          <td class="right">${f.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${f.resident_id}')">Écrire</button>` : ''}</td>
+        </tr>`).join('')}</tbody></table>
+      ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
+    </div>` : ''}
+
+    <div class="card" style="margin-top:16px">
       <h2>Factures du mois</h2>
       <p class="muted">${d.factures_mois.total} factures — ${Object.entries(st).map(([k, v]) => `${v} ${k}`).join(' · ') || 'aucune'}</p>
       <h2 style="margin-top:18px">Encaissements du mois</h2>
@@ -137,6 +177,78 @@ async function vueDashboard() {
         <ul class="list-tight">${d.alertes.contrats_a_renouveler.map((c) => `<li><span>${esc(c.numero || c.id.slice(0, 8))}</span><span class="muted">${dfr(c.date_fin)}</span></li>`).join('')}</ul>` : ''}
     </div>`;
 }
+
+window.relancerImpayes = async () => {
+  if (!confirm('Envoyer un rappel par e-mail à tous les clients en retard de paiement ?')) return;
+  try {
+    const r = await api('/api/relances/run', { method: 'POST' });
+    toast(`Relances : ${r.envoyees} envoyée(s), ${r.ignorees} ignorée(s) (à échoir ou déjà relancées récemment)`);
+    route();
+  } catch (e) { toast(e.message, true); }
+};
+
+/* --- messages rapides & groupés --- */
+window.messageGroupe = () => {
+  openDrawer(`
+    <h2>Message à tous les résidents</h2>
+    <p class="muted" style="margin-top:4px">Envoyé sur le portail de chaque résident actif, avec notification e-mail.</p>
+    <form id="f-groupe" style="margin-top:14px">
+      <textarea name="corps" required rows="5" placeholder="Ex. : Coupure d'eau prévue mardi de 9h à 12h…" style="width:100%;resize:vertical"></textarea>
+      <button class="btn btn-primary btn-block" style="margin-top:12px">Envoyer à tous</button>
+    </form>`);
+  $('#f-groupe').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const corps = e.target.corps.value.trim();
+    if (!corps) return;
+    if (!confirm('Envoyer ce message à TOUS les résidents actifs ?')) return;
+    try {
+      const r = await api('/api/messages/groupe', { method: 'POST', body: { corps } });
+      closeDrawer(); toast(`Message envoyé à ${r.destinataires} résident(s)`);
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.messageRapide = async (presetResidentId) => {
+  const { residents } = await api('/api/residents');
+  const actifs = residents.filter((r) => r.actif !== false);
+  const MODELES = {
+    colis: 'Bonjour, un colis est arrivé pour vous à l\u2019accueil. Vous pouvez venir le récupérer aux horaires d\u2019ouverture.',
+    courrier: 'Bonjour, du courrier vous attend à l\u2019accueil.',
+    visite: 'Bonjour, merci de passer à l\u2019accueil quand vous aurez un moment.',
+    libre: '',
+  };
+  openDrawer(`
+    <h2>Message rapide</h2>
+    <form id="f-rapide" class="form-grid" style="margin-top:14px">
+      <label class="full">Résident *
+        <select name="resident_id" required>
+          <option value="">— choisir —</option>
+          ${actifs.map((r) => `<option value="${r.id}"${r.id === presetResidentId ? ' selected' : ''}>${esc(r.prenom || '')} ${esc(r.nom)}</option>`).join('')}
+        </select></label>
+      <label class="full">Modèle
+        <select id="modele-rapide">
+          <option value="colis">📦 Colis à l'accueil</option>
+          <option value="courrier">✉️ Courrier à l'accueil</option>
+          <option value="visite">🛎 Passer à l'accueil</option>
+          <option value="libre">Message libre</option>
+        </select></label>
+      <div class="full"><textarea name="corps" required rows="4" style="width:100%;resize:vertical">${MODELES.colis}</textarea></div>
+      <div class="full"><button class="btn btn-primary btn-block">Envoyer</button></div>
+    </form>`);
+  $('#modele-rapide').addEventListener('change', (e) => {
+    $('#f-rapide').corps.value = MODELES[e.target.value] ?? '';
+  });
+  $('#f-rapide').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resident_id = e.target.resident_id.value;
+    const corps = e.target.corps.value.trim();
+    if (!resident_id || !corps) return;
+    try {
+      await api('/api/messages', { method: 'POST', body: { resident_id, corps } });
+      closeDrawer(); toast('Message envoyé (portail + e-mail)');
+    } catch (err) { toast(err.message, true); }
+  });
+};
 
 /* ---------- Carte interactive ---------- */
 const STATUT_COLOR = { libre: '#1E5C4A', occupe: '#2C5282', reserve: '#C98B2D', indisponible: '#8A8A8A', impaye: '#B3492F' };
@@ -399,11 +511,12 @@ window.ficheEmplacement = async (id) => {
 
 /* ---------- Résidents ---------- */
 async function vueResidents() {
-  const { residents } = await api('/api/residents');
+  const [{ residents }, { emplacements }] = await Promise.all([api('/api/residents'), api('/api/emplacements')]);
+  const empNum = {}; emplacements.forEach((e) => { empNum[e.id] = e.numero + (e.secteur ? ' · ' + e.secteur : ''); });
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Locataires</div><h1>Résidents</h1></div>
       <div class="toolbar">
-        <input class="search" id="res-search" placeholder="Rechercher nom, e-mail…">
+        <input class="search" id="res-search" placeholder="Rechercher nom, e-mail, emplacement…">
         <button class="btn btn-primary" onclick="formResident()">Nouveau résident</button>
       </div></div>
     <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th><th class="right">Solde</th></tr></thead>
@@ -413,14 +526,14 @@ async function vueResidents() {
       <tr class="row-click" onclick="location.hash='#/residents/${r.id}'">
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
         <td class="muted">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
-        <td class="muted">${r.emplacement_id ? '<span class="badge occupe">rattaché</span>' : '—'}</td>
+        <td>${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
         <td class="right">${eur(r.solde)}</td>
       </tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
   };
   render(residents);
   $('#res-search').addEventListener('input', (e) => {
     const s = e.target.value.toLowerCase();
-    render(residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone}`.toLowerCase().includes(s)));
+    render(residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone} ${r.emplacement_id ? empNum[r.emplacement_id] || '' : ''}`.toLowerCase().includes(s)));
   });
 }
 
@@ -838,7 +951,11 @@ async function vueFactures() {
 async function vueMessagerie() {
   const { conversations } = await api('/api/messages/conversations').catch(() => ({ conversations: null }));
   $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Échanges clients</div><h1>Messagerie</h1></div></div>
+    <div class="page-head"><div><div class="eyebrow">Échanges clients</div><h1>Messagerie</h1></div>
+      <div class="toolbar">
+        <button class="btn btn-ghost" onclick="messageRapide()">Message rapide</button>
+        <button class="btn btn-primary" onclick="messageGroupe()">Message à tous</button>
+      </div></div>
     ${conversations === null
       ? '<p class="form-error">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
       : `<div class="card" style="padding:6px 0">
@@ -902,6 +1019,7 @@ async function vueParametres() {
   const fp = p.facturation || {};
   const ts = p.taxe_sejour || {};
   const en = p.energie || {};
+  const rl = p.relances || {};
   const { articles } = await api('/api/articles?inclure_inactifs=1').catch(() => ({ articles: [] }));
   const { url: logoUrl } = await api('/api/camping/logo').catch(() => ({ url: null }));
   $('#main').innerHTML = `
@@ -965,6 +1083,15 @@ async function vueParametres() {
         <label>Prix du kWh HT (€)<input name="prix_kwh" type="number" step="0.0001" value="${en.prix_kwh ?? ''}" placeholder="0.35"></label>
         <label>TVA énergie (%)<input name="taux_tva" type="number" step="0.1" value="${en.taux_tva ?? 10}"></label>
         <div class="full"><button class="btn btn-primary">Enregistrer l'énergie</button></div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Relances</h2>
+      <p class="muted" style="margin-top:2px">En automatique, les clients en retard reçoivent un rappel par e-mail (au plus un par facture tous les 7 jours).</p>
+      <form id="f-relances" class="form-grid" style="margin-top:12px">
+        <label>Relances automatiques<select name="auto"><option value="false"${rl.auto === true ? '' : ' selected'}>Désactivées</option><option value="true"${rl.auto === true ? ' selected' : ''}>Activées (quotidien)</option></select></label>
+        <div class="full"><button class="btn btn-primary">Enregistrer les relances</button></div>
       </form>
     </div>
 
@@ -1044,6 +1171,14 @@ async function vueParametres() {
     const f = Object.fromEntries(new FormData(e.target).entries());
     const energie = { ...en, prix_kwh: f.prix_kwh === '' ? null : Number(f.prix_kwh), taux_tva: Number(f.taux_tva || 10) };
     try { await api('/api/camping/parametres', { method: 'PUT', body: { energie } }); toast('Énergie enregistrée'); }
+    catch (err) { toast(err.message, true); }
+  });
+
+  $('#f-relances').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    const relances = { ...rl, auto: f.auto === 'true' };
+    try { await api('/api/camping/parametres', { method: 'PUT', body: { relances } }); toast('Relances enregistrées'); }
     catch (err) { toast(err.message, true); }
   });
 }

@@ -33,14 +33,19 @@ async function listImpayes(campingId) {
 }
 
 // Envoie les relances pour les factures en retard.
-async function runRelances(campingId) {
+// cooldownJours : ne pas relancer une facture déjà relancée il y a moins de N jours.
+async function runRelances(campingId, { cooldownJours = 1 } = {}) {
   const { impayes } = await listImpayes(campingId);
   const res = { impayes: impayes.length, envoyees: 0, ignorees: 0, erreurs: 0 };
   for (const f of impayes) {
     if (f.jours_retard <= 0) { res.ignorees++; continue; }
-    const { count } = await supabase.from('relances').select('id', { count: 'exact', head: true })
-      .eq('camping_id', campingId).eq('facture_id', f.id);
-    const niveau = (count || 0) + 1;
+    const { data: prev } = await supabase.from('relances').select('created_at')
+      .eq('camping_id', campingId).eq('facture_id', f.id)
+      .order('created_at', { ascending: false });
+    const niveau = (prev?.length || 0) + 1;
+    if (prev?.[0] && (Date.now() - new Date(prev[0].created_at).getTime()) < cooldownJours * 86400000) {
+      res.ignorees++; continue;
+    }
     const { data: r } = await supabase.from('residents').select('nom,prenom,email').eq('id', f.resident_id).maybeSingle();
     const subject = `Rappel de paiement — facture ${f.numero}`;
     const html = `<p>Bonjour ${r?.prenom || ''} ${r?.nom || ''},</p>`

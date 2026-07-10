@@ -102,4 +102,43 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
   } catch (e) { console.error('[messages:create]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// POST /api/messages/groupe  { corps }  -> message à tous les résidents actifs (+ notif e-mail)
+router.post('/groupe', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const corps = String(req.body?.corps || '').trim();
+    if (!corps) return res.status(400).json({ error: 'Message vide' });
+    const { data: residents } = await supabase.from('residents').select('id,email,prenom')
+      .eq('camping_id', req.activeCampingId).eq('actif', true);
+    if (!residents?.length) return res.status(400).json({ error: 'Aucun résident actif' });
+
+    const rows = residents.map((r) => ({
+      camping_id: req.activeCampingId, resident_id: r.id, auteur: 'camping', corps,
+    }));
+    const { error } = await supabase.from('messages').insert(rows);
+    if (error) throw error;
+    await writeAudit(req, { action: 'create', entite: 'messages', apres: { groupe: true, destinataires: residents.length } });
+
+    // notifications e-mail en arrière-plan
+    Promise.resolve().then(async () => {
+      const { data: c } = await supabase.from('campings').select('nom,raison_sociale,parametres').eq('id', req.activeCampingId).maybeSingle();
+      const nomCamping = c?.nom || c?.raison_sociale || 'Votre camping';
+      const base = process.env.PUBLIC_APP_URL || '';
+      const sender = c?.parametres?.facturation?.email ? { email: c.parametres.facturation.email, name: nomCamping } : { name: nomCamping };
+      for (const r of residents) {
+        if (!r.email) continue;
+        try {
+          await sendEmail({
+            to: r.email, subject: `Message de ${nomCamping}`, sender,
+            html: `<p>Bonjour ${r.prenom || ''},</p><p>${nomCamping} vous a adressé un message :</p>`
+              + `<blockquote style="border-left:3px solid #1A7A5E;margin:8px 0;padding:4px 12px;color:#333">${corps.replace(/</g, '&lt;').replace(/\n/g, '<br>')}</blockquote>`
+              + (base ? `<p><a href="${base}/portail/">Voir sur mon espace locataire</a></p>` : ''),
+          });
+        } catch (e) { console.error('[messages:groupe notif]', e.message); }
+      }
+    }).catch(() => {});
+
+    res.status(201).json({ ok: true, destinataires: residents.length });
+  } catch (e) { console.error('[messages:groupe]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;
