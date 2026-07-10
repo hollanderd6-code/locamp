@@ -93,7 +93,7 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, parametres: vueParametres };
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, parametres: vueParametres };
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
   const [name, param] = raw.split('/');
@@ -822,11 +822,45 @@ async function vueFactures() {
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
 }
+/* ---------- Compteurs (tournée de relevés) ---------- */
+async function vueCompteurs() {
+  const d = await api('/api/compteurs');
+  const prixOk = d.prix_kwh != null && d.prix_kwh > 0;
+  $('#main').innerHTML = `
+    <div class="page-head"><div><div class="eyebrow">Énergie</div><h1>Compteurs électriques</h1></div>
+      <span class="muted">${prixOk ? `Prix du kWh : <strong>${Number(d.prix_kwh)} € HT</strong> · TVA ${d.taux_tva} %` : ''}</span></div>
+    ${prixOk ? '' : `<p class="form-error" style="margin-bottom:14px">Prix du kWh non configuré — les relevés seront enregistrés mais aucune charge ne sera créée. <a href="#/parametres">Configurer dans Paramètres → Énergie</a>.</p>`}
+    <div class="card"><table><thead><tr><th>Empl.</th><th>Résident</th><th>Dernier relevé</th><th class="right">Index</th><th class="right">Nouvel index</th><th></th></tr></thead>
+    <tbody>${d.emplacements.map((e) => `
+      <tr>
+        <td><strong>${esc(e.numero)}</strong>${e.secteur ? ` <span class="muted">· ${esc(e.secteur)}</span>` : ''}</td>
+        <td class="muted">${e.resident ? esc((e.resident.prenom || '') + ' ' + e.resident.nom) : '—'}</td>
+        <td class="muted">${e.dernier_releve ? dfr(e.dernier_releve.date_releve) + (e.dernier_releve.conso_kwh != null ? ` <span class="badge occupe">${Number(e.dernier_releve.conso_kwh)} kWh</span>` : '') : '<span class="badge emise">jamais relevé</span>'}</td>
+        <td class="right">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
+        <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
+        <td class="right"><button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>
+    <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix kWh) — à facturer depuis sa fiche.</p>`;
+}
+
+window.releverCompteur = async (empId) => {
+  const input = $('#idx-' + empId);
+  const v = input.value;
+  if (v === '' || Number(v) < 0) { toast('Saisis le nouvel index', true); input.focus(); return; }
+  try {
+    const r = await api('/api/compteurs/releve', { method: 'POST', body: { emplacement_id: empId, index_kwh: Number(v) } });
+    if (r.prestation) toast(`Relevé enregistré — charge de ${eur(r.prestation.montant_ttc)} créée (${Number(r.releve.conso_kwh)} kWh)`);
+    else toast(r.info || 'Relevé enregistré');
+    route();
+  } catch (err) { toast(err.message, true); }
+};
+
 async function vueParametres() {
   const { camping: c } = await api('/api/camping');
   const p = c.parametres || {};
   const fp = p.facturation || {};
   const ts = p.taxe_sejour || {};
+  const en = p.energie || {};
   const { articles } = await api('/api/articles?inclure_inactifs=1').catch(() => ({ articles: [] }));
   const { url: logoUrl } = await api('/api/camping/logo').catch(() => ({ url: null }));
   $('#main').innerHTML = `
@@ -880,6 +914,16 @@ async function vueParametres() {
         <label>Active<select name="actif"><option value="true"${ts.actif ? ' selected' : ''}>Oui</option><option value="false"${ts.actif ? '' : ' selected'}>Non</option></select></label>
         <label>Tarif / nuit / personne (€)<input name="tarif_nuit_personne" type="number" step="0.01" value="${ts.tarif_nuit_personne ?? 0}"></label>
         <div class="full"><button class="btn btn-primary">Enregistrer la taxe</button></div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Énergie</h2>
+      <p class="muted" style="margin-top:2px">Utilisé par l'écran Compteurs : chaque relevé crée une charge (conso × prix kWh) sur la fiche du résident.</p>
+      <form id="f-energie" class="form-grid" style="margin-top:12px">
+        <label>Prix du kWh HT (€)<input name="prix_kwh" type="number" step="0.0001" value="${en.prix_kwh ?? ''}" placeholder="0.35"></label>
+        <label>TVA énergie (%)<input name="taux_tva" type="number" step="0.1" value="${en.taux_tva ?? 10}"></label>
+        <div class="full"><button class="btn btn-primary">Enregistrer l'énergie</button></div>
       </form>
     </div>
 
@@ -951,6 +995,14 @@ async function vueParametres() {
     const f = Object.fromEntries(new FormData(e.target).entries());
     const taxe_sejour = { ...ts, actif: f.actif === 'true', tarif_nuit_personne: Number(f.tarif_nuit_personne || 0) };
     try { await api('/api/camping/parametres', { method: 'PUT', body: { taxe_sejour } }); toast('Taxe de séjour enregistrée'); }
+    catch (err) { toast(err.message, true); }
+  });
+
+  $('#f-energie').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    const energie = { ...en, prix_kwh: f.prix_kwh === '' ? null : Number(f.prix_kwh), taux_tva: Number(f.taux_tva || 10) };
+    try { await api('/api/camping/parametres', { method: 'PUT', body: { energie } }); toast('Énergie enregistrée'); }
     catch (err) { toast(err.message, true); }
   });
 }

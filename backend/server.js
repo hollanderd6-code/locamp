@@ -18,6 +18,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const articlesRoutes = require('./routes/articles');
 const prestationsRoutes = require('./routes/prestations');
 const messagesRoutes = require('./routes/messages');
+const compteursRoutes = require('./routes/compteurs');
 const portailRoutes = require('./routes/portail');
 const cronRoutes = require('./routes/cron');
 const { stripeWebhook } = require('./routes/webhooks');
@@ -59,6 +60,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/articles', articlesRoutes);
 app.use('/api/prestations', prestationsRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/compteurs', compteursRoutes);
 app.use('/api/portail', portailRoutes);
 app.use('/api/cron', cronRoutes);
 
