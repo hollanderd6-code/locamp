@@ -15,6 +15,7 @@ const reglementsRoutes = require('./routes/reglements');
 const relancesRoutes = require('./routes/relances');
 const comptaRoutes = require('./routes/compta');
 const dashboardRoutes = require('./routes/dashboard');
+const articlesRoutes = require('./routes/articles');
 const portailRoutes = require('./routes/portail');
 const cronRoutes = require('./routes/cron');
 const { stripeWebhook } = require('./routes/webhooks');
@@ -27,13 +28,8 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stri
 
 app.use(express.json({ limit: '2mb' }));
 
-// Front admin + portail (fichiers statiques)
+// Front admin (fichiers statiques)
 app.use(express.static('public'));
-// Lien magique e-mail : /portail/connexion?token=... -> page portail
-app.get('/portail/connexion', (req, res) => {
-  const t = encodeURIComponent(req.query.token || '');
-  res.redirect('/portail/?token=' + t);
-});
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
@@ -52,6 +48,7 @@ app.use('/api/reglements', reglementsRoutes);
 app.use('/api/relances', relancesRoutes);
 app.use('/api/compta', comptaRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/articles', articlesRoutes);
 app.use('/api/portail', portailRoutes);
 app.use('/api/cron', cronRoutes);
 

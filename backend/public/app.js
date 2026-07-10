@@ -95,10 +95,12 @@ window.closeDrawer = closeDrawer;
 /* ---------- routing ---------- */
 const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, parametres: vueParametres };
 function route() {
-  const name = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
+  const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
+  const [name, param] = raw.split('/');
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
   ($('#main').innerHTML = '<p class="muted">Chargement…</p>');
-  (routes[name] || vueDashboard)().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
+  const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
+  fn().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
 }
 window.addEventListener('hashchange', route);
 
@@ -397,7 +399,7 @@ async function vueResidents() {
     <tbody id="res-body"></tbody></table></div>`;
   const render = (list) => {
     $('#res-body').innerHTML = list.map((r) => `
-      <tr class="row-click" onclick="ficheResident('${r.id}')">
+      <tr class="row-click" onclick="location.hash='#/residents/${r.id}'">
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
         <td class="muted">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
         <td class="muted">${r.emplacement_id ? '<span class="badge occupe">rattaché</span>' : '—'}</td>
@@ -411,21 +413,94 @@ async function vueResidents() {
   });
 }
 
-window.ficheResident = async (id) => {
-  const { resident: r, emplacement, documents } = await api('/api/residents/' + id);
-  const { factures } = await api('/api/factures?resident_id=' + id);
+/* ---------- Fiche client (pleine page) ---------- */
+async function vueFicheClient(id) {
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }] = await Promise.all([
+    api('/api/residents/' + id),
+    api('/api/factures?resident_id=' + id),
+    api('/api/reglements?resident_id=' + id),
+  ]);
+  const dues = factures.filter((f) => ['emise', 'partielle', 'en_retard'].includes(f.statut));
+  const totalDu = dues.reduce((s, f) => s + (Number(f.total_ttc) - Number(f.montant_regle)), 0);
+  const totalEncaisse = reglements.reduce((s, g) => s + Number(g.montant), 0);
+
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="eyebrow"><a href="#/residents" style="color:inherit;text-decoration:none">← Résidents</a></div>
+        <h1>${esc(r.civilite || '')} ${esc(r.prenom || '')} ${esc(r.nom)}</h1>
+      </div>
+      <div class="toolbar">
+        <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
+        <button class="btn btn-primary" onclick="formFacture('${id}')">Nouvelle facture / vente</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi ${totalDu > 0 ? 'bad' : ''}"><div class="v">${eur(totalDu)}</div><div class="l">Reste dû</div></div>
+      <div class="kpi"><div class="v">${eur(totalEncaisse)}</div><div class="l">Total encaissé</div></div>
+      <div class="kpi"><div class="v">${factures.length}</div><div class="l">Factures</div></div>
+      <div class="kpi"><div class="v">${emplacement ? esc(emplacement.numero) : '—'}</div><div class="l">Emplacement</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Coordonnées</h2>
+      <ul class="list-tight">
+        <li><span>E-mail</span><span>${esc(r.email || '—')}</span></li>
+        <li><span>Téléphone</span><span>${esc(r.telephone || '—')}</span></li>
+        <li><span>Adresse</span><span>${esc(r.adresse || '—')}</span></li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Factures</h2>
+      <table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Reste</th><th></th></tr></thead>
+      <tbody>${factures.map((f) => `
+        <tr>
+          <td><strong>${esc(f.numero)}</strong></td>
+          <td class="muted">${esc(f.periode || '—')}</td>
+          <td class="muted">${dfr(f.date_emission)}</td>
+          <td><span class="badge ${f.statut}">${f.statut}</span></td>
+          <td class="right">${eur(f.total_ttc)}</td>
+          <td class="right">${eur(f.total_ttc - f.montant_regle)}</td>
+          <td class="right">
+            <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
+            ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
+            ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
+          </td>
+        </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture.</td></tr>'}</tbody></table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Encaissements</h2>
+      <table><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="right">Montant</th></tr></thead>
+      <tbody>${reglements.map((g) => `
+        <tr><td class="muted">${dfr(g.date_reglement)}</td><td class="muted">${esc(g.mode)}</td>
+        <td class="muted">${esc(g.reference || '—')}</td><td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun encaissement.</td></tr>'}</tbody></table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Documents</h2>
+      ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
+    </div>`;
+}
+
+window.encaisserClient = (id) => {
   openDrawer(`
-    <h2>${esc(r.civilite || '')} ${esc(r.prenom || '')} ${esc(r.nom)}</h2>
-    <p class="muted">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</p>
-    <ul class="list-tight">
-      <li><span>Emplacement</span><span>${emplacement ? esc(emplacement.numero) + ' (' + esc(emplacement.secteur || '') + ')' : '—'}</span></li>
-      <li><span>Adresse</span><span>${esc(r.adresse || '—')}</span></li>
-    </ul>
-    <h2 style="margin-top:18px">Factures</h2>
-    ${factures.length ? `<ul class="list-tight">${factures.slice(0, 6).map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${f.statut}</span></span><span>${eur(f.total_ttc)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture.</p>'}
-    <h2 style="margin-top:18px">Documents</h2>
-    ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
-  `);
+    <h2>Encaisser un paiement</h2>
+    <form id="f-enc" class="form-grid" style="margin-top:14px">
+      <label>Mode<select name="mode"><option value="espece">Espèces</option><option value="cheque">Chèque</option><option value="virement">Virement</option><option value="tpe">Carte (TPE)</option></select></label>
+      <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
+      <label class="full">Référence<input name="reference" placeholder="n° chèque, libellé virement…"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Encaisser (lettrage automatique)</button></div>
+    </form>`);
+  $('#f-enc').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    body.montant = Number(body.montant); body.resident_id = id;
+    try { await api('/api/reglements', { method: 'POST', body }); closeDrawer(); toast('Paiement encaissé et lettré'); route(); }
+    catch (err) { toast(err.message, true); }
+  });
 };
 window.voirDoc = async (id) => {
   try { const { url } = await api(`/api/documents/${id}/url`); window.open(url, '_blank'); }
@@ -523,6 +598,7 @@ async function vueParametres() {
   const p = c.parametres || {};
   const fp = p.facturation || {};
   const ts = p.taxe_sejour || {};
+  const { articles } = await api('/api/articles?inclure_inactifs=1').catch(() => ({ articles: [] }));
   const { url: logoUrl } = await api('/api/camping/logo').catch(() => ({ url: null }));
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Configuration</div><h1>Paramètres du camping</h1></div>
@@ -576,7 +652,45 @@ async function vueParametres() {
         <label>Tarif / nuit / personne (€)<input name="tarif_nuit_personne" type="number" step="0.01" value="${ts.tarif_nuit_personne ?? 0}"></label>
         <div class="full"><button class="btn btn-primary">Enregistrer la taxe</button></div>
       </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Catalogue de ventes</h2>
+      <p class="muted" style="margin-top:2px">Articles vendables (jetons de lavage, bouteille de gaz…), réutilisables sur les factures via « Article du catalogue ».</p>
+      <table style="margin-top:10px"><thead><tr><th>Désignation</th><th>Unité</th><th class="right">Prix HT</th><th class="right">TVA</th><th></th></tr></thead>
+        <tbody id="art-body"></tbody></table>
+      <form id="f-article" class="form-grid" style="margin-top:12px">
+        <label>Désignation *<input name="designation" required placeholder="Jeton de lavage"></label>
+        <label>Unité<input name="unite" placeholder="unité, jeton, bouteille…"></label>
+        <label>Prix HT (€)<input name="prix_ht" type="number" step="0.01" value="0"></label>
+        <label>TVA (%)<input name="taux_tva" type="number" step="0.1" value="0"></label>
+        <div class="full"><button class="btn btn-primary">Ajouter l'article</button></div>
+      </form>
     </div>`;
+
+  const renderArts = (list) => {
+    $('#art-body').innerHTML = (list || []).filter((a) => a.actif !== false).map((a) => `
+      <tr>
+        <td><strong>${esc(a.designation)}</strong></td>
+        <td class="muted">${esc(a.unite || '—')}</td>
+        <td class="right">${eur(a.prix_ht)}</td>
+        <td class="right">${Number(a.taux_tva)} %</td>
+        <td class="right"><button class="btn btn-ghost btn-sm" onclick="supprimerArticle('${a.id}')">Retirer</button></td>
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
+  };
+  renderArts(articles);
+
+  $('#f-article').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    body.prix_ht = Number(body.prix_ht || 0);
+    body.taux_tva = Number(body.taux_tva || 0);
+    try {
+      await api('/api/articles', { method: 'POST', body });
+      const { articles: list } = await api('/api/articles?inclure_inactifs=1');
+      renderArts(list); e.target.reset(); toast('Article ajouté');
+    } catch (err) { toast(err.message, true); }
+  });
 
   $('#f-ident').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -620,41 +734,66 @@ window.uploadLogo = async () => {
   catch (err) { toast(err.message, true); }
 };
 
-window.formFacture = async () => {
-  const { residents } = await api('/api/residents');
+window.supprimerArticle = async (id) => {
+  if (!confirm('Retirer cet article du catalogue ?')) return;
+  try { await api(`/api/articles/${id}`, { method: 'DELETE' }); toast('Article retiré'); route(); }
+  catch (err) { toast(err.message, true); }
+};
+
+window.formFacture = async (presetResidentId) => {
+  const [{ residents }, artRes] = await Promise.all([
+    api('/api/residents'),
+    api('/api/articles').catch(() => ({ articles: [] })),
+  ]);
   const actifs = residents.filter((r) => r.actif !== false);
+  const articles = artRes.articles || [];
+  const articleMap = {}; articles.forEach((a) => { articleMap[a.id] = a; });
   const mois = new Date().toISOString().slice(0, 7);
-  const ligneRow = () => `
+
+  const ligneRow = (p = {}) => `
     <div class="fac-ligne" style="border:1px solid #E3E0D6;border-radius:10px;padding:12px;margin-bottom:10px;background:#FDFBF7">
-      <input name="designation" placeholder="Désignation" required style="width:100%;margin-bottom:8px;font-weight:600">
+      <input name="designation" placeholder="Désignation" required value="${esc(p.designation || '')}" style="width:100%;margin-bottom:8px;font-weight:600">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;align-items:end">
         <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Du<input name="date_debut" type="date" style="width:100%"></label>
         <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Au<input name="date_fin" type="date" style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Qté<input name="quantite" type="number" step="0.01" value="1" style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">PU HT €<input name="pu_ht" type="number" step="0.01" required style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">TVA %<input name="taux_tva" type="number" step="0.1" value="0" style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Qté<input name="quantite" type="number" step="0.01" value="${p.quantite ?? 1}" style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">PU HT €<input name="pu_ht" type="number" step="0.01" required value="${p.pu_ht ?? ''}" style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}" style="width:100%"></label>
       </div>
       <div style="text-align:right;margin-top:6px">
         <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()">Retirer la ligne</button>
       </div>
     </div>`;
+
   openDrawer(`
-    <h2>Nouvelle facture</h2>
+    <h2>Nouvelle facture / vente</h2>
     <form id="f-fac" class="form-grid" style="margin-top:14px">
       <label class="full">Résident *
         <select name="resident_id" required>
           <option value="">— choisir —</option>
-          ${actifs.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)}${r.email ? ` · ${esc(r.email)}` : ''}</option>`).join('')}
+          ${actifs.map((r) => `<option value="${r.id}"${r.id === presetResidentId ? ' selected' : ''}>${esc(r.prenom || '')} ${esc(r.nom)}${r.email ? ` · ${esc(r.email)}` : ''}</option>`).join('')}
         </select></label>
       <label>Période<input name="periode" type="month" value="${mois}"></label>
+      ${articles.length ? `<div class="full" style="display:flex;gap:8px;align-items:flex-end">
+        <label style="flex:1;margin:0">Article du catalogue
+          <select id="cat-select">${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(a.prix_ht)}${Number(a.taux_tva) ? ` (TVA ${a.taux_tva}%)` : ''}</option>`).join('')}</select></label>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneCatalogue()">+ Ajouter</button>
+      </div>` : ''}
       <div class="full">
-        <div class="muted" style="margin-bottom:6px">Lignes (désignation · qté · PU HT · TVA %)</div>
+        <div class="muted" style="margin-bottom:6px">Lignes — loyer, taxe, charges, ventes…</div>
         <div id="fac-lignes">${ligneRow()}</div>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneFacture()" style="margin-top:4px">+ Ajouter une ligne</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneFacture()" style="margin-top:4px">+ Ligne libre</button>
       </div>
       <div class="full"><button class="btn btn-primary btn-block">Créer la facture</button></div>
     </form>`);
+
   window.ajouterLigneFacture = () => { $('#fac-lignes').insertAdjacentHTML('beforeend', ligneRow()); };
+  window.ajouterLigneCatalogue = () => {
+    const a = articleMap[$('#cat-select').value];
+    if (!a) return;
+    $('#fac-lignes').insertAdjacentHTML('beforeend', ligneRow({ designation: a.designation, pu_ht: a.prix_ht, taux_tva: a.taux_tva, quantite: 1 }));
+  };
+
   $('#f-fac').addEventListener('submit', async (e) => {
     e.preventDefault();
     const resident_id = e.target.resident_id.value;
@@ -667,6 +806,7 @@ window.formFacture = async () => {
       pu_ht: Number(row.querySelector('[name=pu_ht]').value || 0),
       taux_tva: Number(row.querySelector('[name=taux_tva]').value || 0),
     })).filter((l) => l.designation && l.pu_ht);
+    if (!resident_id) { toast('Choisis un résident', true); return; }
     if (!lignes.length) { toast('Ajoute au moins une ligne (désignation + PU HT)', true); return; }
     try {
       const { facture } = await api('/api/factures', { method: 'POST', body: { resident_id, periode, lignes } });

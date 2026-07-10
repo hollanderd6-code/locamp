@@ -275,4 +275,15 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
   });
 }
 
-module.exports = { buildContratPdf, buildFacturePdf, mergeClauses, fmtDate, fmtEur };
+module.exports = { buildContratPdf, buildFacturePdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
+
+// Vérifie qu'une image est décodable par le moteur PDF (PNG/JPEG standard, non-CMYK).
+function canEmbedImage(buffer) {
+  try {
+    const d = new PDFDocument();
+    d.image(buffer, 0, 0, { width: 10 });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
