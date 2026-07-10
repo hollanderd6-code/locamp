@@ -442,12 +442,17 @@ async function vueFicheClient(id) {
     return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${c.bg};color:${c.fg}">${c.label}</span>`;
   };
   const banItem = (v, l, accent) => `
-    <div style="flex:1;min-width:120px;padding:14px 18px">
+    <div style="flex:1;min-width:118px;padding:14px 18px">
       <div style="font-size:20px;font-weight:700;${accent ? `color:${accent}` : ''}">${v}</div>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#8A8A8A;margin-top:2px">${l}</div>
     </div>`;
+  const tabBtn = (key, label, active) => `
+    <button class="fiche-tab" data-tab="${key}" onclick="switchFicheTab('${key}')"
+      style="border:none;cursor:pointer;padding:9px 18px;border-radius:999px;font:600 13.5px 'Inter',sans-serif;
+      background:${active ? '#1A7A5E' : 'transparent'};color:${active ? '#fff' : '#555'};transition:background .15s">${label}</button>`;
 
   const migrationManquante = prestations === null;
+  const nbEnCours = (prestations || []).filter((p) => p.statut === 'en_cours').length;
 
   $('#main').innerHTML = `
     <div class="page-head">
@@ -461,12 +466,11 @@ async function vueFicheClient(id) {
       </div>
       <div class="toolbar">
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
-        <button class="btn btn-primary" onclick="formFacture('${id}')">Facture directe</button>
       </div>
     </div>
 
     ${syn ? `
-    <div style="display:flex;flex-wrap:wrap;background:#FDFBF7;border:1px solid #E3E0D6;border-radius:14px;margin-bottom:18px;overflow:hidden">
+    <div style="display:flex;flex-wrap:wrap;background:#FDFBF7;border:1px solid #E3E0D6;border-radius:14px;margin-bottom:16px;overflow:hidden">
       ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? '#B07818' : null)}
       ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? '#B3492F' : null)}
       ${banItem(eur(syn.regle_total), 'Réglé (total)')}
@@ -475,63 +479,134 @@ async function vueFicheClient(id) {
       ${banItem(eur(syn.cautions_en_cours), 'Cautions')}
     </div>` : ''}
 
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <h2 style="margin:0">Prestations</h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','sejour')">+ Séjour</button>
-          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','vente')">+ Vente</button>
-          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','charge')">+ Charge</button>
-          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','caution')">+ Caution</button>
+    <div style="display:flex;gap:6px;background:#F1EDE3;border-radius:999px;padding:4px;width:fit-content;margin-bottom:16px">
+      ${tabBtn('prestations', `Prestations${nbEnCours ? ` (${nbEnCours})` : ''}`, true)}
+      ${tabBtn('compte', 'Compte', false)}
+      ${tabBtn('documents', 'Documents', false)}
+    </div>
+
+    <section data-panel="prestations">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2 style="margin:0">Prestations</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','sejour')">+ Séjour</button>
+            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','vente')">+ Vente</button>
+            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','charge')">+ Charge</button>
+            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','caution')">+ Caution</button>
+          </div>
         </div>
+        ${migrationManquante
+          ? '<p class="form-error" style="margin-top:12px">Table « prestations » absente — exécute la migration db/09_prestations.sql dans Supabase.</p>'
+          : `<table style="margin-top:12px"><thead><tr><th style="width:30px"></th><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
+        <tbody>${(prestations || []).map((p) => `
+          <tr>
+            <td>${p.statut === 'en_cours' ? `<input type="checkbox" class="presta-check" data-pid="${p.id}" data-type="${p.type}" data-ttc="${p.montant_ttc}" onchange="majSelectionPresta('${id}')">` : ''}</td>
+            <td>${pillType(p.type)}</td>
+            <td><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''}</td>
+            <td class="muted">${p.date_debut ? dfr(p.date_debut) : '—'}</td>
+            <td class="muted">${p.date_fin ? dfr(p.date_fin) : '—'}</td>
+            <td class="right"><strong>${eur(p.montant_ttc)}</strong></td>
+            <td>${etatBadge(p)}</td>
+            <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
+          </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>
+        <div id="presta-actionbar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:14px;padding:12px 16px;background:#EAF2EE;border:1px solid #CDE0D7;border-radius:12px">
+          <span id="presta-selinfo" style="font-weight:600"></span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="proformaSelection('${id}')">Proforma</button>
+            <button class="btn btn-primary btn-sm" onclick="facturerSelection('${id}')">Facturer la sélection</button>
+          </div>
+        </div>`}
       </div>
-      ${migrationManquante
-        ? '<p class="form-error" style="margin-top:12px">Table « prestations » absente — exécute la migration db/09_prestations.sql dans Supabase.</p>'
-        : `<table style="margin-top:12px"><thead><tr><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
-      <tbody>${(prestations || []).map((p) => `
-        <tr>
-          <td>${pillType(p.type)}</td>
-          <td><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''}</td>
-          <td class="muted">${p.date_debut ? dfr(p.date_debut) : '—'}</td>
-          <td class="muted">${p.date_fin ? dfr(p.date_fin) : '—'}</td>
-          <td class="right"><strong>${eur(p.montant_ttc)}</strong></td>
-          <td>${etatBadge(p)}</td>
-          <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
-        </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>`}
-    </div>
+    </section>
 
-    <div class="card" style="margin-top:16px">
-      <h2>Factures</h2>
-      <table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Reste</th><th></th></tr></thead>
-      <tbody>${factures.map((f) => `
-        <tr>
-          <td><strong>${esc(f.numero)}</strong></td>
-          <td class="muted">${esc(f.periode || '—')}</td>
-          <td class="muted">${dfr(f.date_emission)}</td>
-          <td><span class="badge ${f.statut}">${f.statut}</span></td>
-          <td class="right">${eur(f.total_ttc)}</td>
-          <td class="right">${eur(f.total_ttc - f.montant_regle)}</td>
-          <td class="right">
-            <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
-            ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
-            ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
-          </td>
-        </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture.</td></tr>'}</tbody></table>
-    </div>
+    <section data-panel="compte" class="hidden">
+      <div class="card">
+        <h2>Factures</h2>
+        <table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Reste</th><th></th></tr></thead>
+        <tbody>${factures.map((f) => `
+          <tr>
+            <td><strong>${esc(f.numero)}</strong></td>
+            <td class="muted">${esc(f.periode || '—')}</td>
+            <td class="muted">${dfr(f.date_emission)}</td>
+            <td><span class="badge ${f.statut}">${f.statut}</span></td>
+            <td class="right">${eur(f.total_ttc)}</td>
+            <td class="right">${eur(f.total_ttc - f.montant_regle)}</td>
+            <td class="right">
+              <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
+              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
+              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
+            </td>
+          </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture.</td></tr>'}</tbody></table>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Encaissements</h2>
+        <table><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="right">Montant</th></tr></thead>
+        <tbody>${reglements.map((g) => `
+          <tr><td class="muted">${dfr(g.date_reglement)}</td><td class="muted">${esc(g.mode)}</td>
+          <td class="muted">${esc(g.reference || '—')}</td><td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun encaissement.</td></tr>'}</tbody></table>
+      </div>
+    </section>
 
-    <div class="card" style="margin-top:16px">
-      <h2>Encaissements</h2>
-      <table><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="right">Montant</th></tr></thead>
-      <tbody>${reglements.map((g) => `
-        <tr><td class="muted">${dfr(g.date_reglement)}</td><td class="muted">${esc(g.mode)}</td>
-        <td class="muted">${esc(g.reference || '—')}</td><td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun encaissement.</td></tr>'}</tbody></table>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h2>Documents</h2>
-      ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
-    </div>`;
+    <section data-panel="documents" class="hidden">
+      <div class="card">
+        <h2>Documents</h2>
+        ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
+      </div>
+    </section>`;
 }
+
+window.switchFicheTab = (key) => {
+  document.querySelectorAll('[data-panel]').forEach((s) => s.classList.toggle('hidden', s.dataset.panel !== key));
+  document.querySelectorAll('.fiche-tab').forEach((b) => {
+    const on = b.dataset.tab === key;
+    b.style.background = on ? '#1A7A5E' : 'transparent';
+    b.style.color = on ? '#fff' : '#555';
+  });
+};
+
+window.majSelectionPresta = () => {
+  const checks = [...document.querySelectorAll('.presta-check:checked')];
+  const bar = $('#presta-actionbar');
+  if (!bar) return;
+  if (!checks.length) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  const total = checks.reduce((s, c) => s + Number(c.dataset.ttc), 0);
+  const nbCautions = checks.filter((c) => c.dataset.type === 'caution').length;
+  $('#presta-selinfo').innerHTML = `${checks.length} prestation(s) — <strong>${eur(total)}</strong>` +
+    (nbCautions ? ' <span class="muted">(les cautions ne seront pas facturées)</span>' : '');
+};
+
+function selectionPresta() {
+  return [...document.querySelectorAll('.presta-check:checked')].map((c) => ({ id: c.dataset.pid, type: c.dataset.type }));
+}
+
+window.facturerSelection = async (residentId) => {
+  const sel = selectionPresta();
+  const facturables = sel.filter((s) => s.type !== 'caution');
+  if (!facturables.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
+  if (!confirm(`Créer une facture avec ${facturables.length} prestation(s) ?`)) return;
+  try {
+    const r = await api('/api/prestations/facturer', {
+      method: 'POST',
+      body: { resident_id: residentId, prestation_ids: facturables.map((s) => s.id) },
+    });
+    toast(`Facture ${r.facture.numero} créée (${r.prestations_facturees} prestation(s))`);
+    route();
+  } catch (err) { toast(err.message, true); }
+};
+
+window.proformaSelection = async (residentId) => {
+  const sel = selectionPresta().filter((s) => s.type !== 'caution');
+  if (!sel.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
+  try {
+    const { url } = await api('/api/prestations/proforma', {
+      method: 'POST',
+      body: { resident_id: residentId, prestation_ids: sel.map((s) => s.id) },
+    });
+    window.open(url, '_blank');
+  } catch (err) { toast(err.message, true); }
+};
 
 /* --- formulaire d'ajout de prestation (séjour / vente / charge / caution) --- */
 window.formPrestation = async (residentId, type) => {

@@ -1,6 +1,8 @@
 const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
+const { creerFacture, genererProformaPdf } = require('../lib/facturation');
+const { signedUrl } = require('../lib/storage');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -140,6 +142,72 @@ router.delete('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => 
     await writeAudit(req, { action: 'delete', entite: 'prestations', entite_id: req.params.id });
     res.json({ ok: true });
   } catch (e) { console.error('[prestations:delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// Charge et valide une sélection de prestations d'un même résident.
+async function chargerSelection(req, res) {
+  const b = req.body || {};
+  const ids = Array.isArray(b.prestation_ids) ? b.prestation_ids : [];
+  if (!b.resident_id || !ids.length) {
+    res.status(400).json({ error: 'resident_id et prestation_ids requis' });
+    return null;
+  }
+  const { data: prestas, error } = await supabase.from('prestations').select('*')
+    .eq('camping_id', req.activeCampingId).eq('resident_id', b.resident_id).in('id', ids);
+  if (error) throw error;
+  if (!prestas || prestas.length !== ids.length) {
+    res.status(400).json({ error: 'Sélection invalide (prestation introuvable)' });
+    return null;
+  }
+  return prestas;
+}
+
+const prestaToLigne = (p) => ({
+  designation: p.designation + (p.type === 'caution' ? '' : ''),
+  date_debut: p.date_debut, date_fin: p.date_fin,
+  quantite: Number(p.quantite), pu_ht: Number(p.pu_ht), taux_tva: Number(p.taux_tva),
+});
+
+// POST /api/prestations/facturer  { resident_id, prestation_ids[] }
+// Transforme les prestations en_cours sélectionnées en facture ; elles passent à "facturee".
+router.post('/facturer', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const prestas = await chargerSelection(req, res);
+    if (!prestas) return;
+    const nonFacturables = prestas.filter((p) => p.statut !== 'en_cours');
+    if (nonFacturables.length) return res.status(409).json({ error: 'Certaines prestations sont déjà facturées ou annulées' });
+    const cautions = prestas.filter((p) => p.type === 'caution');
+    if (cautions.length) return res.status(400).json({ error: 'Les cautions ne se facturent pas — retire-les de la sélection' });
+
+    const lignes = prestas.map(prestaToLigne);
+    const facture = await creerFacture({
+      campingId: req.activeCampingId,
+      resident_id: req.body.resident_id,
+      periode: req.body.periode || new Date().toISOString().slice(0, 7),
+      lignes,
+    });
+    const ids = prestas.map((p) => p.id);
+    const { error: upErr } = await supabase.from('prestations')
+      .update({ statut: 'facturee', facture_id: facture.id, updated_at: new Date().toISOString() })
+      .eq('camping_id', req.activeCampingId).in('id', ids);
+    if (upErr) throw upErr;
+    await writeAudit(req, { action: 'create', entite: 'factures', entite_id: facture.id, apres: { numero: facture.numero, prestations: ids } });
+    res.status(201).json({ facture, prestations_facturees: ids.length });
+  } catch (e) { console.error('[prestations:facturer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/prestations/proforma  { resident_id, prestation_ids[] }
+// PDF proforma des prestations sélectionnées — aucune écriture comptable.
+router.post('/proforma', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const prestas = await chargerSelection(req, res);
+    if (!prestas) return;
+    const lignes = prestas.filter((p) => p.type !== 'caution').map(prestaToLigne);
+    if (!lignes.length) return res.status(400).json({ error: 'Aucune prestation facturable dans la sélection' });
+    const path = await genererProformaPdf(req.activeCampingId, req.body.resident_id, lignes);
+    const url = await signedUrl(path, 300);
+    res.json({ url, expires_in: 300 });
+  } catch (e) { console.error('[prestations:proforma]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;

@@ -128,6 +128,7 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
     try {
       const params = (camping.parametres && camping.parametres.facturation) || {};
       const isAvoir = facture.statut === 'avoir';
+      const isProforma = !!facture.proforma;
       const doc = new PDFDocument({ size: 'A4', margin: 56 });
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
@@ -156,10 +157,11 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       if (legal) doc.text(legal, sellerX, undefined, { width: 300 });
 
       // --- Titre + méta (droite) ---
-      doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(20)
-        .text(isAvoir ? 'AVOIR' : 'FACTURE', 360, headerY, { width: 179, align: 'right' });
+      doc.fillColor(isProforma ? '#8A8A8A' : GREEN).font('Helvetica-Bold').fontSize(20)
+        .text(isProforma ? 'PROFORMA' : (isAvoir ? 'AVOIR' : 'FACTURE'), 360, headerY, { width: 179, align: 'right' });
       doc.fillColor('#222').font('Helvetica').fontSize(9);
-      doc.text(`N° ${facture.numero || '—'}`, 360, undefined, { width: 179, align: 'right' });
+      if (!isProforma) doc.text(`N° ${facture.numero || '—'}`, 360, undefined, { width: 179, align: 'right' });
+      else doc.text('Document non comptable', 360, undefined, { width: 179, align: 'right' });
       doc.text(`Date : ${fmtDate(facture.date_emission)}`, 360, undefined, { width: 179, align: 'right' });
       if (facture.periode) doc.text(`Période : ${facture.periode}`, 360, undefined, { width: 179, align: 'right' });
 
@@ -256,7 +258,8 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
 
       // --- Mentions légales ---
       doc.fillColor('#666').font('Helvetica').fontSize(7.5);
-      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) doc.text(params.mention_tva, 56, y, { width: 483 });
+      if (isProforma) doc.text('Proforma établie à titre indicatif — ne vaut pas facture.', 56, y, { width: 483 });
+      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) doc.text(params.mention_tva, 56, isProforma ? undefined : y, { width: 483 });
       doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}`, 56, undefined, { width: 483 });
       doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement de 40 €.', 56, undefined, { width: 483 });
       if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', 56, undefined, { width: 483 });

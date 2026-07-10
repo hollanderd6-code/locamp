@@ -92,6 +92,30 @@ async function nextNumeroFacture(campingId) {
 }
 
 // Génère le PDF d'une facture, l'archive, met à jour pdf_path.
+// Génère un PDF proforma (aucune écriture en base facture) et renvoie son chemin de stockage.
+async function genererProformaPdf(campingId, residentId, lignes) {
+  const t = computeTotals(lignes);
+  const [camping, resident] = await Promise.all([
+    supabase.from('campings').select('nom,raison_sociale,adresse,email,telephone,siret,tva,parametres,logo_path').eq('id', campingId).maybeSingle(),
+    supabase.from('residents').select('civilite,nom,prenom,adresse,email').eq('id', residentId).maybeSingle(),
+  ]);
+  const campData = camping.data || {};
+  if (campData.logo_path) {
+    try { campData.logo = await downloadDocument(campData.logo_path); }
+    catch (e) { console.error('[pdf logo]', e.message); }
+  }
+  const facture = {
+    proforma: true, numero: null, date_emission: new Date().toISOString().slice(0, 10),
+    lignes: t.lignes, total_ht: t.total_ht, total_tva: t.total_tva, total_ttc: t.total_ttc, statut: 'emise',
+  };
+  const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture });
+  const path = `proformas/${campingId}/${residentId}.pdf`;
+  const { error: upErr } = await supabase.storage.from(BUCKET)
+    .upload(path, pdf, { contentType: 'application/pdf', upsert: true });
+  if (upErr) throw upErr;
+  return path;
+}
+
 async function genererPdfFacture(campingId, facture) {
   const [camping, resident] = await Promise.all([
     supabase.from('campings').select('nom,raison_sociale,adresse,email,telephone,siret,tva,parametres,logo_path').eq('id', campingId).maybeSingle(),
@@ -226,4 +250,4 @@ async function runFacturationMensuelle(campingId, periode) {
   return res;
 }
 
-module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, genererPdfFacture, envoyerFactureEmail, currentPeriode };
+module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };
