@@ -553,30 +553,17 @@ async function vueFicheClient(id) {
   const syn = synRes.synthese;
   const facNum = {}; factures.forEach((f) => { facNum[f.id] = f.numero; });
 
-  const PTYPE = {
-    sejour:  { label: 'Séjour',  bg: '#EAF2EE', fg: '#1A7A5E' },
-    vente:   { label: 'Vente',   bg: '#FBF3E4', fg: '#B07818' },
-    charge:  { label: 'Charge',  bg: '#EDF0F7', fg: '#3D5A99' },
-    caution: { label: 'Caution', bg: '#F3EDF7', fg: '#7A4E9E' },
-  };
+  const PTYPE = { sejour: 'Séjour', vente: 'Vente', charge: 'Charge', caution: 'Caution' };
   const etatBadge = (p) => {
     if (p.statut === 'annulee') return '<span class="badge indisponible">annulée</span>';
     if (p.statut === 'facturee') return `<span class="badge reglee">${esc(facNum[p.facture_id] || 'facturée')}</span>`;
     return '<span class="badge emise">en cours</span>';
   };
-  const pillType = (t) => {
-    const c = PTYPE[t] || { label: t, bg: '#eee', fg: '#555' };
-    return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${c.bg};color:${c.fg}">${c.label}</span>`;
-  };
-  const banItem = (v, l, accent) => `
-    <div style="flex:1;min-width:118px;padding:14px 18px">
-      <div style="font-size:20px;font-weight:700;${accent ? `color:${accent}` : ''}">${v}</div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#8A8A8A;margin-top:2px">${l}</div>
-    </div>`;
+  const pillType = (t) => `<span class="ptype ${t}">${PTYPE[t] || t}</span>`;
+  const banItem = (v, l, cls) => `
+    <div class="synth-item${cls ? ' ' + cls : ''}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
   const tabBtn = (key, label, active) => `
-    <button class="fiche-tab" data-tab="${key}" onclick="switchFicheTab('${key}')"
-      style="border:none;cursor:pointer;padding:9px 18px;border-radius:999px;font:600 13.5px 'Inter',sans-serif;
-      background:${active ? '#1A7A5E' : 'transparent'};color:${active ? '#fff' : '#555'};transition:background .15s">${label}</button>`;
+    <button class="fiche-tab${active ? ' active' : ''}" data-tab="${key}" onclick="switchFicheTab('${key}')">${label}</button>`;
 
   const migrationManquante = prestations === null;
   const nbEnCours = (prestations || []).filter((p) => p.statut === 'en_cours').length;
@@ -597,16 +584,16 @@ async function vueFicheClient(id) {
     </div>
 
     ${syn ? `
-    <div style="display:flex;flex-wrap:wrap;background:#FDFBF7;border:1px solid #E3E0D6;border-radius:14px;margin-bottom:16px;overflow:hidden">
-      ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? '#B07818' : null)}
-      ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? '#B3492F' : null)}
+    <div class="synth">
+      ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? 'warn' : '')}
+      ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? 'bad' : '')}
       ${banItem(eur(syn.regle_total), 'Réglé (total)')}
-      ${banItem(`${syn.nb_sejours} <span style="font-size:13px;font-weight:500">(${syn.nb_nuits} nuits)</span>`, 'Séjours')}
-      ${banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <span style="font-size:12px;font-weight:500">→ ${dfr(syn.dernier_sejour.au)}</span>` : '—', 'Dernier séjour')}
+      ${banItem(`${syn.nb_sejours} <small>(${syn.nb_nuits} nuits)</small>`, 'Séjours')}
+      ${banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <small>→ ${dfr(syn.dernier_sejour.au)}</small>` : '—', 'Dernier séjour')}
       ${banItem(eur(syn.cautions_en_cours), 'Cautions')}
     </div>` : ''}
 
-    <div style="display:flex;gap:6px;background:#F1EDE3;border-radius:999px;padding:4px;width:fit-content;margin-bottom:16px">
+    <div class="fiche-tabs">
       ${tabBtn('prestations', `Prestations${nbEnCours ? ` (${nbEnCours})` : ''}`, true)}
       ${tabBtn('compte', 'Compte', false)}
       ${tabBtn('messages', `Messages${nbNonLus ? ` (${nbNonLus})` : ''}`, false)}
@@ -638,9 +625,9 @@ async function vueFicheClient(id) {
             <td>${etatBadge(p)}</td>
             <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
           </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>
-        <div id="presta-actionbar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:14px;padding:12px 16px;background:#EAF2EE;border:1px solid #CDE0D7;border-radius:12px">
+        <div id="presta-actionbar" class="selbar hidden">
           <span id="presta-selinfo" style="font-weight:600"></span>
-          <div style="display:flex;gap:8px">
+          <div class="selbar-actions">
             <button class="btn btn-ghost btn-sm" onclick="proformaSelection('${id}')">Proforma</button>
             <button class="btn btn-primary btn-sm" onclick="facturerSelection('${id}')">Facturer la sélection</button>
           </div>
@@ -681,16 +668,15 @@ async function vueFicheClient(id) {
         <h2>Messages</h2>
         ${messages === null
           ? '<p class="form-error" style="margin-top:12px">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
-          : `<div id="fil-messages" style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto;padding:14px;background:#F7F4EC;border-radius:12px;margin-top:12px">
+          : `<div id="fil-messages" class="msg-fil">
           ${(messages || []).map((m) => `
-            <div style="max-width:72%;align-self:${m.auteur === 'camping' ? 'flex-end' : 'flex-start'}">
-              <div style="padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;
-                ${m.auteur === 'camping' ? 'background:#1A7A5E;color:#fff;border-bottom-right-radius:4px' : 'background:#fff;border:1px solid #E3E0D6;border-bottom-left-radius:4px'}">${esc(m.corps)}</div>
-              <div style="font-size:10.5px;color:#999;margin-top:3px;text-align:${m.auteur === 'camping' ? 'right' : 'left'}">${m.auteur === 'camping' ? 'Camping' : esc(r.prenom || r.nom)} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+            <div class="msg-row ${m.auteur === 'camping' ? 'me' : 'them'}">
+              <div class="msg-bubble">${esc(m.corps)}</div>
+              <div class="msg-meta">${m.auteur === 'camping' ? 'Camping' : esc(r.prenom || r.nom)} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
             </div>`).join('') || '<p class="muted" style="margin:0">Aucun message. Écris le premier ci-dessous — le client le verra sur son portail et sera notifié par e-mail.</p>'}
         </div>
-        <form id="f-msg" style="display:flex;gap:8px;margin-top:12px">
-          <input name="corps" placeholder="Écrire un message au client…" required style="flex:1">
+        <form id="f-msg" class="msg-form">
+          <input name="corps" placeholder="Écrire un message au client…" required>
           <button class="btn btn-primary">Envoyer</button>
         </form>`}
       </div>
@@ -722,11 +708,7 @@ async function vueFicheClient(id) {
 
 window.switchFicheTab = (key) => {
   document.querySelectorAll('[data-panel]').forEach((s) => s.classList.toggle('hidden', s.dataset.panel !== key));
-  document.querySelectorAll('.fiche-tab').forEach((b) => {
-    const on = b.dataset.tab === key;
-    b.style.background = on ? '#1A7A5E' : 'transparent';
-    b.style.color = on ? '#fff' : '#555';
-  });
+  document.querySelectorAll('.fiche-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === key));
 };
 
 window.majSelectionPresta = () => {
@@ -960,16 +942,14 @@ async function vueMessagerie() {
       ? '<p class="form-error">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
       : `<div class="card" style="padding:6px 0">
       ${conversations.length ? conversations.map((c) => `
-        <div class="row-click" onclick="ouvrirConversation('${c.resident_id}')"
-          style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid #F0EDE3;cursor:pointer">
+        <div class="conv${c.non_lus ? ' unread' : ''}" onclick="ouvrirConversation('${c.resident_id}')">
           <div style="min-width:0">
-            <div style="font-weight:${c.non_lus ? 800 : 600}">${esc(c.resident_nom)}</div>
-            <div class="muted" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px">
-              ${c.dernier_message.auteur === 'camping' ? 'Vous : ' : ''}${esc(c.dernier_message.corps)}</div>
+            <div class="who">${esc(c.resident_nom)}</div>
+            <div class="prev">${c.dernier_message.auteur === 'camping' ? 'Vous : ' : ''}${esc(c.dernier_message.corps)}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
-            <span class="muted" style="font-size:12px">${new Date(c.dernier_message.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-            ${c.non_lus ? `<span style="min-width:20px;text-align:center;padding:2px 8px;border-radius:999px;background:#B3492F;color:#fff;font-size:12px;font-weight:700">${c.non_lus}</span>` : ''}
+          <div class="conv-side">
+            <span class="when">${new Date(c.dernier_message.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            ${c.non_lus ? `<span class="pill-count">${c.non_lus}</span>` : ''}
           </div>
         </div>`).join('') : '<p class="muted" style="padding:18px 20px;margin:0">Aucune conversation. Les échanges apparaissent ici dès qu\u2019un client écrit depuis son portail, ou que tu écris depuis une fiche client.</p>'}
     </div>`}`;
@@ -1208,16 +1188,16 @@ window.formFacture = async (presetResidentId) => {
   const mois = new Date().toISOString().slice(0, 7);
 
   const ligneRow = (p = {}) => `
-    <div class="fac-ligne" style="border:1px solid #E3E0D6;border-radius:10px;padding:12px;margin-bottom:10px;background:#FDFBF7">
-      <input name="designation" placeholder="Désignation" required value="${esc(p.designation || '')}" style="width:100%;margin-bottom:8px;font-weight:600">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;align-items:end">
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Du<input name="date_debut" type="date" style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Au<input name="date_fin" type="date" style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Qté<input name="quantite" type="number" step="0.01" value="${p.quantite ?? 1}" style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">PU HT €<input name="pu_ht" type="number" step="0.01" required value="${p.pu_ht ?? ''}" style="width:100%"></label>
-        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}" style="width:100%"></label>
+    <div class="fac-ligne">
+      <input name="designation" placeholder="Désignation" required value="${esc(p.designation || '')}">
+      <div class="fac-grid">
+        <label >Du<input name="date_debut" type="date"></label>
+        <label >Au<input name="date_fin" type="date"></label>
+        <label >Qté<input name="quantite" type="number" step="0.01" value="${p.quantite ?? 1}"></label>
+        <label >PU HT €<input name="pu_ht" type="number" step="0.01" required value="${p.pu_ht ?? ''}"></label>
+        <label >TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}"></label>
       </div>
-      <div style="text-align:right;margin-top:6px">
+      <div class="fac-foot">
         <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()">Retirer la ligne</button>
       </div>
     </div>`;
