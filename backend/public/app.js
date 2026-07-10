@@ -502,6 +502,7 @@ async function vueFactures() {
     <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
       <div class="toolbar">
         <input id="fac-periode" type="month" value="${mois}">
+        <button class="btn btn-ghost" onclick="formFacture()">Nouvelle facture</button>
         <button class="btn btn-primary" onclick="runFacturation()">Générer la facturation du mois</button>
       </div></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th></th></tr></thead>
@@ -517,6 +518,55 @@ async function vueFactures() {
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
 }
+window.formFacture = async () => {
+  const { residents } = await api('/api/residents');
+  const actifs = residents.filter((r) => r.actif !== false);
+  const mois = new Date().toISOString().slice(0, 7);
+  const ligneRow = () => `
+    <div class="fac-ligne">
+      <input name="designation" placeholder="Désignation" required>
+      <input name="quantite" type="number" step="0.01" value="1" title="Quantité">
+      <input name="pu_ht" type="number" step="0.01" placeholder="PU HT €" required>
+      <input name="taux_tva" type="number" step="0.1" value="0" title="TVA %">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()" title="Retirer la ligne">×</button>
+    </div>`;
+  openDrawer(`
+    <h2>Nouvelle facture</h2>
+    <form id="f-fac" class="form-grid" style="margin-top:14px">
+      <label class="full">Résident *
+        <select name="resident_id" required>
+          <option value="">— choisir —</option>
+          ${actifs.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)}${r.email ? ` · ${esc(r.email)}` : ''}</option>`).join('')}
+        </select></label>
+      <label>Période<input name="periode" type="month" value="${mois}"></label>
+      <div class="full">
+        <div class="muted" style="margin-bottom:6px">Lignes (désignation · qté · PU HT · TVA %)</div>
+        <div id="fac-lignes">${ligneRow()}</div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneFacture()" style="margin-top:4px">+ Ajouter une ligne</button>
+      </div>
+      <div class="full"><button class="btn btn-primary btn-block">Créer la facture</button></div>
+    </form>`);
+  window.ajouterLigneFacture = () => { $('#fac-lignes').insertAdjacentHTML('beforeend', ligneRow()); };
+  $('#f-fac').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resident_id = e.target.resident_id.value;
+    const periode = e.target.periode.value || undefined;
+    const lignes = [...e.target.querySelectorAll('.fac-ligne')].map((row) => ({
+      designation: row.querySelector('[name=designation]').value.trim(),
+      quantite: Number(row.querySelector('[name=quantite]').value || 1),
+      pu_ht: Number(row.querySelector('[name=pu_ht]').value || 0),
+      taux_tva: Number(row.querySelector('[name=taux_tva]').value || 0),
+    })).filter((l) => l.designation && l.pu_ht);
+    if (!lignes.length) { toast('Ajoute au moins une ligne (désignation + PU HT)', true); return; }
+    try {
+      const { facture } = await api('/api/factures', { method: 'POST', body: { resident_id, periode, lignes } });
+      closeDrawer();
+      toast(`Facture ${facture.numero} créée`);
+      route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
 window.runFacturation = async () => {
   try {
     const periode = $('#fac-periode').value;
