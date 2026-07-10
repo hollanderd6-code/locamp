@@ -108,7 +108,7 @@ async function vueDashboard() {
   const d = await api('/api/dashboard');
   const st = d.factures_mois.par_statut || {};
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Tableau de bord</h1><span class="muted">${dfr(d.genere_le)}</span></div>
+    <div class="page-head"><div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div><span class="muted">${dfr(d.genere_le)}</span></div>
     <div class="kpis">
       <div class="kpi"><div class="v">${d.occupation.occupes}/${d.occupation.total}</div><div class="l">Emplacements occupés (${d.occupation.taux} %)</div></div>
       <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
@@ -154,7 +154,7 @@ async function vueCarte() {
 
   const sansPos = emplacements.filter((e) => e.coord_x == null || e.coord_y == null);
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Carte du camping</h1>
+    <div class="page-head"><div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
       <span class="muted">${emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span></div>
     <div class="map-wrap">
       <svg class="map-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan du camping">${pins}</svg>
@@ -198,7 +198,7 @@ window.ficheEmplacement = async (id) => {
 async function vueResidents() {
   const { residents } = await api('/api/residents');
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Résidents</h1>
+    <div class="page-head"><div><div class="eyebrow">Locataires</div><h1>Résidents</h1></div>
       <div class="toolbar">
         <input class="search" id="res-search" placeholder="Rechercher nom, e-mail…">
         <button class="btn btn-primary" onclick="formResident()">Nouveau résident</button>
@@ -270,7 +270,7 @@ window.formResident = async () => {
 async function vueEmplacements() {
   const { emplacements } = await api('/api/emplacements');
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Emplacements</h1>
+    <div class="page-head"><div><div class="eyebrow">Parcelles</div><h1>Emplacements</h1></div>
       <button class="btn btn-primary" onclick="formEmplacement()">Nouvel emplacement</button></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Secteur</th><th>Type</th><th>Statut</th><th class="right">Loyer</th><th>Carte</th></tr></thead>
     <tbody>${emplacements.map((e) => `
@@ -309,7 +309,7 @@ async function vueFactures() {
   const { factures } = await api('/api/factures');
   const mois = new Date().toISOString().slice(0, 7);
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Factures</h1>
+    <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
       <div class="toolbar">
         <input id="fac-periode" type="month" value="${mois}">
         <button class="btn btn-primary" onclick="runFacturation()">Générer la facturation du mois</button>
@@ -349,7 +349,7 @@ async function vueReglements() {
   const [{ reglements }, { residents }] = await Promise.all([api('/api/reglements'), api('/api/residents')]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Règlements</h1></div>
+    <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
     <div class="card">
       <h2>Enregistrer un paiement</h2>
       <form id="f-reg" class="form-grid" style="margin-top:10px">
@@ -380,7 +380,7 @@ async function vueImpayes() {
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const a = imp.aging;
   $('#main').innerHTML = `
-    <div class="page-head"><h1>Impayés</h1>
+    <div class="page-head"><div><div class="eyebrow">Recouvrement</div><h1>Impayés</h1></div>
       <button class="btn btn-primary" onclick="runRelancesBtn()">Envoyer les relances</button></div>
     <div class="kpis">
       <div class="kpi"><div class="v">${eur(imp.total_du)}</div><div class="l">Total dû</div></div>
