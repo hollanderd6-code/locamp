@@ -415,41 +415,89 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id),
     api('/api/reglements?resident_id=' + id),
+    api('/api/prestations?resident_id=' + id).catch(() => ({ prestations: null })),
+    api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
   ]);
-  const dues = factures.filter((f) => ['emise', 'partielle', 'en_retard'].includes(f.statut));
-  const totalDu = dues.reduce((s, f) => s + (Number(f.total_ttc) - Number(f.montant_regle)), 0);
-  const totalEncaisse = reglements.reduce((s, g) => s + Number(g.montant), 0);
+  const prestations = presRes.prestations;
+  const syn = synRes.synthese;
+  const facNum = {}; factures.forEach((f) => { facNum[f.id] = f.numero; });
+
+  const PTYPE = {
+    sejour:  { label: 'Séjour',  bg: '#EAF2EE', fg: '#1A7A5E' },
+    vente:   { label: 'Vente',   bg: '#FBF3E4', fg: '#B07818' },
+    charge:  { label: 'Charge',  bg: '#EDF0F7', fg: '#3D5A99' },
+    caution: { label: 'Caution', bg: '#F3EDF7', fg: '#7A4E9E' },
+  };
+  const etatBadge = (p) => {
+    if (p.statut === 'annulee') return '<span class="badge indisponible">annulée</span>';
+    if (p.statut === 'facturee') return `<span class="badge reglee">${esc(facNum[p.facture_id] || 'facturée')}</span>`;
+    return '<span class="badge emise">en cours</span>';
+  };
+  const pillType = (t) => {
+    const c = PTYPE[t] || { label: t, bg: '#eee', fg: '#555' };
+    return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${c.bg};color:${c.fg}">${c.label}</span>`;
+  };
+  const banItem = (v, l, accent) => `
+    <div style="flex:1;min-width:120px;padding:14px 18px">
+      <div style="font-size:20px;font-weight:700;${accent ? `color:${accent}` : ''}">${v}</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#8A8A8A;margin-top:2px">${l}</div>
+    </div>`;
+
+  const migrationManquante = prestations === null;
 
   $('#main').innerHTML = `
     <div class="page-head">
       <div>
         <div class="eyebrow"><a href="#/residents" style="color:inherit;text-decoration:none">← Résidents</a></div>
         <h1>${esc(r.civilite || '')} ${esc(r.prenom || '')} ${esc(r.nom)}</h1>
+        <div class="muted" style="margin-top:4px">
+          ${emplacement ? `Empl. <strong>${esc(emplacement.numero)}</strong>${emplacement.secteur ? ' · ' + esc(emplacement.secteur) : ''}` : 'Aucun emplacement'}
+          ${r.email ? ' · ' + esc(r.email) : ''}${r.telephone ? ' · ' + esc(r.telephone) : ''}
+        </div>
       </div>
       <div class="toolbar">
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
-        <button class="btn btn-primary" onclick="formFacture('${id}')">Nouvelle facture / vente</button>
+        <button class="btn btn-primary" onclick="formFacture('${id}')">Facture directe</button>
       </div>
     </div>
 
-    <div class="kpis">
-      <div class="kpi ${totalDu > 0 ? 'bad' : ''}"><div class="v">${eur(totalDu)}</div><div class="l">Reste dû</div></div>
-      <div class="kpi"><div class="v">${eur(totalEncaisse)}</div><div class="l">Total encaissé</div></div>
-      <div class="kpi"><div class="v">${factures.length}</div><div class="l">Factures</div></div>
-      <div class="kpi"><div class="v">${emplacement ? esc(emplacement.numero) : '—'}</div><div class="l">Emplacement</div></div>
-    </div>
+    ${syn ? `
+    <div style="display:flex;flex-wrap:wrap;background:#FDFBF7;border:1px solid #E3E0D6;border-radius:14px;margin-bottom:18px;overflow:hidden">
+      ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? '#B07818' : null)}
+      ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? '#B3492F' : null)}
+      ${banItem(eur(syn.regle_total), 'Réglé (total)')}
+      ${banItem(`${syn.nb_sejours} <span style="font-size:13px;font-weight:500">(${syn.nb_nuits} nuits)</span>`, 'Séjours')}
+      ${banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <span style="font-size:12px;font-weight:500">→ ${dfr(syn.dernier_sejour.au)}</span>` : '—', 'Dernier séjour')}
+      ${banItem(eur(syn.cautions_en_cours), 'Cautions')}
+    </div>` : ''}
 
     <div class="card">
-      <h2>Coordonnées</h2>
-      <ul class="list-tight">
-        <li><span>E-mail</span><span>${esc(r.email || '—')}</span></li>
-        <li><span>Téléphone</span><span>${esc(r.telephone || '—')}</span></li>
-        <li><span>Adresse</span><span>${esc(r.adresse || '—')}</span></li>
-      </ul>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0">Prestations</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','sejour')">+ Séjour</button>
+          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','vente')">+ Vente</button>
+          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','charge')">+ Charge</button>
+          <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','caution')">+ Caution</button>
+        </div>
+      </div>
+      ${migrationManquante
+        ? '<p class="form-error" style="margin-top:12px">Table « prestations » absente — exécute la migration db/09_prestations.sql dans Supabase.</p>'
+        : `<table style="margin-top:12px"><thead><tr><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
+      <tbody>${(prestations || []).map((p) => `
+        <tr>
+          <td>${pillType(p.type)}</td>
+          <td><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''}</td>
+          <td class="muted">${p.date_debut ? dfr(p.date_debut) : '—'}</td>
+          <td class="muted">${p.date_fin ? dfr(p.date_fin) : '—'}</td>
+          <td class="right"><strong>${eur(p.montant_ttc)}</strong></td>
+          <td>${etatBadge(p)}</td>
+          <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
+        </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>`}
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -484,6 +532,73 @@ async function vueFicheClient(id) {
       ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
     </div>`;
 }
+
+/* --- formulaire d'ajout de prestation (séjour / vente / charge / caution) --- */
+window.formPrestation = async (residentId, type) => {
+  const TITRES = { sejour: 'Nouveau séjour', vente: 'Nouvelle vente', charge: 'Nouvelle charge', caution: 'Nouvelle caution' };
+  const needDates = type === 'sejour' || type === 'charge';
+  const [empRes, artRes] = await Promise.all([
+    type === 'sejour' ? api('/api/emplacements') : Promise.resolve({ emplacements: [] }),
+    type === 'vente' ? api('/api/articles').catch(() => ({ articles: [] })) : Promise.resolve({ articles: [] }),
+  ]);
+  const emplacements = empRes.emplacements || [];
+  const articles = artRes.articles || [];
+  const artMap = {}; articles.forEach((a) => { artMap[a.id] = a; });
+
+  const lbl = 'display:flex;flex-direction:column;gap:3px';
+  openDrawer(`
+    <h2>${TITRES[type]}</h2>
+    <form id="f-presta" class="form-grid" style="margin-top:14px">
+      ${type === 'vente' && articles.length ? `
+        <label class="full">Article du catalogue
+          <select id="presta-article"><option value="">— saisie libre —</option>
+            ${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(a.prix_ht)}${Number(a.taux_tva) ? ` (TVA ${a.taux_tva}%)` : ''}</option>`).join('')}
+          </select></label>` : ''}
+      <label class="full" style="${lbl}">Désignation *<input name="designation" required placeholder="${type === 'sejour' ? 'Séjour MH 1 chambre' : type === 'charge' ? 'Charges énergies' : type === 'caution' ? 'Caution location' : 'Bouteille de gaz'}"></label>
+      ${type === 'sejour' ? `
+        <label>Emplacement
+          <select name="emplacement_id"><option value="">—</option>
+            ${emplacements.map((e) => `<option value="${e.id}">${esc(e.numero)}${e.secteur ? ' · ' + esc(e.secteur) : ''}</option>`).join('')}
+          </select></label>` : ''}
+      ${needDates ? `
+        <label>Du<input name="date_debut" type="date"></label>
+        <label>Au<input name="date_fin" type="date"></label>` : type === 'caution' ? `
+        <label>Date<input name="date_debut" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>` : ''}
+      <label>Qté<input name="quantite" type="number" step="0.01" value="1"></label>
+      <label>PU HT (€) *<input name="pu_ht" type="number" step="0.01" required></label>
+      <label>TVA (%)<input name="taux_tva" type="number" step="0.1" value="${type === 'caution' ? 0 : ''}" ${type === 'caution' ? 'readonly' : ''} placeholder="0"></label>
+      <label class="full">Notes<input name="notes"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Ajouter la prestation</button></div>
+    </form>`);
+
+  const sel = $('#presta-article');
+  if (sel) sel.addEventListener('change', () => {
+    const a = artMap[sel.value];
+    if (!a) return;
+    const f = $('#f-presta');
+    f.designation.value = a.designation;
+    f.pu_ht.value = a.prix_ht;
+    f.taux_tva.value = a.taux_tva;
+  });
+
+  $('#f-presta').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const b = Object.fromEntries(new FormData(e.target).entries());
+    b.resident_id = residentId; b.type = type;
+    b.quantite = Number(b.quantite || 1); b.pu_ht = Number(b.pu_ht || 0); b.taux_tva = Number(b.taux_tva || 0);
+    for (const k in b) if (b[k] === '') delete b[k];
+    try {
+      await api('/api/prestations', { method: 'POST', body: b });
+      closeDrawer(); toast('Prestation ajoutée'); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.supprimerPrestation = async (pid, residentId) => {
+  if (!confirm('Annuler cette prestation ?')) return;
+  try { await api(`/api/prestations/${pid}`, { method: 'DELETE' }); toast('Prestation annulée'); route(); }
+  catch (err) { toast(err.message, true); }
+};
 
 window.encaisserClient = (id) => {
   openDrawer(`
