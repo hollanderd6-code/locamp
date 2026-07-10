@@ -103,6 +103,33 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
   }
 });
 
+// PUT /api/emplacements/positions  -> enregistrement groupé des positions carte
+// (défini AVANT /:id pour éviter la collision de route)
+router.put('/positions', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const positions = Array.isArray(req.body?.positions) ? req.body.positions : [];
+    if (!positions.length) return res.json({ updated: 0 });
+
+    const bornX = (v) => (v == null ? null : Math.round(Math.max(0, Math.min(1000, Number(v)))));
+    const bornY = (v) => (v == null ? null : Math.round(Math.max(0, Math.min(620, Number(v)))));
+
+    let updated = 0;
+    for (const p of positions) {
+      if (!p || !p.id) continue;
+      const patch = { coord_x: bornX(p.coord_x), coord_y: bornY(p.coord_y) };
+      const { error } = await supabase.from('emplacements').update(patch)
+        .eq('camping_id', req.activeCampingId).eq('id', p.id);
+      if (error) throw error;
+      updated += 1;
+    }
+    await writeAudit(req, { action: 'update', entite: 'emplacements', entite_id: null, apres: { positions_maj: updated } });
+    res.json({ updated });
+  } catch (e) {
+    console.error('[emplacements:positions]', e.message);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // PUT /api/emplacements/:id  (admin, gestionnaire)
 router.put('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {

@@ -127,37 +127,92 @@ async function vueDashboard() {
 
 /* ---------- Carte interactive ---------- */
 const STATUT_COLOR = { libre: '#1E5C4A', occupe: '#2C5282', reserve: '#C98B2D', indisponible: '#8A8A8A', impaye: '#B3492F' };
+const CARTE_W = 1000, CARTE_H = 620, CARTE_PAD = 30;
+let carteState = null;
 
 async function vueCarte() {
   const [{ emplacements }, imp] = await Promise.all([api('/api/emplacements/carte'), api('/api/relances/impayes')]);
   const enRetard = new Set();
   for (const f of imp.impayes || []) if (f.en_retard) enRetard.add(f.resident_id);
 
-  const W = 1000, H = 620, M = 60;
-  const xs = emplacements.map((e) => Number(e.coord_x)).filter((v) => !isNaN(v));
-  const ys = emplacements.map((e) => Number(e.coord_y)).filter((v) => !isNaN(v));
-  const minX = Math.min(...xs, 0), maxX = Math.max(...xs, 100);
-  const minY = Math.min(...ys, 0), maxY = Math.max(...ys, 100);
-  const sx = (v) => M + ((v - minX) / Math.max(maxX - minX, 1)) * (W - 2 * M);
-  const sy = (v) => M + ((v - minY) / Math.max(maxY - minY, 1)) * (H - 2 * M);
+  carteState = {
+    emplacements: emplacements.map((e) => ({
+      ...e,
+      coord_x: e.coord_x == null ? null : Number(e.coord_x),
+      coord_y: e.coord_y == null ? null : Number(e.coord_y),
+    })),
+    enRetard,
+    mode: 'view',
+    dirty: new Map(),   // id -> { coord_x, coord_y } (placé/déplacé) | null (à retirer)
+    selected: null,
+    drag: null,
+  };
+  renderCarte();
+}
 
-  const pins = emplacements.map((e) => {
-    const hasPos = e.coord_x != null && e.coord_y != null;
-    if (!hasPos) return '';
-    const isImp = e.resident && enRetard.has(e.resident.id);
-    const color = isImp ? STATUT_COLOR.impaye : (STATUT_COLOR[e.statut] || '#999');
-    return `<g class="pin" onclick="ficheEmplacement('${e.id}')">
-      <circle cx="${sx(e.coord_x)}" cy="${sy(e.coord_y)}" r="13" fill="${color}"></circle>
-      <text x="${sx(e.coord_x)}" y="${sy(e.coord_y)}">${esc(e.numero)}</text>
+const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+function carteColor(e) {
+  const isImp = e.resident && carteState.enRetard.has(e.resident.id);
+  return isImp ? STATUT_COLOR.impaye : (STATUT_COLOR[e.statut] || '#999');
+}
+
+// coordonnées effectives : une modification locale (dirty) l'emporte sur la valeur serveur
+function carteCoords(e) {
+  if (carteState.dirty.has(e.id)) return carteState.dirty.get(e.id);
+  return e.coord_x == null || e.coord_y == null ? null : { coord_x: e.coord_x, coord_y: e.coord_y };
+}
+
+function renderCarte() {
+  const st = carteState;
+  const edit = st.mode === 'edit';
+
+  const placed = [], unplaced = [];
+  st.emplacements.forEach((e) => (carteCoords(e) ? placed : unplaced).push(e));
+
+  const pins = placed.map((e) => {
+    const c = carteCoords(e);
+    const x = carteClamp(c.coord_x, CARTE_PAD, CARTE_W - CARTE_PAD);
+    const y = carteClamp(c.coord_y, CARTE_PAD, CARTE_H - CARTE_PAD);
+    const sel = st.selected === e.id ? ' selected' : '';
+    return `<g class="pin${sel}" data-id="${e.id}" transform="translate(${x},${y})">
+      <circle r="13" fill="${carteColor(e)}"></circle>
+      <text>${esc(e.numero)}</text>
     </g>`;
   }).join('');
 
-  const sansPos = emplacements.filter((e) => e.coord_x == null || e.coord_y == null);
+  const dirtyCount = st.dirty.size;
+  const selEmp = st.selected ? st.emplacements.find((e) => e.id === st.selected) : null;
+
+  const toolbar = edit
+    ? `<div class="map-tools">
+        ${dirtyCount ? `<span class="map-dirty">${dirtyCount} modif.</span>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
+        <button class="btn btn-primary btn-sm" onclick="saveCartePositions()" ${dirtyCount ? '' : 'disabled'}>Enregistrer les positions</button>
+      </div>`
+    : `<button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>`;
+
+  const tray = edit ? `
+    <div class="map-tray">
+      <div class="map-tray-head">À placer (${unplaced.length})</div>
+      ${unplaced.length
+        ? `<div class="map-chips">${unplaced.map((e) => `<button class="map-chip" onclick="placeEmplacement('${e.id}')">${esc(e.numero)}${e.secteur ? ` · ${esc(e.secteur)}` : ''}</button>`).join('')}</div>`
+        : '<p class="muted" style="margin:0">Tous les emplacements sont positionnés.</p>'}
+    </div>` : '';
+
   $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
-      <span class="muted">${emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span></div>
-    <div class="map-wrap">
-      <svg class="map-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan du camping">${pins}</svg>
+    <div class="page-head">
+      <div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
+      ${toolbar}
+    </div>
+    ${edit
+      ? `<div class="map-editbar">
+          <span class="muted">Glisse les pastilles pour les positionner. Clique un emplacement « à placer » pour le déposer, puis ajuste-le.</span>
+          ${selEmp ? `<button class="btn btn-ghost btn-sm" onclick="retirerSelection()">Retirer « ${esc(selEmp.numero)} » du plan</button>` : ''}
+        </div>`
+      : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
+    <div class="map-wrap${edit ? ' editing' : ''}">
+      <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">${pins}</svg>
       <div class="map-legend">
         <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
         <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
@@ -166,8 +221,143 @@ async function vueCarte() {
         <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
       </div>
     </div>
-    ${sansPos.length ? `<p class="muted" style="margin-top:12px">Sans position sur la carte : ${sansPos.map((e) => esc(e.numero)).join(', ')} — renseigner coord_x / coord_y dans la fiche emplacement.</p>` : ''}`;
+    ${tray}
+    ${!edit && unplaced.length ? `<p class="muted" style="margin-top:12px">Sans position sur la carte : ${unplaced.map((e) => esc(e.numero)).join(', ')} — passer en mode édition pour les placer.</p>` : ''}`;
+
+  wireCarte();
 }
+
+function updateCarteTools() {
+  const n = carteState.dirty.size;
+  const tools = document.querySelector('.map-tools');
+  if (!tools) return;
+  const saveBtn = tools.querySelector('.btn-primary');
+  if (saveBtn) saveBtn.disabled = !n;
+  let badge = tools.querySelector('.map-dirty');
+  if (n && !badge) {
+    badge = document.createElement('span');
+    badge.className = 'map-dirty';
+    tools.insertBefore(badge, tools.firstChild);
+  }
+  if (badge) badge.textContent = n + ' modif.';
+}
+
+function wireCarte() {
+  const st = carteState;
+  const svg = document.querySelector('.map-svg');
+  if (!svg) return;
+
+  if (st.mode !== 'edit') {
+    svg.querySelectorAll('.pin').forEach((g) => {
+      g.addEventListener('click', () => ficheEmplacement(g.dataset.id));
+    });
+    return;
+  }
+
+  // clic dans le vide -> désélectionne
+  svg.addEventListener('pointerdown', (e) => {
+    if (e.target === svg && st.selected) { st.selected = null; renderCarte(); }
+  });
+
+  const toSvg = (evt) => {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
+  };
+
+  svg.querySelectorAll('.pin').forEach((g) => {
+    const id = g.dataset.id;
+
+    g.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      try { g.setPointerCapture(e.pointerId); } catch (_) {}
+      st.drag = { id, moved: false };
+      g.classList.add('dragging');
+    });
+
+    g.addEventListener('pointermove', (e) => {
+      if (!st.drag || st.drag.id !== id) return;
+      const p = toSvg(e);
+      const x = carteClamp(p.x, CARTE_PAD, CARTE_W - CARTE_PAD);
+      const y = carteClamp(p.y, CARTE_PAD, CARTE_H - CARTE_PAD);
+      g.setAttribute('transform', `translate(${x},${y})`);
+      st.dirty.set(id, { coord_x: Math.round(x), coord_y: Math.round(y) });
+      st.drag.moved = true;
+    });
+
+    const end = (e) => {
+      if (!st.drag || st.drag.id !== id) return;
+      const moved = st.drag.moved;
+      st.drag = null;
+      g.classList.remove('dragging');
+      try { g.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (moved) {
+        updateCarteTools();          // pastille déjà à sa place, on rafraîchit juste le compteur
+      } else {                       // simple clic = sélection
+        st.selected = id;
+        setTimeout(renderCarte, 0);
+      }
+    };
+    g.addEventListener('pointerup', end);
+    g.addEventListener('pointercancel', end);
+  });
+}
+
+/* actions mode édition */
+window.toggleCarteEdit = () => {
+  if (carteState.mode === 'view') carteState.mode = 'edit';
+  else {
+    if (carteState.dirty.size && !confirm('Des positions non enregistrées seront perdues. Continuer ?')) return;
+    carteState.dirty.clear(); carteState.selected = null; carteState.mode = 'view';
+  }
+  renderCarte();
+};
+
+window.cancelCarteEdit = () => {
+  carteState.dirty.clear(); carteState.selected = null; carteState.mode = 'view';
+  renderCarte();
+};
+
+window.placeEmplacement = (id) => {
+  const st = carteState;
+  const offset = (st.dirty.size % 10) * 24;
+  const x = carteClamp(CARTE_PAD + 70 + offset, CARTE_PAD, CARTE_W - CARTE_PAD);
+  const y = carteClamp(CARTE_PAD + 70 + offset, CARTE_PAD, CARTE_H - CARTE_PAD);
+  st.dirty.set(id, { coord_x: Math.round(x), coord_y: Math.round(y) });
+  st.selected = id;
+  renderCarte();
+};
+
+window.retirerSelection = () => {
+  const st = carteState;
+  if (!st.selected) return;
+  st.dirty.set(st.selected, null);   // null = retirer du plan
+  st.selected = null;
+  renderCarte();
+};
+
+window.saveCartePositions = async () => {
+  const st = carteState;
+  if (!st.dirty.size) return;
+  const positions = [...st.dirty.entries()].map(([id, v]) => ({
+    id,
+    coord_x: v ? v.coord_x : null,
+    coord_y: v ? v.coord_y : null,
+  }));
+  try {
+    await api('/api/emplacements/positions', { method: 'PUT', body: { positions } });
+    for (const { id, coord_x, coord_y } of positions) {
+      const e = st.emplacements.find((x) => x.id === id);
+      if (e) { e.coord_x = coord_x; e.coord_y = coord_y; }
+    }
+    st.dirty.clear(); st.selected = null; st.mode = 'view';
+    toast('Positions enregistrées');
+    renderCarte();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
 
 window.ficheEmplacement = async (id) => {
   const { emplacement: e, residents } = await api('/api/emplacements/' + id);
