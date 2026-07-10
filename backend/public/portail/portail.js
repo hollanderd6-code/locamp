@@ -68,39 +68,63 @@ $('#form-email').addEventListener('submit', async (e) => {
 
 /* ---------- espace ---------- */
 async function chargerEspace() {
-  const [{ resident, emplacement }, { factures }, { documents }] = await Promise.all([
+  const [moi, { factures }, { documents }, presta] = await Promise.all([
     api('/api/portail/moi'), api('/api/portail/factures'), api('/api/portail/documents'),
+    api('/api/portail/prestations').catch(() => ({ prestations: [] })),
   ]);
+  const { resident, emplacement, camping, paiement_en_ligne } = moi;
+  window._payok = !!paiement_en_ligne;
 
   $('#hello').textContent = `Bonjour ${resident.prenom || resident.nom}`;
-  $('#sous-titre').textContent = emplacement ? `Emplacement ${emplacement.numero}${emplacement.secteur ? ' · ' + emplacement.secteur : ''}` : '';
+  $('#sous-titre').textContent = [camping?.nom, emplacement ? `Emplacement ${emplacement.numero}` : null]
+    .filter(Boolean).join(' · ');
 
-  // hero solde = somme des restes dus
-  const du = factures.filter((f) => !['avoir', 'annulee'].includes(f.statut))
-    .reduce((s, f) => s + Math.max(0, f.reste), 0);
-  const enRetard = factures.some((f) => f.statut === 'en_retard');
+  // hero solde = somme des restes dus + retard le plus ancien
+  const dues = factures.filter((f) => !['avoir', 'annulee'].includes(f.statut) && f.reste > 0.004);
+  const du = dues.reduce((s, f) => s + f.reste, 0);
+  const maxRetard = Math.max(0, ...dues.map((f) => f.jours_retard || 0));
   $('#hero-solde').innerHTML = du > 0.004
     ? `<div class="eyebrow">Votre situation</div>
        <div class="montant du">${eur(du)}</div>
-       <div class="lib">reste à régler${enRetard ? ' — dont une échéance dépassée' : ''}</div>
-       <div class="pay-cta"><button class="btn btn-primary" onclick="payerPlusAncienne()">Régler en ligne</button></div>`
+       <div class="lib">reste à régler${maxRetard > 0 ? ` — <strong>retard de ${maxRetard} jour${maxRetard > 1 ? 's' : ''}</strong>` : ''}</div>
+       ${window._payok ? `<div class="pay-cta"><button class="btn btn-primary" onclick="payerPlusAncienne()">Régler en ligne</button></div>` : ''}`
     : `<div class="eyebrow">Votre situation</div>
        <div class="montant ok">À jour ✓</div>
        <div class="lib">Aucun paiement en attente. Merci !</div>`;
 
   window._factures = factures;
 
+  // séjours & prestations en préparation
+  const TYPELIB = { sejour: 'Séjour', vente: 'Vente', charge: 'Charges', caution: 'Caution' };
+  const prestations = presta.prestations || [];
+  if (prestations.length) {
+    $('#sec-sejours').classList.remove('hidden');
+    $('#liste-sejours').innerHTML = prestations.map((p) => `
+      <div class="fac">
+        <div>
+          <div class="l1">${esc(p.designation)}</div>
+          <div class="l2">${esc(TYPELIB[p.type] || p.type)}${p.date_debut ? ` · du ${dfr(p.date_debut)}${p.date_fin ? ' au ' + dfr(p.date_fin) : ''}` : ''}</div>
+        </div>
+        <div class="actions"><span class="m">${eur(p.montant_ttc)}</span></div>
+      </div>`).join('');
+  } else {
+    $('#sec-sejours').classList.add('hidden');
+  }
+
   // factures
   $('#liste-factures').innerHTML = factures.length ? factures.map((f) => `
     <div class="fac">
       <div>
         <div class="l1">${esc(f.numero)}</div>
-        <div class="l2">${esc(f.periode || dfr(f.date_emission))} · <span class="badge ${f.statut}">${libStatut(f.statut)}</span></div>
+        <div class="l2">${esc(f.periode || dfr(f.date_emission))} · <span class="badge ${f.statut}">${libStatut(f.statut)}</span>
+          ${f.reste > 0.004 && f.date_echeance ? (f.jours_retard > 0
+            ? ` · <strong style="color:#B3492F">en retard de ${f.jours_retard} j</strong>`
+            : ` · à régler avant le ${dfr(f.date_echeance)}`) : ''}</div>
       </div>
       <div class="actions">
         <span class="m">${eur(f.total_ttc)}</span>
         <button class="btn btn-ghost btn-sm" onclick="voirPdf('${f.id}')">PDF</button>
-        ${f.reste > 0.004 && !['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-primary btn-sm" onclick="payer('${f.id}')">Payer ${eur(f.reste)}</button>` : ''}
+        ${window._payok && f.reste > 0.004 && !['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-primary btn-sm" onclick="payer('${f.id}')">Payer ${eur(f.reste)}</button>` : ''}
       </div>
     </div>`).join('') : '<p class="note">Aucune facture pour le moment.</p>';
 

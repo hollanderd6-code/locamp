@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { supabase } = require('../lib/supabase');
 const { sendEmail } = require('../lib/email');
 const { checkoutFacture } = require('../lib/stripe');
+const { genererPdfFacture } = require('../lib/facturation');
 const { uploadDocument, signedUrl } = require('../lib/storage');
 const { authResident } = require('../middleware/auth');
 
@@ -80,41 +81,84 @@ router.use(authResident);
 // GET /api/portail/moi
 router.get('/moi', async (req, res) => {
   try {
-    const { data: resident } = await supabase.from('residents')
-      .select('id,civilite,nom,prenom,email,telephone,adresse,emplacement_id,solde')
-      .eq('id', req.resident.id).eq('camping_id', req.resident.camping_id).maybeSingle();
+    const [{ data: resident }, { data: camping }] = await Promise.all([
+      supabase.from('residents')
+        .select('id,civilite,nom,prenom,email,telephone,adresse,emplacement_id,solde')
+        .eq('id', req.resident.id).eq('camping_id', req.resident.camping_id).maybeSingle(),
+      supabase.from('campings').select('nom,raison_sociale,parametres').eq('id', req.resident.camping_id).maybeSingle(),
+    ]);
     if (!resident) return res.status(404).json({ error: 'Introuvable' });
     let emplacement = null;
     if (resident.emplacement_id) {
       const { data } = await supabase.from('emplacements').select('numero,secteur,type').eq('id', resident.emplacement_id).maybeSingle();
       emplacement = data || null;
     }
-    res.json({ resident, emplacement });
+    res.json({
+      resident, emplacement,
+      camping: { nom: camping?.nom || camping?.raison_sociale || 'Votre camping' },
+      paiement_en_ligne: !!process.env.STRIPE_SECRET_KEY,
+      delai_paiement: Number(camping?.parametres?.facturation?.delai_paiement ?? 30),
+    });
   } catch (e) { console.error('[portail:moi]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // GET /api/portail/factures
 router.get('/factures', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('factures')
-      .select('id,numero,periode,date_emission,total_ttc,montant_regle,statut')
-      .eq('camping_id', req.resident.camping_id).eq('resident_id', req.resident.id)
-      .order('date_emission', { ascending: false });
+    const [{ data, error }, { data: camping }] = await Promise.all([
+      supabase.from('factures')
+        .select('id,numero,periode,date_emission,total_ttc,montant_regle,statut')
+        .eq('camping_id', req.resident.camping_id).eq('resident_id', req.resident.id)
+        .order('date_emission', { ascending: false }),
+      supabase.from('campings').select('parametres').eq('id', req.resident.camping_id).maybeSingle(),
+    ]);
     if (error) throw error;
-    const factures = (data || []).map((f) => ({ ...f, reste: Math.round((Number(f.total_ttc) - Number(f.montant_regle)) * 100) / 100 }));
+    const delai = Number(camping?.parametres?.facturation?.delai_paiement ?? 30);
+    const today = new Date();
+    const factures = (data || []).map((f) => {
+      const reste = Math.round((Number(f.total_ttc) - Number(f.montant_regle)) * 100) / 100;
+      let date_echeance = null, jours_retard = 0;
+      if (f.date_emission) {
+        const e = new Date(f.date_emission);
+        e.setDate(e.getDate() + delai);
+        date_echeance = e.toISOString().slice(0, 10);
+        if (reste > 0.004 && !['avoir', 'annulee', 'reglee'].includes(f.statut)) {
+          jours_retard = Math.max(0, Math.floor((today - e) / 86400000));
+        }
+      }
+      return { ...f, reste, date_echeance, jours_retard };
+    });
     res.json({ factures });
   } catch (e) { console.error('[portail:factures]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// GET /api/portail/factures/:id/pdf
+// GET /api/portail/factures/:id/pdf  (génère à la volée si absent)
 router.get('/factures/:id/pdf', async (req, res) => {
   try {
-    const { data: f } = await supabase.from('factures').select('id,pdf_path,numero')
+    const { data: f } = await supabase.from('factures').select('*')
       .eq('camping_id', req.resident.camping_id).eq('resident_id', req.resident.id).eq('id', req.params.id).maybeSingle();
-    if (!f || !f.pdf_path) return res.status(404).json({ error: 'Facture introuvable' });
-    const url = await signedUrl(f.pdf_path, 120);
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    const path = f.pdf_path || await genererPdfFacture(req.resident.camping_id, f);
+    const url = await signedUrl(path, 120);
     res.json({ url, expires_in: 120 });
   } catch (e) { console.error('[portail:facture-pdf]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/portail/prestations  -> séjours & prestations en préparation (non facturées)
+router.get('/prestations', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('prestations')
+      .select('id,type,designation,date_debut,date_fin,quantite,montant_ttc,statut')
+      .eq('camping_id', req.resident.camping_id).eq('resident_id', req.resident.id)
+      .eq('statut', 'en_cours')
+      .order('date_debut', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    res.json({ prestations: data || [] });
+  } catch (e) {
+    // table absente (migration pas encore passée) : ne pas casser le portail
+    console.error('[portail:prestations]', e.message);
+    res.json({ prestations: [] });
+  }
 });
 
 // POST /api/portail/factures/:id/payer  -> lien Stripe
