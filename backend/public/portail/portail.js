@@ -1,0 +1,162 @@
+/* ============ Portail locataire — logique ============ */
+let RTOKEN = localStorage.getItem('lc_portail') || null;
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur = (n) => Number(n || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+
+function toast(msg, err = false) {
+  const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 4000);
+}
+
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (!(opts.body instanceof FormData) && opts.body) headers['Content-Type'] = 'application/json';
+  if (RTOKEN) headers['Authorization'] = 'Bearer ' + RTOKEN;
+  const r = await fetch(path, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
+  if (!r.ok) throw new Error(data.error || 'Erreur serveur');
+  return data;
+}
+
+function show(id) {
+  ['#ecran-email', '#ecran-envoye', '#espace'].forEach((s) => $(s).classList.add('hidden'));
+  $(id).classList.remove('hidden');
+}
+function showEmail() { show('#ecran-email'); }
+window.showEmail = showEmail;
+
+function logout() { RTOKEN = null; localStorage.removeItem('lc_portail'); show('#ecran-email'); }
+
+/* ---------- entrée : lien magique dans l'URL ? ---------- */
+async function boot() {
+  const params = new URLSearchParams(location.search);
+  const magic = params.get('token');
+  if (magic) {
+    history.replaceState({}, '', '/portail/'); // nettoie l'URL
+    try {
+      const data = await api('/api/portail/session', { method: 'POST', body: { token: magic } });
+      RTOKEN = data.token; localStorage.setItem('lc_portail', RTOKEN);
+    } catch (e) { toast(e.message, true); }
+  }
+  if (RTOKEN) {
+    try { await chargerEspace(); show('#espace'); return; }
+    catch { logout(); }
+  }
+  show('#ecran-email');
+}
+
+/* ---------- écran e-mail ---------- */
+$('#form-email').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('#btn-email'); btn.disabled = true;
+  try {
+    const out = await api('/api/portail/demande-acces', { method: 'POST', body: { email: $('#email').value } });
+    if (out.dev_lien) { // mode dev : lien direct
+      const info = $('#email-info');
+      info.innerHTML = `Mode test : <a href="${out.dev_lien}">cliquer ici pour vous connecter</a>`;
+      info.classList.remove('hidden');
+    } else {
+      show('#ecran-envoye');
+    }
+  } catch (err) { toast(err.message, true); }
+  finally { btn.disabled = false; }
+});
+
+/* ---------- espace ---------- */
+async function chargerEspace() {
+  const [{ resident, emplacement }, { factures }, { documents }] = await Promise.all([
+    api('/api/portail/moi'), api('/api/portail/factures'), api('/api/portail/documents'),
+  ]);
+
+  $('#hello').textContent = `Bonjour ${resident.prenom || resident.nom}`;
+  $('#sous-titre').textContent = emplacement ? `Emplacement ${emplacement.numero}${emplacement.secteur ? ' · ' + emplacement.secteur : ''}` : '';
+
+  // hero solde = somme des restes dus
+  const du = factures.filter((f) => !['avoir', 'annulee'].includes(f.statut))
+    .reduce((s, f) => s + Math.max(0, f.reste), 0);
+  const enRetard = factures.some((f) => f.statut === 'en_retard');
+  $('#hero-solde').innerHTML = du > 0.004
+    ? `<div class="eyebrow">Votre situation</div>
+       <div class="montant du">${eur(du)}</div>
+       <div class="lib">reste à régler${enRetard ? ' — dont une échéance dépassée' : ''}</div>
+       <div class="pay-cta"><button class="btn btn-primary" onclick="payerPlusAncienne()">Régler en ligne</button></div>`
+    : `<div class="eyebrow">Votre situation</div>
+       <div class="montant ok">À jour ✓</div>
+       <div class="lib">Aucun paiement en attente. Merci !</div>`;
+
+  window._factures = factures;
+
+  // factures
+  $('#liste-factures').innerHTML = factures.length ? factures.map((f) => `
+    <div class="fac">
+      <div>
+        <div class="l1">${esc(f.numero)}</div>
+        <div class="l2">${esc(f.periode || dfr(f.date_emission))} · <span class="badge ${f.statut}">${libStatut(f.statut)}</span></div>
+      </div>
+      <div class="actions">
+        <span class="m">${eur(f.total_ttc)}</span>
+        <button class="btn btn-ghost btn-sm" onclick="voirPdf('${f.id}')">PDF</button>
+        ${f.reste > 0.004 && !['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-primary btn-sm" onclick="payer('${f.id}')">Payer ${eur(f.reste)}</button>` : ''}
+      </div>
+    </div>`).join('') : '<p class="note">Aucune facture pour le moment.</p>';
+
+  // documents
+  $('#liste-docs').innerHTML = documents.length ? documents.map((d) => `
+    <div class="doc">
+      <div><div class="t">${esc(libType(d.type))}</div><div class="d">${esc(d.nom_fichier || '')} · ${dfr(d.created_at)}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="voirDoc('${d.id}')">Ouvrir</button>
+    </div>`).join('') : '<p class="note">Aucun document dans votre dossier.</p>';
+}
+
+function libStatut(s) {
+  return { emise: 'à régler', partielle: 'partiellement réglée', reglee: 'réglée', en_retard: 'en retard', avoir: 'avoir', annulee: 'annulée' }[s] || s;
+}
+function libType(t) {
+  return { cni: "Pièce d'identité", piece_identite: "Pièce d'identité", attestation_assurance: "Attestation d'assurance",
+    justificatif_domicile: 'Justificatif de domicile', depot_locataire: 'Document déposé', autre: 'Document' }[t] || (t || 'Document');
+}
+
+window.voirPdf = async (id) => {
+  try { const { url } = await api(`/api/portail/factures/${id}/pdf`); window.open(url, '_blank'); }
+  catch (e) { toast(e.message, true); }
+};
+window.voirDoc = async (id) => {
+  try { const { url } = await api(`/api/portail/documents/${id}/url`); window.open(url, '_blank'); }
+  catch (e) { toast(e.message, true); }
+};
+window.payer = async (id) => {
+  try { const { url } = await api(`/api/portail/factures/${id}/payer`, { method: 'POST' }); location.href = url; }
+  catch (e) { toast(e.message, true); }
+};
+window.payerPlusAncienne = () => {
+  const f = (window._factures || []).filter((x) => x.reste > 0.004 && !['avoir', 'annulee'].includes(x.statut))
+    .sort((a, b) => (a.date_emission || '').localeCompare(b.date_emission || ''))[0];
+  if (f) window.payer(f.id); else toast('Aucune facture à régler');
+};
+
+/* ---------- upload document ---------- */
+$('#doc-file').addEventListener('change', () => { $('#btn-doc').disabled = !$('#doc-file').files.length; 
+  $('#doc-note').textContent = $('#doc-file').files.length ? `Fichier : ${$('#doc-file').files[0].name}` : ''; });
+$('#form-doc').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = $('#doc-file').files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('type', $('#doc-type').value);
+  const btn = $('#btn-doc'); btn.disabled = true;
+  try {
+    await api('/api/portail/documents', { method: 'POST', body: fd });
+    toast('Document envoyé au camping');
+    $('#doc-file').value = ''; $('#doc-note').textContent = '';
+    await chargerEspace();
+  } catch (err) { toast(err.message, true); }
+  finally { btn.disabled = false; }
+});
+
+$('#btn-logout').addEventListener('click', logout);
+boot();

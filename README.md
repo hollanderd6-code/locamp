@@ -23,4 +23,5 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 - **Lot 5 — Comptabilité** : export FEC, écritures partie double, lettrage, tableau de bord. ✅
 - **Portail locataire** : connexion par lien magique, factures, paiement en ligne, documents. ✅
 - **Interface web admin** : connexion, dashboard, carte interactive, résidents, factures, règlements, impayés. ✅
+- **Front portail locataire** : page /portail — lien magique, solde, paiement en ligne, documents. ✅
 

@@ -148,3 +148,13 @@ Application web légère (HTML/CSS/JS, sans framework) servie par le même servi
 
 Multi-camping : un sélecteur apparaît dans la barre latérale si le compte a accès à plusieurs campings.
 Fichiers dans `backend/public/` (index.html, styles.css, app.js).
+
+## Front du portail locataire
+
+Page dédiée aux résidents sur **`/portail`** (mobile-first, même identité Locamp) :
+- Connexion par **lien magique** (e-mail → lien → session 7 j). Le lien `/portail/connexion?token=…` envoyé par e-mail redirige vers la page.
+- **Solde en évidence** : total restant dû + bouton « Régler en ligne », ou « À jour ✓ ».
+- **Factures** : statut en français, PDF, bouton « Payer » par facture (Stripe).
+- **Documents** : consultation + dépôt.
+
+Fichiers : `backend/public/portail/`. En test sans Brevo : `PORTAIL_DEV=true` → le lien s'affiche à l'écran.

@@ -27,8 +27,13 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stri
 
 app.use(express.json({ limit: '2mb' }));
 
-// Front admin (fichiers statiques)
+// Front admin + portail (fichiers statiques)
 app.use(express.static('public'));
+// Lien magique e-mail : /portail/connexion?token=... -> page portail
+app.get('/portail/connexion', (req, res) => {
+  const t = encodeURIComponent(req.query.token || '');
+  res.redirect('/portail/?token=' + t);
+});
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));

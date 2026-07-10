@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mon espace locataire — Locamp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/portail/portail.css">
+</head>
+<body>
+
+<!-- ======= Écran 1 : demander le lien ======= -->
+<div id="ecran-email" class="stage hidden">
+  <div class="panel">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="brand-name">Mon espace locataire</div>
+        <div class="brand-sub" id="brand-camping">Locamp</div>
+      </div>
+    </div>
+    <p class="intro">Saisissez l'adresse e-mail connue de votre camping. Vous recevrez un lien de connexion sécurisé — pas de mot de passe à retenir.</p>
+    <form id="form-email">
+      <label>Adresse e-mail
+        <input type="email" id="email" required placeholder="prenom.nom@mail.fr" autocomplete="email">
+      </label>
+      <button class="btn btn-primary btn-block" id="btn-email">Recevoir mon lien de connexion</button>
+    </form>
+    <p id="email-info" class="note hidden"></p>
+  </div>
+</div>
+
+<!-- ======= Écran 2 : lien envoyé ======= -->
+<div id="ecran-envoye" class="stage hidden">
+  <div class="panel center">
+    <div class="pictogram">✉️</div>
+    <h1>Vérifiez votre boîte mail</h1>
+    <p class="intro">Si un compte existe pour cette adresse, un lien de connexion vient de vous être envoyé. Il est valable 30 minutes.</p>
+    <button class="btn btn-ghost" onclick="showEmail()">Utiliser une autre adresse</button>
+  </div>
+</div>
+
+<!-- ======= Espace locataire ======= -->
+<div id="espace" class="hidden">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="brand-name" id="hello">Bonjour</div>
+        <div class="brand-sub" id="sous-titre"></div>
+      </div>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="btn-logout">Se déconnecter</button>
+  </header>
+
+  <main class="content">
+    <!-- Solde -->
+    <section class="hero-solde card" id="hero-solde"></section>
+
+    <!-- Factures -->
+    <section class="card">
+      <div class="card-head"><div class="eyebrow">Mes paiements</div><h2>Factures</h2></div>
+      <div id="liste-factures"></div>
+    </section>
+
+    <!-- Documents -->
+    <section class="card">
+      <div class="card-head"><div class="eyebrow">Mon dossier</div><h2>Documents</h2></div>
+      <div id="liste-docs"></div>
+      <form id="form-doc" class="upload-row">
+        <select id="doc-type">
+          <option value="attestation_assurance">Attestation d'assurance</option>
+          <option value="justificatif_domicile">Justificatif de domicile</option>
+          <option value="piece_identite">Pièce d'identité</option>
+          <option value="autre">Autre document</option>
+        </select>
+        <label class="btn btn-ghost file-btn">Choisir un fichier<input type="file" id="doc-file" hidden></label>
+        <button class="btn btn-primary" id="btn-doc" disabled>Envoyer</button>
+      </form>
+      <p class="note" id="doc-note"></p>
+    </section>
+  </main>
+  <footer class="footy">Espace sécurisé — vos documents et paiements sont chiffrés.</footer>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/portail/portail.js"></script>
+</body>
+</html>
