@@ -93,7 +93,7 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, parametres: vueParametres };
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, parametres: vueParametres };
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
   const [name, param] = raw.split('/');
@@ -101,6 +101,17 @@ function route() {
   ($('#main').innerHTML = '<p class="muted">Chargement…</p>');
   const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
   fn().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
+  majBadgeMessagerie();
+}
+
+async function majBadgeMessagerie() {
+  try {
+    const { total } = await api('/api/messages/non-lus');
+    const b = $('#nav-msg-badge');
+    if (!b) return;
+    b.textContent = total;
+    b.classList.toggle('hidden', !total);
+  } catch { /* table absente ou erreur : pas de badge */ }
 }
 window.addEventListener('hashchange', route);
 
@@ -581,6 +592,7 @@ async function vueFicheClient(id) {
 
   const fil = $('#fil-messages');
   if (fil) fil.scrollTop = fil.scrollHeight;
+  if (window._openTab) { switchFicheTab(window._openTab); window._openTab = null; }
   const fmsg = $('#f-msg');
   if (fmsg) fmsg.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -822,6 +834,35 @@ async function vueFactures() {
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
 }
+/* ---------- Messagerie (boîte de réception) ---------- */
+async function vueMessagerie() {
+  const { conversations } = await api('/api/messages/conversations').catch(() => ({ conversations: null }));
+  $('#main').innerHTML = `
+    <div class="page-head"><div><div class="eyebrow">Échanges clients</div><h1>Messagerie</h1></div></div>
+    ${conversations === null
+      ? '<p class="form-error">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
+      : `<div class="card" style="padding:6px 0">
+      ${conversations.length ? conversations.map((c) => `
+        <div class="row-click" onclick="ouvrirConversation('${c.resident_id}')"
+          style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid #F0EDE3;cursor:pointer">
+          <div style="min-width:0">
+            <div style="font-weight:${c.non_lus ? 800 : 600}">${esc(c.resident_nom)}</div>
+            <div class="muted" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px">
+              ${c.dernier_message.auteur === 'camping' ? 'Vous : ' : ''}${esc(c.dernier_message.corps)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+            <span class="muted" style="font-size:12px">${new Date(c.dernier_message.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            ${c.non_lus ? `<span style="min-width:20px;text-align:center;padding:2px 8px;border-radius:999px;background:#B3492F;color:#fff;font-size:12px;font-weight:700">${c.non_lus}</span>` : ''}
+          </div>
+        </div>`).join('') : '<p class="muted" style="padding:18px 20px;margin:0">Aucune conversation. Les échanges apparaissent ici dès qu\u2019un client écrit depuis son portail, ou que tu écris depuis une fiche client.</p>'}
+    </div>`}`;
+}
+
+window.ouvrirConversation = (residentId) => {
+  window._openTab = 'messages';
+  location.hash = '#/residents/' + residentId;
+};
+
 /* ---------- Compteurs (tournée de relevés) ---------- */
 async function vueCompteurs() {
   const d = await api('/api/compteurs');

@@ -20,6 +20,37 @@ router.get('/non-lus', async (req, res) => {
   } catch (e) { console.error('[messages:non-lus]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// GET /api/messages/conversations  -> boîte de réception : 1 ligne par résident
+router.get('/conversations', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('messages')
+      .select('resident_id,auteur,corps,lu,created_at')
+      .eq('camping_id', req.activeCampingId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const conv = new Map();
+    (data || []).forEach((m) => {
+      if (!conv.has(m.resident_id)) {
+        conv.set(m.resident_id, { resident_id: m.resident_id, dernier: m, non_lus: 0 });
+      }
+      if (m.auteur === 'resident' && !m.lu) conv.get(m.resident_id).non_lus += 1;
+    });
+    const ids = [...conv.keys()];
+    let noms = {};
+    if (ids.length) {
+      const { data: rs } = await supabase.from('residents').select('id,nom,prenom').in('id', ids);
+      (rs || []).forEach((r) => { noms[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
+    }
+    const conversations = [...conv.values()].map((c) => ({
+      resident_id: c.resident_id,
+      resident_nom: noms[c.resident_id] || 'Résident',
+      non_lus: c.non_lus,
+      dernier_message: { auteur: c.dernier.auteur, corps: c.dernier.corps.slice(0, 140), date: c.dernier.created_at },
+    }));
+    res.json({ conversations });
+  } catch (e) { console.error('[messages:conversations]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // GET /api/messages?resident_id=  -> fil complet (et marque lus les messages du résident)
 router.get('/', async (req, res) => {
   try {
