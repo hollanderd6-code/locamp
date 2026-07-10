@@ -1,6 +1,7 @@
 const { supabase } = require('./supabase');
 const { buildFacturePdf } = require('./pdf');
-const { uploadDocument } = require('./storage');
+const { uploadDocument, downloadDocument } = require('./storage');
+const { sendEmail } = require('./email');
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -92,6 +93,50 @@ async function genererPdfFacture(campingId, facture) {
   return path;
 }
 
+// Envoie une facture par e-mail au résident (PDF en pièce jointe).
+// Idempotent : ne renvoie pas si déjà envoyée, sauf force:true.
+async function envoyerFactureEmail(campingId, factureId, { force = false } = {}) {
+  const { data: facture } = await supabase.from('factures').select('*')
+    .eq('camping_id', campingId).eq('id', factureId).maybeSingle();
+  if (!facture) return { error: 'introuvable' };
+  if (['avoir', 'annulee'].includes(facture.statut)) return { skipped: 'statut' };
+  if (!force && facture.email_envoye_at) return { skipped: 'deja_envoye' };
+
+  const [campR, resR] = await Promise.all([
+    supabase.from('campings').select('nom,raison_sociale,email,parametres').eq('id', campingId).maybeSingle(),
+    facture.resident_id
+      ? supabase.from('residents').select('civilite,nom,prenom,email').eq('id', facture.resident_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const camping = campR.data || {};
+  const resident = resR.data;
+  if (!resident?.email) return { skipped: 'sans_email' };
+
+  const path = facture.pdf_path || await genererPdfFacture(campingId, facture);
+  const buffer = await downloadDocument(path);
+
+  const nomCamping = camping.nom || camping.raison_sociale || 'Votre camping';
+  const fparams = (camping.parametres && camping.parametres.facturation) || {};
+  const sender = fparams.email ? { email: fparams.email, name: nomCamping } : { name: nomCamping };
+  const periode = facture.periode ? periodeLabel(facture.periode) : null;
+
+  const subject = `Votre facture ${facture.numero}${periode ? ' — ' + periode : ''}`;
+  const html = `<p>Bonjour ${resident.prenom || ''} ${resident.nom || ''},</p>`
+    + `<p>Veuillez trouver ci-joint votre facture <b>${facture.numero}</b>${periode ? ` (${periode})` : ''} `
+    + `d'un montant de <b>${Number(facture.total_ttc).toFixed(2)} €</b>.</p>`
+    + (fparams.message_email ? `<p>${fparams.message_email}</p>` : '')
+    + `<p>Cordialement,<br>${nomCamping}</p>`;
+
+  const out = await sendEmail({
+    to: resident.email, subject, html, sender,
+    attachments: [{ name: `${facture.numero}.pdf`, content: buffer }],
+  });
+  if (out.skipped) return { skipped: 'email_non_configure' };
+
+  await supabase.from('factures').update({ email_envoye_at: new Date().toISOString() }).eq('id', factureId);
+  return { sent: true, to: resident.email };
+}
+
 // Crée une facture à partir de lignes déjà prêtes. Renvoie la facture (avec PDF).
 async function creerFacture({ campingId, resident_id, contrat_id, periode, lignes, statut = 'emise', avoir_de = null }) {
   const t = computeTotals(lignes);
@@ -104,6 +149,17 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
   }).select().single();
   if (error) throw error;
   await genererPdfFacture(campingId, facture).catch((e) => console.error('[pdf facture]', e.message));
+
+  // Envoi automatique au résident (si activé) — best-effort, ne bloque ni ne casse la création.
+  if (facture.statut === 'emise') {
+    Promise.resolve().then(async () => {
+      const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
+      if (camp?.parametres?.facturation?.email_auto === false) return;   // activé par défaut
+      const out = await envoyerFactureEmail(campingId, facture.id, {});
+      if (out.error || (out.skipped && out.skipped !== 'deja_envoye')) console.log('[facture email]', facture.numero, out);
+    }).catch((e) => console.error('[facture email]', e.message));
+  }
+
   return facture;
 }
 
@@ -150,4 +206,4 @@ async function runFacturationMensuelle(campingId, periode) {
   return res;
 }
 
-module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, genererPdfFacture, currentPeriode };
+module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, genererPdfFacture, envoyerFactureEmail, currentPeriode };

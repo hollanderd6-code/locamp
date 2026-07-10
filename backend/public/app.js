@@ -512,6 +512,7 @@ async function vueFactures() {
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
         <td class="right">
           <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
           ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
@@ -527,6 +528,12 @@ window.runFacturation = async () => {
 window.pdfFacture = async (id) => {
   try { const { url } = await api(`/api/factures/${id}/pdf`); window.open(url, '_blank'); }
   catch (e) { toast(e.message, true); }
+};
+window.emailFacture = async (id) => {
+  try {
+    const r = await api(`/api/factures/${id}/email`, { method: 'POST' });
+    toast(`Facture envoyée à ${r.to || 'le résident'}`);
+  } catch (e) { toast(e.message, true); }
 };
 window.faireAvoir = async (id) => {
   if (!confirm('Émettre un avoir et annuler cette facture ?')) return;

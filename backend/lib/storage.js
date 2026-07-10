@@ -19,10 +19,18 @@ async function signedUrl(path, expiresSec = 120) {
   return data.signedUrl;
 }
 
+// Télécharge un fichier du bucket et renvoie un Buffer.
+async function downloadDocument(path) {
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  if (error) throw error;
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
 // Supprime un fichier du bucket.
 async function removeDocument(path) {
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
   if (error) throw error;
 }
 
-module.exports = { uploadDocument, signedUrl, removeDocument, BUCKET };
+module.exports = { uploadDocument, signedUrl, downloadDocument, removeDocument, BUCKET };

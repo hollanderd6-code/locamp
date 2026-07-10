@@ -2,7 +2,7 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { signedUrl } = require('../lib/storage');
-const { runFacturationMensuelle, creerFacture, genererPdfFacture, currentPeriode } = require('../lib/facturation');
+const { runFacturationMensuelle, creerFacture, genererPdfFacture, envoyerFactureEmail, currentPeriode } = require('../lib/facturation');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -81,6 +81,19 @@ router.post('/:id/avoir', requireRole('admin', 'gestionnaire'), async (req, res)
       apres: { numero: avoir.numero, avoir_de: src.numero } });
     res.status(201).json({ avoir });
   } catch (e) { console.error('[factures:avoir]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/factures/:id/email  -> (re)envoie la facture par e-mail au résident
+router.post('/:id/email', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const out = await envoyerFactureEmail(req.activeCampingId, req.params.id, { force: true });
+    if (out.error) return res.status(404).json({ error: 'Facture introuvable' });
+    if (out.skipped === 'statut') return res.status(409).json({ error: 'Pièce non concernée (avoir/annulée)' });
+    if (out.skipped === 'sans_email') return res.status(400).json({ error: 'Le résident n\'a pas d\'adresse e-mail' });
+    if (out.skipped === 'email_non_configure') return res.status(400).json({ error: 'Service e-mail non configuré (Brevo)' });
+    await writeAudit(req, { action: 'email', entite: 'factures', entite_id: req.params.id, apres: out });
+    res.json({ ok: true, ...out });
+  } catch (e) { console.error('[factures:email]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // GET /api/factures/:id/pdf  (génère à la demande si absent)
