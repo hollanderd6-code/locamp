@@ -96,13 +96,13 @@ router.post('/:id/email', requireRole('admin', 'gestionnaire'), async (req, res)
   } catch (e) { console.error('[factures:email]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// GET /api/factures/:id/pdf  (génère à la demande si absent)
+// GET /api/factures/:id/pdf  (régénère toujours : logo + identité à jour)
 router.get('/:id/pdf', async (req, res) => {
   try {
     const { data: facture } = await supabase.from('factures').select('*')
       .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
     if (!facture) return res.status(404).json({ error: 'Facture introuvable' });
-    const path = facture.pdf_path || await genererPdfFacture(req.activeCampingId, facture);
+    const path = await genererPdfFacture(req.activeCampingId, facture);
     const url = await signedUrl(path, 120);
     await writeAudit(req, { action: 'access', entite: 'factures', entite_id: facture.id, apres: { numero: facture.numero } });
     res.json({ url, expires_in: 120 });

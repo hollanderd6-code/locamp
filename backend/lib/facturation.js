@@ -1,6 +1,6 @@
 const { supabase } = require('./supabase');
 const { buildFacturePdf } = require('./pdf');
-const { uploadDocument, downloadDocument } = require('./storage');
+const { uploadDocument, downloadDocument, BUCKET } = require('./storage');
 const { sendEmail } = require('./email');
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -106,7 +106,9 @@ async function genererPdfFacture(campingId, facture) {
   }
   const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture });
   const path = `factures/${campingId}/${facture.id}.pdf`;
-  await uploadDocument(path, pdf, 'application/pdf');
+  const { error: upErr } = await supabase.storage.from(BUCKET)
+    .upload(path, pdf, { contentType: 'application/pdf', upsert: true });
+  if (upErr) throw upErr;
   await supabase.from('factures').update({ pdf_path: path }).eq('id', facture.id);
   return path;
 }

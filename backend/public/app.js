@@ -625,15 +625,17 @@ window.formFacture = async () => {
   const actifs = residents.filter((r) => r.actif !== false);
   const mois = new Date().toISOString().slice(0, 7);
   const ligneRow = () => `
-    <div class="fac-ligne">
-      <input name="designation" placeholder="Désignation" required>
-      <div class="fac-ligne-sub">
-        <label>Du<input name="date_debut" type="date"></label>
-        <label>Au<input name="date_fin" type="date"></label>
-        <label>Qté<input name="quantite" type="number" step="0.01" value="1"></label>
-        <label>PU HT €<input name="pu_ht" type="number" step="0.01" required></label>
-        <label>TVA %<input name="taux_tva" type="number" step="0.1" value="0"></label>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()" title="Retirer la ligne">×</button>
+    <div class="fac-ligne" style="border:1px solid #E3E0D6;border-radius:10px;padding:12px;margin-bottom:10px;background:#FDFBF7">
+      <input name="designation" placeholder="Désignation" required style="width:100%;margin-bottom:8px;font-weight:600">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;align-items:end">
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Du<input name="date_debut" type="date" style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Au<input name="date_fin" type="date" style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">Qté<input name="quantite" type="number" step="0.01" value="1" style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">PU HT €<input name="pu_ht" type="number" step="0.01" required style="width:100%"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:#8A8A8A">TVA %<input name="taux_tva" type="number" step="0.1" value="0" style="width:100%"></label>
+      </div>
+      <div style="text-align:right;margin-top:6px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()">Retirer la ligne</button>
       </div>
     </div>`;
   openDrawer(`
