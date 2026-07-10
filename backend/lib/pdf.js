@@ -9,6 +9,12 @@ function fmtDate(d) {
   const [y, m, j] = s.split('-');
   return (y && m && j) ? `${j}/${m}/${y}` : s;
 }
+function fmtDateShort(d) {
+  if (!d) return '';
+  const s = String(d).slice(0, 10);
+  const [y, m, j] = s.split('-');
+  return (y && m && j) ? `${j}/${m}/${y.slice(2)}` : s;
+}
 function fmtEur(n) {
   return `${Number(n || 0).toFixed(2).replace('.', ',')} €`;
 }
@@ -128,78 +134,139 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // Émetteur
-      doc.fillColor(INK).font('Helvetica-Bold').fontSize(13).text(camping.raison_sociale || camping.nom || 'Camping');
+      const L = 56, R = 539;          // largeur utile : 483 pt
+      const headerY = 48;
+
+      // --- Logo (optionnel) ---
+      let sellerX = L;
+      if (camping.logo && Buffer.isBuffer(camping.logo)) {
+        try { doc.image(camping.logo, L, headerY, { fit: [112, 58] }); sellerX = L + 124; }
+        catch (_) { /* logo illisible : ignoré */ }
+      }
+
+      // --- Émetteur ---
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(13)
+        .text(camping.raison_sociale || camping.nom || 'Camping', sellerX, headerY, { width: 300 });
       doc.font('Helvetica').fontSize(8.5).fillColor('#555');
-      if (camping.adresse) doc.text(camping.adresse);
+      if (camping.adresse) doc.text(camping.adresse, sellerX, undefined, { width: 300 });
+      const contact = [camping.telephone, camping.email].filter(Boolean).join('   ·   ');
+      if (contact) doc.text(contact, sellerX, undefined, { width: 300 });
       const legal = [camping.siret ? `SIRET ${camping.siret}` : null, camping.tva ? `TVA ${camping.tva}` : null]
-        .filter(Boolean).join('  ·  ');
-      if (legal) doc.text(legal);
+        .filter(Boolean).join('   ·   ');
+      if (legal) doc.text(legal, sellerX, undefined, { width: 300 });
 
-      // Titre + méta (à droite)
-      doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(18)
-        .text(isAvoir ? 'AVOIR' : 'FACTURE', 360, 56, { width: 182, align: 'right' });
+      // --- Titre + méta (droite) ---
+      doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(20)
+        .text(isAvoir ? 'AVOIR' : 'FACTURE', 360, headerY, { width: 179, align: 'right' });
       doc.fillColor('#222').font('Helvetica').fontSize(9);
-      doc.text(`N° ${facture.numero || '—'}`, 360, undefined, { width: 182, align: 'right' });
-      doc.text(`Date : ${fmtDate(facture.date_emission)}`, 360, undefined, { width: 182, align: 'right' });
-      if (facture.periode) doc.text(`Période : ${facture.periode}`, 360, undefined, { width: 182, align: 'right' });
+      doc.text(`N° ${facture.numero || '—'}`, 360, undefined, { width: 179, align: 'right' });
+      doc.text(`Date : ${fmtDate(facture.date_emission)}`, 360, undefined, { width: 179, align: 'right' });
+      if (facture.periode) doc.text(`Période : ${facture.periode}`, 360, undefined, { width: 179, align: 'right' });
 
-      // Client
+      // --- Client (encadré) ---
       const clientY = 150;
-      doc.fillColor('#666').font('Helvetica-Bold').fontSize(8).text('FACTURÉ À', 56, clientY);
-      doc.fillColor('#222').font('Helvetica').fontSize(10);
-      doc.text(`${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', 56, undefined);
-      if (resident.adresse) doc.text(resident.adresse, 56, undefined);
-      if (resident.email) doc.text(resident.email, 56, undefined);
+      doc.roundedRect(340, clientY, 199, 68, 5).lineWidth(1).stroke('#DADED9');
+      doc.fillColor('#666').font('Helvetica-Bold').fontSize(8).text('FACTURÉ À', 350, clientY + 8);
+      doc.fillColor('#222').font('Helvetica-Bold').fontSize(10)
+        .text(`${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', 350, clientY + 20, { width: 179 });
+      doc.font('Helvetica').fontSize(9).fillColor('#444');
+      if (resident.adresse) doc.text(resident.adresse, 350, undefined, { width: 179 });
+      if (resident.email) doc.text(resident.email, 350, undefined, { width: 179 });
 
-      // Tableau
-      let y = clientY + 54;
-      const X = { des: 56, qte: 320, pu: 372, tva: 452, tot: 508 };
-      doc.rect(56, y, 486, 20).fill(GREEN);
-      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
-      doc.text('Désignation', X.des + 4, y + 6);
-      doc.text('Qté', X.qte, y + 6);
-      doc.text('PU HT', X.pu, y + 6);
-      doc.text('TVA', X.tva, y + 6);
-      doc.text('Total HT', X.tot, y + 6);
-      y += 24;
+      // --- Tableau des lignes ---
+      let y = clientY + 88;
+      const C = { des: 56, du: 196, au: 244, nu: 292, qte: 322, puht: 352, totht: 402, tva: 452, ttc: 486 };
+      const drawHeader = () => {
+        doc.rect(L, y, 483, 18).fill(GREEN);
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5);
+        doc.text('Désignation', C.des + 3, y + 5, { width: 136 });
+        doc.text('Du', C.du, y + 5, { width: 46 });
+        doc.text('Au', C.au, y + 5, { width: 46 });
+        doc.text('Nuits', C.nu, y + 5, { width: 26, align: 'right' });
+        doc.text('Qté', C.qte, y + 5, { width: 26, align: 'right' });
+        doc.text('PU HT', C.puht, y + 5, { width: 46, align: 'right' });
+        doc.text('Total HT', C.totht, y + 5, { width: 46, align: 'right' });
+        doc.text('TVA', C.tva, y + 5, { width: 30, align: 'right' });
+        doc.text('TTC', C.ttc, y + 5, { width: 51, align: 'right' });
+        y += 22;
+      };
+      drawHeader();
 
-      doc.font('Helvetica').fontSize(9);
+      const recap = {};   // taux -> { base, tva }
       (facture.lignes || []).forEach((l, i) => {
         const q = Number(l.quantite || 1);
         const pu = Number(l.pu_ht || 0);
-        const ht = l.montant_ht != null ? Number(l.montant_ht) : q * pu;
-        const hDes = doc.heightOfString(String(l.designation || ''), { width: 258 });
-        const rowH = Math.max(hDes, 12) + 6;
-        if (i % 2 === 1) { doc.rect(56, y - 3, 486, rowH).fillOpacity(0.05).fill(GREEN).fillOpacity(1); }
-        doc.fillColor('#222').font('Helvetica').fontSize(9);
-        doc.text(String(l.designation || ''), X.des + 4, y, { width: 258 });
-        doc.text(String(q), X.qte, y);
-        doc.text(fmtEur(pu), X.pu, y);
-        doc.text(`${Number(l.taux_tva || 0)} %`, X.tva, y);
-        doc.text(fmtEur(ht), X.tot, y);
+        const taux = Number(l.taux_tva || 0);
+        const ht = l.montant_ht != null ? Number(l.montant_ht) : Math.round(q * pu * 100) / 100;
+        const tvaM = Math.round(ht * taux) / 100;
+        const ttc = Math.round((ht + tvaM) * 100) / 100;
+        recap[taux] = recap[taux] || { base: 0, tva: 0 };
+        recap[taux].base += ht; recap[taux].tva += tvaM;
+
+        const hDes = doc.heightOfString(String(l.designation || ''), { width: 136, fontSize: 7.5 });
+        const rowH = Math.max(hDes, 10) + 6;
+        if (y + rowH > 720) { doc.addPage(); y = 56; drawHeader(); }
+        if (i % 2 === 1) { doc.rect(L, y - 3, 483, rowH).fillOpacity(0.05).fill(GREEN).fillOpacity(1); }
+        doc.fillColor('#222').font('Helvetica').fontSize(7.5);
+        doc.text(String(l.designation || ''), C.des + 3, y, { width: 136 });
+        doc.text(fmtDateShort(l.date_debut), C.du, y, { width: 46 });
+        doc.text(fmtDateShort(l.date_fin), C.au, y, { width: 46 });
+        doc.text(l.nuits != null ? String(l.nuits) : '', C.nu, y, { width: 26, align: 'right' });
+        doc.text(String(q), C.qte, y, { width: 26, align: 'right' });
+        doc.text(fmtEur(pu), C.puht, y, { width: 46, align: 'right' });
+        doc.text(fmtEur(ht), C.totht, y, { width: 46, align: 'right' });
+        doc.text(`${taux} %`, C.tva, y, { width: 30, align: 'right' });
+        doc.text(fmtEur(ttc), C.ttc, y, { width: 51, align: 'right' });
         y += rowH;
       });
 
-      // Totaux
-      y += 12;
+      doc.moveTo(L, y + 2).lineTo(R, y + 2).lineWidth(0.5).stroke('#DADED9');
+      y += 14;
+
+      // --- Récap TVA (gauche) + Totaux (droite) ---
+      const blockY = y;
+      const tauxList = Object.keys(recap).map(Number).sort((a, b) => a - b);
+      if (tauxList.length) {
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#666');
+        doc.text('Taux', 56, y, { width: 44 });
+        doc.text('Base HT', 100, y, { width: 66, align: 'right' });
+        doc.text('Montant TVA', 170, y, { width: 74, align: 'right' });
+        y += 12;
+        doc.font('Helvetica').fontSize(7.5).fillColor('#222');
+        tauxList.forEach((t) => {
+          doc.text(`${t} %`, 56, y, { width: 44 });
+          doc.text(fmtEur(recap[t].base), 100, y, { width: 66, align: 'right' });
+          doc.text(fmtEur(recap[t].tva), 170, y, { width: 74, align: 'right' });
+          y += 11;
+        });
+      }
+
+      let ty = blockY;
       const totRow = (label, val, bold) => {
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 11 : 9).fillColor(bold ? GREEN : '#222');
-        doc.text(label, 360, y, { width: 100, align: 'right' });
-        doc.text(fmtEur(val), 462, y, { width: 80, align: 'right' });
-        y += bold ? 18 : 15;
+        doc.text(label, 360, ty, { width: 100, align: 'right' });
+        doc.text(fmtEur(val), 462, ty, { width: 77, align: 'right' });
+        ty += bold ? 18 : 14;
       };
       totRow('Total HT', facture.total_ht);
       totRow('TVA', facture.total_tva);
-      totRow('Total TTC', facture.total_ttc, true);
+      totRow(isAvoir ? 'Total avoir TTC' : 'Total TTC', facture.total_ttc, true);
 
-      // Mentions légales
-      y += 22;
+      y = Math.max(y, ty) + 24;
+
+      // --- Mentions légales ---
       doc.fillColor('#666').font('Helvetica').fontSize(7.5);
-      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) doc.text(params.mention_tva, 56, y, { width: 486 });
-      doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}`, 56, undefined, { width: 486 });
-      doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement.', 56, undefined, { width: 486 });
-      if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', 56, undefined, { width: 486 });
+      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) doc.text(params.mention_tva, 56, y, { width: 483 });
+      doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}`, 56, undefined, { width: 483 });
+      doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement de 40 €.', 56, undefined, { width: 483 });
+      if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', 56, undefined, { width: 483 });
+
+      // --- Pied de page légal ---
+      doc.moveDown(0.8);
+      const foot = [camping.raison_sociale || camping.nom, camping.adresse,
+        camping.siret ? 'SIRET ' + camping.siret : null, camping.tva ? 'TVA ' + camping.tva : null]
+        .filter(Boolean).join(' — ');
+      if (foot) doc.fillColor('#999').fontSize(6.5).text(foot, 56, undefined, { width: 483, align: 'center' });
 
       doc.end();
     } catch (err) {

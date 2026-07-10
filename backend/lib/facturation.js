@@ -11,6 +11,7 @@ function currentPeriode() { return new Date().toISOString().slice(0, 7); } // 'Y
 function periodeLabel(p) { const [y, m] = p.split('-').map(Number); return `${MOIS[m - 1]} ${y}`; }
 
 // Calcule montant_ht par ligne + totaux HT/TVA/TTC (arrondi 2 décimales).
+// Conserve les champs de période (date_debut/date_fin) et déduit les nuits.
 function computeTotals(lignes) {
   let ht = 0, tva = 0;
   const out = (lignes || []).map((l) => {
@@ -20,7 +21,15 @@ function computeTotals(lignes) {
     const mHt = Math.round(q * pu * 100) / 100;
     ht += mHt;
     tva += Math.round(mHt * taux) / 100;
-    return { designation: l.designation, quantite: q, pu_ht: pu, taux_tva: taux, montant_ht: mHt };
+    let nuits = l.nuits != null && l.nuits !== '' ? Number(l.nuits) : null;
+    if (nuits == null && l.date_debut && l.date_fin) {
+      const d = Math.round((new Date(l.date_fin) - new Date(l.date_debut)) / 86400000);
+      nuits = d > 0 ? d : null;
+    }
+    return {
+      designation: l.designation, quantite: q, pu_ht: pu, taux_tva: taux, montant_ht: mHt,
+      date_debut: l.date_debut || null, date_fin: l.date_fin || null, nuits,
+    };
   });
   ht = Math.round(ht * 100) / 100;
   tva = Math.round(tva * 100) / 100;
@@ -41,6 +50,8 @@ function buildLignes(contrat, resident, periode, parametres) {
   const factor = (activeDays > 0 && activeDays < dim) ? activeDays / dim : 1;
 
   const lignes = [];
+  const dDebut = `${periode}-${String(first).padStart(2, '0')}`;
+  const dFin = `${periode}-${String(last).padStart(2, '0')}`;
   const loyer = Number(contrat.montant_mensuel || 0);
   const tvaLoyer = Number(parametres?.facturation?.tva_taux_loyer || 0);
   if (loyer > 0) {
@@ -49,6 +60,7 @@ function buildLignes(contrat, resident, periode, parametres) {
       designation: factor < 1
         ? `Loyer emplacement — ${periodeLabel(periode)} (prorata ${activeDays}/${dim} j)`
         : `Loyer emplacement — ${periodeLabel(periode)}`,
+      date_debut: dDebut, date_fin: dFin, nuits: activeDays,
       quantite: 1, pu_ht: montant, taux_tva: tvaLoyer,
     });
   }
@@ -62,6 +74,7 @@ function buildLignes(contrat, resident, periode, parametres) {
     if (montant > 0) {
       lignes.push({
         designation: `Taxe de séjour (${personnes} pers. × ${nuits} nuits)`,
+        date_debut: dDebut, date_fin: dFin, nuits,
         quantite: 1, pu_ht: montant, taux_tva: 0,
       });
     }
@@ -81,12 +94,17 @@ async function nextNumeroFacture(campingId) {
 // Génère le PDF d'une facture, l'archive, met à jour pdf_path.
 async function genererPdfFacture(campingId, facture) {
   const [camping, resident] = await Promise.all([
-    supabase.from('campings').select('nom,raison_sociale,adresse,siret,tva,parametres').eq('id', campingId).maybeSingle(),
+    supabase.from('campings').select('nom,raison_sociale,adresse,email,telephone,siret,tva,parametres,logo_path').eq('id', campingId).maybeSingle(),
     facture.resident_id
       ? supabase.from('residents').select('civilite,nom,prenom,adresse,email').eq('id', facture.resident_id).maybeSingle()
       : Promise.resolve({ data: {} }),
   ]);
-  const pdf = await buildFacturePdf({ camping: camping.data || {}, resident: resident.data || {}, facture });
+  const campData = camping.data || {};
+  if (campData.logo_path) {
+    try { campData.logo = await downloadDocument(campData.logo_path); }
+    catch (e) { console.error('[pdf logo]', e.message); }
+  }
+  const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture });
   const path = `factures/${campingId}/${facture.id}.pdf`;
   await uploadDocument(path, pdf, 'application/pdf');
   await supabase.from('factures').update({ pdf_path: path }).eq('id', facture.id);
