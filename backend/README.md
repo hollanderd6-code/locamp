@@ -132,3 +132,19 @@ Espace self-service pour les résidents, authentification par **lien magique** (
 - `POST /api/portail/documents` — dépôt d'un document (multipart).
 
 Toutes les routes sont strictement limitées au résident et à son camping. Actions journalisées dans l'audit.
+
+## Interface web (front admin)
+
+Application web légère (HTML/CSS/JS, sans framework) servie par le même service Express — accessible directement sur l'URL Render (`/`).
+
+- **Connexion** (e-mail / mot de passe du personnel).
+- **Tableau de bord** : occupation, CA du mois, impayés, alertes.
+- **Carte du camping** : plan interactif SVG, pastilles colorées par statut (impayé prioritaire en rouge), clic → fiche emplacement/résident/factures.
+- **Résidents** : liste, recherche, fiche 360 (contrat, factures, documents), création.
+- **Emplacements** : liste, création (avec coordonnées carte).
+- **Factures** : génération mensuelle en un clic, PDF, avoirs.
+- **Règlements** : saisie d'un paiement (lettrage automatique), historique.
+- **Impayés** : balance âgée, envoi des relances.
+
+Multi-camping : un sélecteur apparaît dans la barre latérale si le compte a accès à plusieurs campings.
+Fichiers dans `backend/public/` (index.html, styles.css, app.js).

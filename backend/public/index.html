@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locamp — Gestion de camping résidentiel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- ================= ÉCRAN DE CONNEXION ================= -->
+<div id="login-screen" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="brand-name">Locamp</div>
+        <div class="brand-sub">Gestion de camping résidentiel</div>
+      </div>
+    </div>
+    <form id="login-form" autocomplete="on">
+      <label>E-mail
+        <input type="email" id="login-email" required autocomplete="username">
+      </label>
+      <label>Mot de passe
+        <input type="password" id="login-password" required autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">Se connecter</button>
+      <p id="login-error" class="form-error hidden"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ================= APPLICATION ================= -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand brand-side">
+      <div class="brand-mark">L</div>
+      <div class="brand-name">Locamp</div>
+    </div>
+    <div id="camping-switch" class="camping-switch hidden">
+      <select id="camping-select" title="Camping actif"></select>
+    </div>
+    <nav class="nav">
+      <a href="#/dashboard" data-nav="dashboard">Tableau de bord</a>
+      <a href="#/carte" data-nav="carte">Carte du camping</a>
+      <a href="#/residents" data-nav="residents">Résidents</a>
+      <a href="#/emplacements" data-nav="emplacements">Emplacements</a>
+      <a href="#/factures" data-nav="factures">Factures</a>
+      <a href="#/reglements" data-nav="reglements">Règlements</a>
+      <a href="#/impayes" data-nav="impayes">Impayés</a>
+    </nav>
+    <div class="sidebar-foot">
+      <span id="user-name" class="user-name"></span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Se déconnecter</button>
+    </div>
+  </aside>
+  <main id="main" class="main"></main>
+</div>
+
+<!-- ================= PANNEAU LATÉRAL (fiche) ================= -->
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-backdrop" onclick="closeDrawer()"></div>
+  <div class="drawer-panel">
+    <button class="drawer-close" onclick="closeDrawer()" aria-label="Fermer">×</button>
+    <div id="drawer-content"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
