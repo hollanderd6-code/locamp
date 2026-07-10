@@ -41,7 +41,7 @@ router.post('/demande-acces', async (req, res) => {
       const magic = jwt.sign({ typ: 'resident-magic', rid: resident.id, cid: resident.camping_id, email: resident.email },
         JWT_SECRET, { expiresIn: '30m' });
       const base = process.env.PUBLIC_APP_URL || `https://${req.headers.host}`;
-      const lien = `${base}/portail/connexion?token=${magic}`;
+      const lien = `${base}/portail/?token=${magic}`;
       const html = `<p>Bonjour ${resident.prenom || ''},</p>`
         + `<p>Voici votre lien de connexion à votre espace locataire (valable 30 minutes) :</p>`
         + `<p><a href="${lien}">Accéder à mon espace</a></p>`;
@@ -215,6 +215,38 @@ router.post('/documents', upload.single('file'), async (req, res) => {
     await auditPortail(req, req.resident, 'portail_depot_document', { entite: 'documents', entite_id: data.id });
     res.status(201).json({ document: data });
   } catch (e) { console.error('[portail:doc-upload]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/portail/messages  -> fil du résident (et marque lus les messages du camping)
+router.get('/messages', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('messages').select('id,auteur,corps,created_at,lu')
+      .eq('camping_id', req.resident.camping_id).eq('resident_id', req.resident.id)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    await supabase.from('messages').update({ lu: true })
+      .eq('camping_id', req.resident.camping_id).eq('resident_id', req.resident.id)
+      .eq('auteur', 'camping').eq('lu', false);
+    res.json({ messages: data || [] });
+  } catch (e) {
+    console.error('[portail:messages]', e.message);
+    res.json({ messages: [] });   // table absente : ne pas casser le portail
+  }
+});
+
+// POST /api/portail/messages { corps }
+router.post('/messages', async (req, res) => {
+  try {
+    const corps = String(req.body?.corps || '').trim();
+    if (!corps) return res.status(400).json({ error: 'Message vide' });
+    if (corps.length > 4000) return res.status(400).json({ error: 'Message trop long (4000 caractères max)' });
+    const { data, error } = await supabase.from('messages').insert({
+      camping_id: req.resident.camping_id, resident_id: req.resident.id, auteur: 'resident', corps,
+    }).select('id,auteur,corps,created_at').single();
+    if (error) throw error;
+    await auditPortail(req, req.resident, 'portail_message', { entite: 'messages', entite_id: data.id });
+    res.status(201).json({ message: data });
+  } catch (e) { console.error('[portail:message]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;

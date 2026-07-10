@@ -68,9 +68,10 @@ $('#form-email').addEventListener('submit', async (e) => {
 
 /* ---------- espace ---------- */
 async function chargerEspace() {
-  const [moi, { factures }, { documents }, presta] = await Promise.all([
+  const [moi, { factures }, { documents }, presta, msgs] = await Promise.all([
     api('/api/portail/moi'), api('/api/portail/factures'), api('/api/portail/documents'),
     api('/api/portail/prestations').catch(() => ({ prestations: [] })),
+    api('/api/portail/messages').catch(() => ({ messages: [] })),
   ]);
   const { resident, emplacement, camping, paiement_en_ligne } = moi;
   window._payok = !!paiement_en_ligne;
@@ -134,6 +135,20 @@ async function chargerEspace() {
       <div><div class="t">${esc(libType(d.type))}</div><div class="d">${esc(d.nom_fichier || '')} · ${dfr(d.created_at)}</div></div>
       <button class="btn btn-ghost btn-sm" onclick="voirDoc('${d.id}')">Ouvrir</button>
     </div>`).join('') : '<p class="note">Aucun document dans votre dossier.</p>';
+
+  // messages
+  renderMessages(msgs.messages || []);
+}
+
+function renderMessages(list) {
+  const fil = $('#fil-messages');
+  fil.innerHTML = list.length ? list.map((m) => `
+    <div style="max-width:78%;align-self:${m.auteur === 'resident' ? 'flex-end' : 'flex-start'}">
+      <div style="padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;
+        ${m.auteur === 'resident' ? 'background:#1A7A5E;color:#fff;border-bottom-right-radius:4px' : 'background:#fff;border:1px solid #E3E0D6;border-bottom-left-radius:4px'}">${esc(m.corps)}</div>
+      <div style="font-size:10.5px;color:#999;margin-top:3px;text-align:${m.auteur === 'resident' ? 'right' : 'left'}">${m.auteur === 'resident' ? 'Vous' : 'Le camping'} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+    </div>`).join('') : '<p class="note" style="margin:0">Aucun message. Une question ? Écrivez au camping ci-dessous.</p>';
+  fil.scrollTop = fil.scrollHeight;
 }
 
 function libStatut(s) {
@@ -178,6 +193,22 @@ $('#form-doc').addEventListener('submit', async (e) => {
     toast('Document envoyé au camping');
     $('#doc-file').value = ''; $('#doc-note').textContent = '';
     await chargerEspace();
+  } catch (err) { toast(err.message, true); }
+  finally { btn.disabled = false; }
+});
+
+/* ---------- messages ---------- */
+$('#form-msg').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#msg-corps');
+  const corps = input.value.trim();
+  if (!corps) return;
+  const btn = $('#btn-msg'); btn.disabled = true;
+  try {
+    await api('/api/portail/messages', { method: 'POST', body: { corps } });
+    input.value = '';
+    const { messages } = await api('/api/portail/messages');
+    renderMessages(messages || []);
   } catch (err) { toast(err.message, true); }
   finally { btn.disabled = false; }
 });

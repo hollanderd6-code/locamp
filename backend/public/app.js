@@ -415,13 +415,16 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id),
     api('/api/reglements?resident_id=' + id),
     api('/api/prestations?resident_id=' + id).catch(() => ({ prestations: null })),
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
+    api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
   ]);
+  const messages = msgRes.messages;
+  const nbNonLus = (messages || []).filter((m) => m.auteur === 'resident' && !m.lu).length;
   const prestations = presRes.prestations;
   const syn = synRes.synthese;
   const facNum = {}; factures.forEach((f) => { facNum[f.id] = f.numero; });
@@ -482,6 +485,7 @@ async function vueFicheClient(id) {
     <div style="display:flex;gap:6px;background:#F1EDE3;border-radius:999px;padding:4px;width:fit-content;margin-bottom:16px">
       ${tabBtn('prestations', `Prestations${nbEnCours ? ` (${nbEnCours})` : ''}`, true)}
       ${tabBtn('compte', 'Compte', false)}
+      ${tabBtn('messages', `Messages${nbNonLus ? ` (${nbNonLus})` : ''}`, false)}
       ${tabBtn('documents', 'Documents', false)}
     </div>
 
@@ -548,12 +552,47 @@ async function vueFicheClient(id) {
       </div>
     </section>
 
+    <section data-panel="messages" class="hidden">
+      <div class="card">
+        <h2>Messages</h2>
+        ${messages === null
+          ? '<p class="form-error" style="margin-top:12px">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
+          : `<div id="fil-messages" style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto;padding:14px;background:#F7F4EC;border-radius:12px;margin-top:12px">
+          ${(messages || []).map((m) => `
+            <div style="max-width:72%;align-self:${m.auteur === 'camping' ? 'flex-end' : 'flex-start'}">
+              <div style="padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;
+                ${m.auteur === 'camping' ? 'background:#1A7A5E;color:#fff;border-bottom-right-radius:4px' : 'background:#fff;border:1px solid #E3E0D6;border-bottom-left-radius:4px'}">${esc(m.corps)}</div>
+              <div style="font-size:10.5px;color:#999;margin-top:3px;text-align:${m.auteur === 'camping' ? 'right' : 'left'}">${m.auteur === 'camping' ? 'Camping' : esc(r.prenom || r.nom)} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+            </div>`).join('') || '<p class="muted" style="margin:0">Aucun message. Écris le premier ci-dessous — le client le verra sur son portail et sera notifié par e-mail.</p>'}
+        </div>
+        <form id="f-msg" style="display:flex;gap:8px;margin-top:12px">
+          <input name="corps" placeholder="Écrire un message au client…" required style="flex:1">
+          <button class="btn btn-primary">Envoyer</button>
+        </form>`}
+      </div>
+    </section>
+
     <section data-panel="documents" class="hidden">
       <div class="card">
         <h2>Documents</h2>
         ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
       </div>
     </section>`;
+
+  const fil = $('#fil-messages');
+  if (fil) fil.scrollTop = fil.scrollHeight;
+  const fmsg = $('#f-msg');
+  if (fmsg) fmsg.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const corps = e.target.corps.value.trim();
+    if (!corps) return;
+    try {
+      await api('/api/messages', { method: 'POST', body: { resident_id: id, corps } });
+      toast('Message envoyé');
+      route();
+      setTimeout(() => switchFicheTab('messages'), 60);
+    } catch (err) { toast(err.message, true); }
+  });
 }
 
 window.switchFicheTab = (key) => {

@@ -17,6 +17,7 @@ const comptaRoutes = require('./routes/compta');
 const dashboardRoutes = require('./routes/dashboard');
 const articlesRoutes = require('./routes/articles');
 const prestationsRoutes = require('./routes/prestations');
+const messagesRoutes = require('./routes/messages');
 const portailRoutes = require('./routes/portail');
 const cronRoutes = require('./routes/cron');
 const { stripeWebhook } = require('./routes/webhooks');
@@ -31,6 +32,12 @@ app.use(express.json({ limit: '2mb' }));
 
 // Front admin (fichiers statiques)
 app.use(express.static('public'));
+
+// Compat liens magiques déjà envoyés : /portail/connexion?token=... -> /portail/?token=...
+app.get('/portail/connexion', (req, res) => {
+  const t = req.query.token ? `?token=${encodeURIComponent(req.query.token)}` : '';
+  res.redirect(302, `/portail/${t}`);
+});
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
@@ -51,6 +58,7 @@ app.use('/api/compta', comptaRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/articles', articlesRoutes);
 app.use('/api/prestations', prestationsRoutes);
+app.use('/api/messages', messagesRoutes);
 app.use('/api/portail', portailRoutes);
 app.use('/api/cron', cronRoutes);
 
