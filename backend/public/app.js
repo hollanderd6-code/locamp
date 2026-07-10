@@ -93,7 +93,7 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes };
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, parametres: vueParametres };
 function route() {
   const name = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
@@ -518,6 +518,108 @@ async function vueFactures() {
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
 }
+async function vueParametres() {
+  const { camping: c } = await api('/api/camping');
+  const p = c.parametres || {};
+  const fp = p.facturation || {};
+  const ts = p.taxe_sejour || {};
+  const { url: logoUrl } = await api('/api/camping/logo').catch(() => ({ url: null }));
+  $('#main').innerHTML = `
+    <div class="page-head"><div><div class="eyebrow">Configuration</div><h1>Paramètres du camping</h1></div>
+      <span class="muted">${esc(c.nom || '')}</span></div>
+
+    <div class="card">
+      <h2>Identité & mentions légales</h2>
+      <form id="f-ident" class="form-grid" style="margin-top:12px">
+        <label>Nom (interne)<input name="nom" value="${esc(c.nom || '')}"></label>
+        <label>Raison sociale<input name="raison_sociale" value="${esc(c.raison_sociale || '')}"></label>
+        <label>SIRET<input name="siret" value="${esc(c.siret || '')}"></label>
+        <label>N° TVA intracom.<input name="tva" value="${esc(c.tva || '')}"></label>
+        <label class="full">Adresse<input name="adresse" value="${esc(c.adresse || '')}"></label>
+        <label>E-mail<input name="email" type="email" value="${esc(c.email || '')}"></label>
+        <label>Téléphone<input name="telephone" value="${esc(c.telephone || '')}"></label>
+        <div class="full"><button class="btn btn-primary">Enregistrer l'identité</button></div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Logo</h2>
+      <div class="logo-row">
+        <div class="logo-preview">${logoUrl ? `<img src="${logoUrl}" alt="logo">` : '<span class="muted">Aucun logo</span>'}</div>
+        <div>
+          <input type="file" id="logo-file" accept="image/png,image/jpeg">
+          <button class="btn btn-ghost btn-sm" onclick="uploadLogo()">Téléverser</button>
+          <p class="muted" style="margin:6px 0 0">PNG ou JPG, format paysage de préférence. Apparaît en haut des factures.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Facturation</h2>
+      <form id="f-fact-params" class="form-grid" style="margin-top:12px">
+        <label>TVA loyer (%)<input name="tva_taux_loyer" type="number" step="0.1" value="${fp.tva_taux_loyer ?? 0}"></label>
+        <label>Délai de paiement (jours)<input name="delai_paiement" type="number" step="1" value="${fp.delai_paiement ?? 30}"></label>
+        <label class="full">Conditions de règlement<input name="conditions_reglement" value="${esc(fp.conditions_reglement || 'À réception de facture.')}"></label>
+        <label class="full">Mention TVA non applicable (si 0 %)<input name="mention_tva" value="${esc(fp.mention_tva || '')}"></label>
+        <label class="full">Pénalités de retard<input name="penalites" value="${esc(fp.penalites || '')}"></label>
+        <label class="full">Message e-mail (paragraphe ajouté au corps)<input name="message_email" value="${esc(fp.message_email || '')}"></label>
+        <label>Expéditeur e-mail<input name="email_exp" type="email" value="${esc(fp.email || '')}"></label>
+        <label>Envoi auto de la facture<select name="email_auto"><option value="true"${fp.email_auto === false ? '' : ' selected'}>Activé</option><option value="false"${fp.email_auto === false ? ' selected' : ''}>Désactivé</option></select></label>
+        <div class="full"><button class="btn btn-primary">Enregistrer la facturation</button></div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Taxe de séjour</h2>
+      <form id="f-taxe" class="form-grid" style="margin-top:12px">
+        <label>Active<select name="actif"><option value="true"${ts.actif ? ' selected' : ''}>Oui</option><option value="false"${ts.actif ? '' : ' selected'}>Non</option></select></label>
+        <label>Tarif / nuit / personne (€)<input name="tarif_nuit_personne" type="number" step="0.01" value="${ts.tarif_nuit_personne ?? 0}"></label>
+        <div class="full"><button class="btn btn-primary">Enregistrer la taxe</button></div>
+      </form>
+    </div>`;
+
+  $('#f-ident').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try { await api('/api/camping', { method: 'PUT', body }); toast('Identité enregistrée'); }
+    catch (err) { toast(err.message, true); }
+  });
+
+  $('#f-fact-params').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    const facturation = {
+      ...fp,
+      tva_taux_loyer: Number(f.tva_taux_loyer || 0),
+      delai_paiement: Number(f.delai_paiement || 30),
+      conditions_reglement: f.conditions_reglement,
+      mention_tva: f.mention_tva,
+      penalites: f.penalites,
+      message_email: f.message_email,
+      email: f.email_exp || undefined,
+      email_auto: f.email_auto === 'true',
+    };
+    try { await api('/api/camping/parametres', { method: 'PUT', body: { facturation } }); toast('Facturation enregistrée'); }
+    catch (err) { toast(err.message, true); }
+  });
+
+  $('#f-taxe').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    const taxe_sejour = { ...ts, actif: f.actif === 'true', tarif_nuit_personne: Number(f.tarif_nuit_personne || 0) };
+    try { await api('/api/camping/parametres', { method: 'PUT', body: { taxe_sejour } }); toast('Taxe de séjour enregistrée'); }
+    catch (err) { toast(err.message, true); }
+  });
+}
+
+window.uploadLogo = async () => {
+  const input = $('#logo-file');
+  if (!input.files || !input.files[0]) { toast('Choisis une image', true); return; }
+  const fd = new FormData(); fd.append('file', input.files[0]);
+  try { await api('/api/camping/logo', { method: 'POST', body: fd }); toast('Logo mis à jour'); route(); }
+  catch (err) { toast(err.message, true); }
+};
+
 window.formFacture = async () => {
   const { residents } = await api('/api/residents');
   const actifs = residents.filter((r) => r.actif !== false);
@@ -525,10 +627,14 @@ window.formFacture = async () => {
   const ligneRow = () => `
     <div class="fac-ligne">
       <input name="designation" placeholder="Désignation" required>
-      <input name="quantite" type="number" step="0.01" value="1" title="Quantité">
-      <input name="pu_ht" type="number" step="0.01" placeholder="PU HT €" required>
-      <input name="taux_tva" type="number" step="0.1" value="0" title="TVA %">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()" title="Retirer la ligne">×</button>
+      <div class="fac-ligne-sub">
+        <label>Du<input name="date_debut" type="date"></label>
+        <label>Au<input name="date_fin" type="date"></label>
+        <label>Qté<input name="quantite" type="number" step="0.01" value="1"></label>
+        <label>PU HT €<input name="pu_ht" type="number" step="0.01" required></label>
+        <label>TVA %<input name="taux_tva" type="number" step="0.1" value="0"></label>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()" title="Retirer la ligne">×</button>
+      </div>
     </div>`;
   openDrawer(`
     <h2>Nouvelle facture</h2>
@@ -553,6 +659,8 @@ window.formFacture = async () => {
     const periode = e.target.periode.value || undefined;
     const lignes = [...e.target.querySelectorAll('.fac-ligne')].map((row) => ({
       designation: row.querySelector('[name=designation]').value.trim(),
+      date_debut: row.querySelector('[name=date_debut]').value || undefined,
+      date_fin: row.querySelector('[name=date_fin]').value || undefined,
       quantite: Number(row.querySelector('[name=quantite]').value || 1),
       pu_ht: Number(row.querySelector('[name=pu_ht]').value || 0),
       taux_tva: Number(row.querySelector('[name=taux_tva]').value || 0),
