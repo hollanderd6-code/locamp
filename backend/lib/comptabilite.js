@@ -40,7 +40,11 @@ async function buildEcritures(campingId, debut, fin) {
     supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', campingId),
   ]);
   const rmap = {};
-  (residents || []).forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom || ''}`.trim(); });
+  const rmapComptes = {};
+  (residents || []).forEach((r) => {
+    rmap[r.id] = `${r.prenom || ''} ${r.nom || ''}`.trim();
+    if (r.compte_comptable) rmapComptes[r.id] = r.compte_comptable;
+  });
 
   // --- Lettrage simple : facture soldée par des règlements mono-affectation ---
   const lettreOf = {}; // factureId -> lettre

@@ -7,6 +7,9 @@ const router = express.Router();
 router.use(auth, campingScope);
 
 const FIELDS = ['designation', 'prix_ht', 'taux_tva', 'unite', 'actif'];
+const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+// Saisie TTC -> prix HT stocké (la facture et la compta travaillent en HT).
+const htDepuisTtc = (ttc, taux) => r2(Number(ttc || 0) / (1 + Number(taux || 0) / 100));
 function pick(body) {
   const out = {};
   for (const f of FIELDS) if (body[f] !== undefined) out[f] = body[f];
@@ -30,8 +33,10 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
     const body = pick(req.body || {});
     if (!body.designation) return res.status(400).json({ error: 'Désignation requise' });
     body.camping_id = req.activeCampingId;
-    body.prix_ht = Number(body.prix_ht || 0);
     body.taux_tva = Number(body.taux_tva || 0);
+    body.prix_ht = (req.body.prix_ttc !== undefined && req.body.prix_ttc !== '')
+      ? htDepuisTtc(req.body.prix_ttc, body.taux_tva)
+      : Number(body.prix_ht || 0);
     const { data, error } = await supabase.from('articles').insert(body).select().single();
     if (error) throw error;
     await writeAudit(req, { action: 'create', entite: 'articles', entite_id: data.id, apres: data });
@@ -43,8 +48,10 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
 router.put('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {
     const patch = pick(req.body || {});
-    if (patch.prix_ht !== undefined) patch.prix_ht = Number(patch.prix_ht || 0);
     if (patch.taux_tva !== undefined) patch.taux_tva = Number(patch.taux_tva || 0);
+    if (req.body.prix_ttc !== undefined && req.body.prix_ttc !== '') {
+      patch.prix_ht = htDepuisTtc(req.body.prix_ttc, patch.taux_tva ?? 0);
+    } else if (patch.prix_ht !== undefined) patch.prix_ht = Number(patch.prix_ht || 0);
     const { data, error } = await supabase.from('articles').update(patch)
       .eq('camping_id', req.activeCampingId).eq('id', req.params.id).select().single();
     if (error) throw error;

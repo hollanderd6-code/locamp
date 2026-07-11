@@ -12,12 +12,21 @@ function periodeLabel(p) { const [y, m] = p.split('-').map(Number); return `${MO
 
 // Calcule montant_ht par ligne + totaux HT/TVA/TTC (arrondi 2 décimales).
 // Conserve les champs de période (date_debut/date_fin) et déduit les nuits.
+// HT dérivé d'un prix TTC : HT = TTC / (1 + taux/100)
+function htDepuisTtc(ttc, taux) {
+  const t = Number(taux || 0);
+  return Math.round((Number(ttc || 0) / (1 + t / 100)) * 100) / 100;
+}
+
 function computeTotals(lignes) {
   let ht = 0, tva = 0;
   const out = (lignes || []).map((l) => {
     const q = Number(l.quantite || 1);
-    const pu = Number(l.pu_ht || 0);
     const taux = Number(l.taux_tva || 0);
+    // saisie TTC prioritaire : on en déduit le PU HT (stocké et utilisé partout ensuite)
+    const pu = (l.pu_ttc !== undefined && l.pu_ttc !== null && l.pu_ttc !== '')
+      ? htDepuisTtc(l.pu_ttc, taux)
+      : Number(l.pu_ht || 0);
     const mHt = Math.round(q * pu * 100) / 100;
     ht += mHt;
     tva += Math.round(mHt * taux) / 100;
@@ -61,7 +70,7 @@ function buildLignes(contrat, resident, periode, parametres) {
         ? `Loyer emplacement — ${periodeLabel(periode)} (prorata ${activeDays}/${dim} j)`
         : `Loyer emplacement — ${periodeLabel(periode)}`,
       date_debut: dDebut, date_fin: dFin, nuits: activeDays,
-      quantite: 1, pu_ht: montant, taux_tva: tvaLoyer,
+      quantite: 1, pu_ttc: montant, taux_tva: tvaLoyer,   // loyer saisi TTC -> HT dérivé
     });
   }
 
@@ -250,4 +259,4 @@ async function runFacturationMensuelle(campingId, periode) {
   return res;
 }
 
-module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };
+module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, htDepuisTtc, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };

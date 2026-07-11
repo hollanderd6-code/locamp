@@ -11,12 +11,17 @@ router.use(auth, campingScope);
 const TYPES = ['sejour', 'vente', 'charge', 'caution'];
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
+// HT dérivé d'un TTC saisi. Le PU HT reste la valeur stockée (facture, TVA, compta).
+const htDepuisTtc = (ttc, taux) => r2(Number(ttc || 0) / (1 + Number(taux || 0) / 100));
+
 function computeMontants(p) {
   const q = Number(p.quantite || 1);
-  const pu = Number(p.pu_ht || 0);
   const taux = Number(p.taux_tva || 0);
+  const pu = (p.pu_ttc !== undefined && p.pu_ttc !== null && p.pu_ttc !== '')
+    ? htDepuisTtc(p.pu_ttc, taux)
+    : Number(p.pu_ht || 0);
   const ht = r2(q * pu);
-  return { montant_ht: ht, montant_ttc: r2(ht * (1 + taux / 100)) };
+  return { pu_ht: pu, montant_ht: ht, montant_ttc: r2(ht * (1 + taux / 100)) };
 }
 
 // GET /api/prestations?resident_id=&statut=&type=
@@ -93,10 +98,9 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
       date_debut: b.date_debut || null,
       date_fin: b.date_fin || null,
       quantite: Number(b.quantite || 1),
-      pu_ht: Number(b.pu_ht || 0),
       taux_tva: Number(b.taux_tva || 0),
       notes: b.notes || null,
-      ...computeMontants(b),
+      ...computeMontants(b),   // fournit pu_ht (dérivé du TTC si fourni), montant_ht, montant_ttc
     };
     const { data, error } = await supabase.from('prestations').insert(row).select().single();
     if (error) throw error;
@@ -117,9 +121,11 @@ router.put('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
     for (const f of ['designation', 'date_debut', 'date_fin', 'notes', 'emplacement_id']) {
       if (b[f] !== undefined) patch[f] = b[f] === '' ? null : b[f];
     }
-    for (const f of ['quantite', 'pu_ht', 'taux_tva']) if (b[f] !== undefined) patch[f] = Number(b[f]);
+    for (const f of ['quantite', 'pu_ht', 'pu_ttc', 'taux_tva']) if (b[f] !== undefined) patch[f] = Number(b[f]);
     const merged = { ...cur, ...patch };
+    if (patch.pu_ttc !== undefined) delete merged.pu_ht;   // le TTC saisi prime
     Object.assign(patch, computeMontants(merged));
+    delete patch.pu_ttc;                                   // colonne inexistante en base
     patch.updated_at = new Date().toISOString();
     const { data, error } = await supabase.from('prestations').update(patch)
       .eq('camping_id', req.activeCampingId).eq('id', req.params.id).select().single();

@@ -38,7 +38,7 @@ async function reconcileStatut(campingId, empId) {
 router.get('/', async (req, res) => {
   try {
     let q = supabase.from('residents')
-      .select('id,civilite,nom,prenom,email,telephone,emplacement_id,solde,actif')
+      .select('id,civilite,nom,prenom,email,telephone,emplacement_id,solde,actif,compte_comptable')
       .eq('camping_id', req.activeCampingId);
     const s = (req.query.q || '').trim();
     if (s) q = q.or(`nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,telephone.ilike.%${s}%`);

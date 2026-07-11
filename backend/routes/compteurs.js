@@ -77,11 +77,12 @@ router.post('/releve', requireRole('admin', 'gestionnaire'), async (req, res) =>
         supabase.from('emplacements').select('numero').eq('id', b.emplacement_id).maybeSingle(),
       ]);
       const energie = camp?.parametres?.energie || {};
-      const prix = Number(energie.prix_kwh);
+      const prixTtc = Number(energie.prix_kwh);   // prix du kWh saisi en TTC
       if (!resident) info = 'Relevé enregistré — aucun résident rattaché, pas de charge créée.';
-      else if (!Number.isFinite(prix) || prix <= 0) info = 'Relevé enregistré — prix du kWh non configuré (Paramètres → Énergie), pas de charge créée.';
+      else if (!Number.isFinite(prixTtc) || prixTtc <= 0) info = 'Relevé enregistré — prix du kWh non configuré (Paramètres → Énergie), pas de charge créée.';
       else {
         const taux = Number(energie.taux_tva ?? 10);
+        const prix = r2(prixTtc / (1 + taux / 100));   // PU HT dérivé du TTC
         const ht = r2(conso * prix);
         const ins = await supabase.from('prestations').insert({
           camping_id: req.activeCampingId, resident_id: resident.id, emplacement_id: b.emplacement_id,

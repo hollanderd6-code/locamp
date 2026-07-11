@@ -559,7 +559,7 @@ async function vueResidents() {
   render(residents);
   $('#res-search').addEventListener('input', (e) => {
     const s = e.target.value.toLowerCase();
-    render(residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone} ${r.emplacement_id ? empNum[r.emplacement_id] || '' : ''}`.toLowerCase().includes(s)));
+    render(residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone} ${r.compte_comptable || ''} ${r.emplacement_id ? empNum[r.emplacement_id] || '' : ''}`.toLowerCase().includes(s)));
   });
 }
 
@@ -601,6 +601,7 @@ async function vueFicheClient(id) {
         <h1>${esc(r.civilite || '')} ${esc(r.prenom || '')} ${esc(r.nom)}</h1>
         <div class="muted" style="margin-top:4px">
           ${emplacement ? `Empl. <strong>${esc(emplacement.numero)}</strong>${emplacement.secteur ? ' · ' + esc(emplacement.secteur) : ''}` : 'Aucun emplacement'}
+          ${r.compte_comptable ? ` · Compte <strong>${esc(r.compte_comptable)}</strong>` : ''}
           ${r.email ? ' · ' + esc(r.email) : ''}${r.telephone ? ' · ' + esc(r.telephone) : ''}
         </div>
       </div>
@@ -800,7 +801,7 @@ window.formPrestation = async (residentId, type) => {
       ${type === 'vente' && articles.length ? `
         <label class="full">Article du catalogue
           <select id="presta-article"><option value="">— saisie libre —</option>
-            ${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(a.prix_ht)}${Number(a.taux_tva) ? ` (TVA ${a.taux_tva}%)` : ''}</option>`).join('')}
+            ${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))} TTC</option>`).join('')}
           </select></label>` : ''}
       <label class="full" style="${lbl}">Désignation *<input name="designation" required placeholder="${type === 'sejour' ? 'Séjour MH 1 chambre' : type === 'charge' ? 'Charges énergies' : type === 'caution' ? 'Caution location' : 'Bouteille de gaz'}"></label>
       ${type === 'sejour' ? `
@@ -813,7 +814,7 @@ window.formPrestation = async (residentId, type) => {
         <label>Au<input name="date_fin" type="date"></label>` : type === 'caution' ? `
         <label>Date<input name="date_debut" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>` : ''}
       <label>Qté<input name="quantite" type="number" step="0.01" value="1"></label>
-      <label>PU HT (€) *<input name="pu_ht" type="number" step="0.01" required></label>
+      <label>PU TTC (€) *<input name="pu_ttc" type="number" step="0.01" required></label>
       <label>TVA (%)<input name="taux_tva" type="number" step="0.1" value="${type === 'caution' ? 0 : ''}" ${type === 'caution' ? 'readonly' : ''} placeholder="0"></label>
       <label class="full">Notes<input name="notes"></label>
       <div class="full"><button class="btn btn-primary btn-block">Ajouter la prestation</button></div>
@@ -825,15 +826,15 @@ window.formPrestation = async (residentId, type) => {
     if (!a) return;
     const f = $('#f-presta');
     f.designation.value = a.designation;
-    f.pu_ht.value = a.prix_ht;
     f.taux_tva.value = a.taux_tva;
+    f.pu_ttc.value = (Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100)).toFixed(2);
   });
 
   $('#f-presta').addEventListener('submit', async (e) => {
     e.preventDefault();
     const b = Object.fromEntries(new FormData(e.target).entries());
     b.resident_id = residentId; b.type = type;
-    b.quantite = Number(b.quantite || 1); b.pu_ht = Number(b.pu_ht || 0); b.taux_tva = Number(b.taux_tva || 0);
+    b.quantite = Number(b.quantite || 1); b.pu_ttc = Number(b.pu_ttc || 0); b.taux_tva = Number(b.taux_tva || 0);
     for (const k in b) if (b[k] === '') delete b[k];
     try {
       await api('/api/prestations', { method: 'POST', body: b });
@@ -917,7 +918,7 @@ window.formEmplacement = () => {
       <label>Numéro *<input name="numero" required></label>
       <label>Secteur<input name="secteur"></label>
       <label>Type<select name="type"><option value="">—</option><option>mobil-home</option><option>chalet</option><option>caravane</option><option>parcelle nue</option></select></label>
-      <label>Loyer de base (€)<input name="loyer_base" type="number" step="0.01"></label>
+      <label>Loyer de base TTC (€)<input name="loyer_base" type="number" step="0.01"></label>
       <label>Coord. X (carte)<input name="coord_x" type="number" step="1"></label>
       <label>Coord. Y (carte)<input name="coord_y" type="number" step="1"></label>
       <div class="full"><button class="btn btn-primary btn-block">Créer l'emplacement</button></div>
@@ -994,7 +995,7 @@ async function vueCompteurs() {
   const prixOk = d.prix_kwh != null && d.prix_kwh > 0;
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Énergie</div><h1>Compteurs électriques</h1></div>
-      <span class="muted">${prixOk ? `Prix du kWh : <strong>${Number(d.prix_kwh)} € HT</strong> · TVA ${d.taux_tva} %` : ''}</span></div>
+      <span class="muted">${prixOk ? `Prix du kWh : <strong>${Number(d.prix_kwh)} € TTC</strong> · TVA ${d.taux_tva} %` : ''}</span></div>
     ${prixOk ? '' : `<p class="form-error" style="margin-bottom:14px">Prix du kWh non configuré — les relevés seront enregistrés mais aucune charge ne sera créée. <a href="#/parametres">Configurer dans Paramètres → Énergie</a>.</p>`}
     <div class="card"><table><thead><tr><th>Empl.</th><th>Résident</th><th>Dernier relevé</th><th class="right">Index</th><th class="right">Nouvel index</th><th></th></tr></thead>
     <tbody>${d.emplacements.map((e) => `
@@ -1062,6 +1063,7 @@ async function vueParametres() {
 
     <div class="card" style="margin-top:16px">
       <h2>Facturation</h2>
+      <p class="muted" style="margin-top:2px">Tous les prix se saisissent <strong>TTC</strong> dans Locamp. Le HT et la TVA sont calculés automatiquement d'après le taux de chaque ligne.</p>
       <form id="f-fact-params" class="form-grid" style="margin-top:12px">
         <label>TVA loyer (%)<input name="tva_taux_loyer" type="number" step="0.1" value="${fp.tva_taux_loyer ?? 0}"></label>
         <label>Délai de paiement (jours)<input name="delai_paiement" type="number" step="1" value="${fp.delai_paiement ?? 30}"></label>
@@ -1080,6 +1082,7 @@ async function vueParametres() {
       <form id="f-taxe" class="form-grid" style="margin-top:12px">
         <label>Active<select name="actif"><option value="true"${ts.actif ? ' selected' : ''}>Oui</option><option value="false"${ts.actif ? '' : ' selected'}>Non</option></select></label>
         <label>Tarif / nuit / personne (€)<input name="tarif_nuit_personne" type="number" step="0.01" value="${ts.tarif_nuit_personne ?? 0}"></label>
+        <p class="muted full" style="margin:0">La taxe de séjour n'est pas soumise à TVA : le tarif saisi est le montant final.</p>
         <div class="full"><button class="btn btn-primary">Enregistrer la taxe</button></div>
       </form>
     </div>
@@ -1088,7 +1091,7 @@ async function vueParametres() {
       <h2>Énergie</h2>
       <p class="muted" style="margin-top:2px">Utilisé par l'écran Compteurs : chaque relevé crée une charge (conso × prix kWh) sur la fiche du résident.</p>
       <form id="f-energie" class="form-grid" style="margin-top:12px">
-        <label>Prix du kWh HT (€)<input name="prix_kwh" type="number" step="0.0001" value="${en.prix_kwh ?? ''}" placeholder="0.35"></label>
+        <label>Prix du kWh TTC (€)<input name="prix_kwh" type="number" step="0.0001" value="${en.prix_kwh ?? ''}" placeholder="0.39"></label>
         <label>TVA énergie (%)<input name="taux_tva" type="number" step="0.1" value="${en.taux_tva ?? 10}"></label>
         <div class="full"><button class="btn btn-primary">Enregistrer l'énergie</button></div>
       </form>
@@ -1106,12 +1109,12 @@ async function vueParametres() {
     <div class="card" style="margin-top:16px">
       <h2>Catalogue de ventes</h2>
       <p class="muted" style="margin-top:2px">Articles vendables (jetons de lavage, bouteille de gaz…), réutilisables sur les factures via « Article du catalogue ».</p>
-      <table style="margin-top:10px"><thead><tr><th>Désignation</th><th>Unité</th><th class="right">Prix HT</th><th class="right">TVA</th><th></th></tr></thead>
+      <table style="margin-top:10px"><thead><tr><th>Désignation</th><th>Unité</th><th class="right">Prix TTC</th><th class="right">TVA</th><th></th></tr></thead>
         <tbody id="art-body"></tbody></table>
       <form id="f-article" class="form-grid" style="margin-top:12px">
         <label>Désignation *<input name="designation" required placeholder="Jeton de lavage"></label>
         <label>Unité<input name="unite" placeholder="unité, jeton, bouteille…"></label>
-        <label>Prix HT (€)<input name="prix_ht" type="number" step="0.01" value="0"></label>
+        <label>Prix TTC (€)<input name="prix_ttc" type="number" step="0.01" value="0"></label>
         <label>TVA (%)<input name="taux_tva" type="number" step="0.1" value="0"></label>
         <div class="full"><button class="btn btn-primary">Ajouter l'article</button></div>
       </form>
@@ -1122,7 +1125,7 @@ async function vueParametres() {
       <tr>
         <td><strong>${esc(a.designation)}</strong></td>
         <td class="muted">${esc(a.unite || '—')}</td>
-        <td class="right">${eur(a.prix_ht)}</td>
+        <td class="right">${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))}</td>
         <td class="right">${Number(a.taux_tva)} %</td>
         <td class="right"><button class="btn btn-ghost btn-sm" onclick="supprimerArticle('${a.id}')">Retirer</button></td>
       </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
@@ -1132,7 +1135,7 @@ async function vueParametres() {
   $('#f-article').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
-    body.prix_ht = Number(body.prix_ht || 0);
+    body.prix_ttc = Number(body.prix_ttc || 0);
     body.taux_tva = Number(body.taux_tva || 0);
     try {
       await api('/api/articles', { method: 'POST', body });
@@ -1222,7 +1225,7 @@ window.formFacture = async (presetResidentId, preset) => {
         <label >Du<input name="date_debut" type="date" value="${p.date_debut || ''}"></label>
         <label >Au<input name="date_fin" type="date" value="${p.date_fin || ''}"></label>
         <label >Qté<input name="quantite" type="number" step="0.01" value="${p.quantite ?? 1}"></label>
-        <label >PU HT €<input name="pu_ht" type="number" step="0.01" required value="${p.pu_ht ?? ''}"></label>
+        <label >PU TTC €<input name="pu_ttc" type="number" step="0.01" required value="${p.pu_ttc ?? ''}"></label>
         <label >TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}"></label>
       </div>
       <div class="fac-foot">
@@ -1241,7 +1244,7 @@ window.formFacture = async (presetResidentId, preset) => {
       <label>Période<input name="periode" type="month" value="${mois}"></label>
       ${articles.length ? `<div class="full" style="display:flex;gap:8px;align-items:flex-end">
         <label style="flex:1;margin:0">Article du catalogue
-          <select id="cat-select">${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(a.prix_ht)}${Number(a.taux_tva) ? ` (TVA ${a.taux_tva}%)` : ''}</option>`).join('')}</select></label>
+          <select id="cat-select">${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))} TTC</option>`).join('')}</select></label>
         <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneCatalogue()">+ Ajouter</button>
       </div>` : ''}
       <div class="full">
@@ -1256,7 +1259,8 @@ window.formFacture = async (presetResidentId, preset) => {
   window.ajouterLigneCatalogue = () => {
     const a = articleMap[$('#cat-select').value];
     if (!a) return;
-    $('#fac-lignes').insertAdjacentHTML('beforeend', ligneRow({ designation: a.designation, pu_ht: a.prix_ht, taux_tva: a.taux_tva, quantite: 1 }));
+    const ttc = (Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100)).toFixed(2);
+    $('#fac-lignes').insertAdjacentHTML('beforeend', ligneRow({ designation: a.designation, pu_ttc: ttc, taux_tva: a.taux_tva, quantite: 1 }));
   };
 
   $('#f-fac').addEventListener('submit', async (e) => {
@@ -1268,11 +1272,11 @@ window.formFacture = async (presetResidentId, preset) => {
       date_debut: row.querySelector('[name=date_debut]').value || undefined,
       date_fin: row.querySelector('[name=date_fin]').value || undefined,
       quantite: Number(row.querySelector('[name=quantite]').value || 1),
-      pu_ht: Number(row.querySelector('[name=pu_ht]').value || 0),
+      pu_ttc: Number(row.querySelector('[name=pu_ttc]').value || 0),
       taux_tva: Number(row.querySelector('[name=taux_tva]').value || 0),
-    })).filter((l) => l.designation && l.pu_ht);
+    })).filter((l) => l.designation && l.pu_ttc);
     if (!resident_id) { toast('Choisis un résident', true); return; }
-    if (!lignes.length) { toast('Ajoute au moins une ligne (désignation + PU HT)', true); return; }
+    if (!lignes.length) { toast('Ajoute au moins une ligne (désignation + PU TTC)', true); return; }
     try {
       const { facture } = await api('/api/factures', { method: 'POST', body: { resident_id, periode, lignes } });
       closeDrawer();
@@ -1291,7 +1295,9 @@ window.dupliquerFacture = async (id) => {
       designation: shiftMoisTexte(l.designation, 1),
       date_debut: l.date_debut ? addMoisISO(l.date_debut, 1) : undefined,
       date_fin: l.date_fin ? addMoisISO(l.date_fin, 1) : undefined,
-      quantite: l.quantite, pu_ht: l.pu_ht, taux_tva: l.taux_tva,
+      quantite: l.quantite,
+      pu_ttc: (Number(l.pu_ht || 0) * (1 + Number(l.taux_tva || 0) / 100)).toFixed(2),
+      taux_tva: l.taux_tva,
     }));
     formFacture(f.resident_id, { periode: addMoisPeriode(f.periode, 1) || undefined, lignes });
     toast('Facture dupliquée sur le mois suivant — vérifier puis créer');
