@@ -179,9 +179,20 @@ window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
 const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, parametres: vueParametres, administration: vueAdministration };
+let _hashPrec = location.hash;
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
   const [name, param] = raw.split('/');
+  // on quitte la carte alors que des modifications ne sont pas enregistrées ?
+  if (name !== 'carte' && carteState && carteState.mode === 'edit'
+      && (carteState.dirty.size + carteState.dirtyElems.size) > 0) {
+    if (!confirm('Le plan comporte des modifications non enregistrées. Quitter sans enregistrer ?')) {
+      location.hash = '#/carte';
+      return;
+    }
+    carteState = null;
+  }
+  _hashPrec = location.hash;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
   ($('#main').innerHTML = '<p class="muted">Chargement…</p>');
   const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
@@ -338,25 +349,28 @@ window.messageRapide = async (presetResidentId) => {
 /* ---------- Carte du camping (plan réel : emplacements + décor) ---------- */
 const STATUT_COLOR = { libre: '#1E5C4A', occupe: '#2C5282', reserve: '#C98B2D', indisponible: '#8A8A8A', impaye: '#B3492F' };
 const CARTE_W = 1000, CARTE_H = 620, CARTE_PAD = 20;
+const SNAP = 10;                       // aimantation à la grille
 let carteState = null;
 
-// Catalogue des éléments de décor. Chaque type sait se dessiner et connaît sa taille par défaut.
 const ELEM_DEFS = {
-  accueil:    { lib: 'Accueil',      forme: 'bati', w: 110, h: 70, fill: '#1F5A49', fg: '#F4EFE4', icone: 'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
-  sanitaires: { lib: 'Sanitaires',   forme: 'bati', w: 90,  h: 60, fill: '#3D5A99', fg: '#EEF2FA', icone: 'M7 3v6m0 0a3 3 0 0 0 6 0M7 9H4m13-6v18M4 9v12' },
-  piscine:    { lib: 'Piscine',      forme: 'bati', w: 130, h: 80, fill: '#2E86A8', fg: '#EAF6FA', icone: 'M2 16c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M2 20c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' },
-  restaurant: { lib: 'Restaurant',   forme: 'bati', w: 100, h: 66, fill: '#A0522D', fg: '#FBF0E6', icone: 'M5 3v8m0 0v10M3 3v5a2 2 0 0 0 4 0V3M15 3c-1 3-1 5 0 7v11' },
-  laverie:    { lib: 'Laverie',      forme: 'bati', w: 84,  h: 58, fill: '#6B5B95', fg: '#F2EDF8', icone: 'M4 3h16v18H4zM12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8' },
-  aire_jeux:  { lib: 'Aire de jeux', forme: 'bati', w: 100, h: 66, fill: '#C98B2D', fg: '#FDF6E7', icone: 'M4 20V6l16 14V6M4 6h16' },
-  local:      { lib: 'Local',        forme: 'bati', w: 80,  h: 56, fill: '#6E6E66', fg: '#F2F2EE', icone: 'M4 8h16v12H4zM4 8l8-5 8 5' },
-  parking:    { lib: 'Parking',      forme: 'bati', w: 110, h: 70, fill: '#4A5A55', fg: '#EEF2F0', icone: 'M8 20V5h4a4 4 0 0 1 0 8H8' },
-  zone:       { lib: 'Zone',         forme: 'zone', w: 200, h: 140, fill: '#CFE0D5' },
-  eau:        { lib: 'Plan d’eau',   forme: 'zone', w: 170, h: 110, fill: '#AFD4E4' },
-  allee:      { lib: 'Allée',        forme: 'ligne', long: 240 },
-  barriere:   { lib: 'Barrière',     forme: 'ligne', long: 180 },
-  arbre:      { lib: 'Arbre',        forme: 'arbre' },
-  texte:      { lib: 'Texte',        forme: 'texte' },
+  accueil:    { lib: 'Accueil',      grp: 'Bâtiments', forme: 'bati', w: 120, h: 76, fill: '#1F5A49', fg: '#F4EFE4', icone: 'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
+  sanitaires: { lib: 'Sanitaires',   grp: 'Bâtiments', forme: 'bati', w: 96,  h: 64, fill: '#3D5A99', fg: '#EEF2FA', icone: 'M7 3v6m0 0a3 3 0 0 0 6 0M7 9H4m13-6v18M4 9v12' },
+  piscine:    { lib: 'Piscine',      grp: 'Bâtiments', forme: 'bati', w: 140, h: 86, fill: '#2E86A8', fg: '#EAF6FA', icone: 'M2 16c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M2 20c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' },
+  restaurant: { lib: 'Restaurant',   grp: 'Bâtiments', forme: 'bati', w: 106, h: 70, fill: '#A0522D', fg: '#FBF0E6', icone: 'M5 3v8m0 0v10M3 3v5a2 2 0 0 0 4 0V3M15 3c-1 3-1 5 0 7v11' },
+  laverie:    { lib: 'Laverie',      grp: 'Bâtiments', forme: 'bati', w: 90,  h: 62, fill: '#6B5B95', fg: '#F2EDF8', icone: 'M4 3h16v18H4zM12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8' },
+  aire_jeux:  { lib: 'Aire de jeux', grp: 'Bâtiments', forme: 'bati', w: 106, h: 70, fill: '#C98B2D', fg: '#FDF6E7', icone: 'M4 20V6l16 14V6M4 6h16' },
+  local:      { lib: 'Local',        grp: 'Bâtiments', forme: 'bati', w: 86,  h: 60, fill: '#6E6E66', fg: '#F2F2EE', icone: 'M4 8h16v12H4zM4 8l8-5 8 5' },
+  parking:    { lib: 'Parking',      grp: 'Bâtiments', forme: 'bati', w: 116, h: 76, fill: '#4A5A55', fg: '#EEF2F0', icone: 'M8 20V5h4a4 4 0 0 1 0 8H8' },
+  allee:      { lib: 'Allée',        grp: 'Tracés',    forme: 'ligne', long: 260 },
+  barriere:   { lib: 'Barrière',     grp: 'Tracés',    forme: 'ligne', long: 180 },
+  zone:       { lib: 'Zone',         grp: 'Surfaces',  forme: 'zone', w: 210, h: 150, fill: '#CFE0D5' },
+  eau:        { lib: 'Plan d’eau',   grp: 'Surfaces',  forme: 'zone', w: 180, h: 120, fill: '#AFD4E4' },
+  arbre:      { lib: 'Arbre',        grp: 'Décor',     forme: 'arbre' },
+  texte:      { lib: 'Texte',        grp: 'Décor',     forme: 'texte' },
 };
+
+const snap = (v) => Math.round(v / SNAP) * SNAP;
+const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 async function vueCarte() {
   const [{ emplacements }, imp, elemRes] = await Promise.all([
@@ -367,50 +381,39 @@ async function vueCarte() {
   const enRetard = new Set();
   for (const f of imp.impayes || []) if (f.en_retard) enRetard.add(f.resident_id);
 
+  const num = (v) => (v == null ? null : Number(v));
   carteState = {
-    emplacements: emplacements.map((e) => ({
-      ...e,
-      coord_x: e.coord_x == null ? null : Number(e.coord_x),
-      coord_y: e.coord_y == null ? null : Number(e.coord_y),
-    })),
+    emplacements: emplacements.map((e) => ({ ...e, coord_x: num(e.coord_x), coord_y: num(e.coord_y) })),
     elements: (elemRes.elements || []).map((el) => ({
-      ...el,
-      x: Number(el.x), y: Number(el.y),
-      largeur: el.largeur == null ? null : Number(el.largeur),
-      hauteur: el.hauteur == null ? null : Number(el.hauteur),
-      x2: el.x2 == null ? null : Number(el.x2),
-      y2: el.y2 == null ? null : Number(el.y2),
+      ...el, x: Number(el.x), y: Number(el.y),
+      largeur: num(el.largeur), hauteur: num(el.hauteur), x2: num(el.x2), y2: num(el.y2),
     })),
     migrationManquante: !!elemRes.migration_manquante,
     enRetard,
     mode: 'view',
-    dirty: new Map(),        // emplacements déplacés
-    dirtyElems: new Map(),   // éléments de décor déplacés/redimensionnés
-    selected: null,          // { kind:'emp'|'elem', id }
+    dirty: new Map(),
+    dirtyElems: new Map(),
+    selected: null,
     drag: null,
   };
   renderCarte();
 }
 
-const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
-
 function carteColor(e) {
-  const isImp = e.resident && carteState.enRetard.has(e.resident.id);
-  return isImp ? STATUT_COLOR.impaye : (STATUT_COLOR[e.statut] || '#999');
+  const imp = e.resident && carteState.enRetard.has(e.resident.id);
+  return imp ? STATUT_COLOR.impaye : (STATUT_COLOR[e.statut] || '#999');
 }
-
 function carteCoords(e) {
   if (carteState.dirty.has(e.id)) return carteState.dirty.get(e.id);
   return e.coord_x == null || e.coord_y == null ? null : { coord_x: e.coord_x, coord_y: e.coord_y };
 }
-
-// position/taille effective d'un élément (modif locale prioritaire)
 function elemVals(el) {
   const d = carteState.dirtyElems.get(el.id);
   return d ? { ...el, ...d } : el;
 }
+const nbModifs = () => carteState.dirty.size + carteState.dirtyElems.size;
 
-/* ----------------------------- rendu SVG ----------------------------- */
+/* ------------------------------- rendu ------------------------------- */
 
 function dessinerElement(el, edit) {
   const v = elemVals(el);
@@ -422,24 +425,25 @@ function dessinerElement(el, edit) {
   if (def.forme === 'ligne') {
     const x2 = v.x2 ?? v.x + (def.long || 200), y2 = v.y2 ?? v.y;
     const allee = v.type === 'allee';
-    // libellé au premier tiers : évite le télescopage à un croisement d'allées
     const mx = v.x + (x2 - v.x) * 0.32, my = v.y + (y2 - v.y) * 0.32;
     const angle = Math.atan2(y2 - v.y, x2 - v.x) * 180 / Math.PI;
+    const larg = lib.length * 6.6 + 18;
     return `<g class="${cls}" data-id="${v.id}" data-kind="elem">
-      <line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}"
-        stroke="${allee ? '#E4DCC8' : '#8A8A7E'}" stroke-width="${allee ? 22 : 4}"
-        stroke-linecap="round" ${allee ? '' : 'stroke-dasharray="9 7"'}></line>
+      <line class="hit" x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="26"></line>
+      <line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="${allee ? '#E4DCC8' : '#8A8A7E'}"
+        stroke-width="${allee ? 22 : 4}" stroke-linecap="round" ${allee ? '' : 'stroke-dasharray="9 7"'}></line>
       ${allee ? `<line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="#F7F2E4" stroke-width="16" stroke-linecap="round"></line>` : ''}
       ${lib && allee ? `<g transform="rotate(${angle} ${mx} ${my})">
-        <rect class="celem-allee-bg" x="${mx - (lib.length * 3.4 + 10)}" y="${my - 8}"
-          width="${lib.length * 6.8 + 20}" height="16" rx="8"></rect>
+        <rect class="celem-allee-bg" x="${mx - larg / 2}" y="${my - 8}" width="${larg}" height="16" rx="8"></rect>
         <text class="celem-allee" x="${mx}" y="${my}">${esc(lib)}</text></g>` : ''}
-      ${edit ? `<circle class="handle" data-h="end" cx="${x2}" cy="${y2}" r="7"></circle>` : ''}
+      ${edit && sel ? `<circle class="handle" data-h="a" cx="${v.x}" cy="${v.y}" r="7"></circle>
+                       <circle class="handle" data-h="b" cx="${x2}" cy="${y2}" r="7"></circle>` : ''}
     </g>`;
   }
 
   if (def.forme === 'arbre') {
     return `<g class="${cls}" data-id="${v.id}" data-kind="elem" transform="translate(${v.x},${v.y})">
+      <circle class="hit" r="18" fill="transparent"></circle>
       <circle cx="0" cy="-4" r="13" fill="#5B8C63" opacity=".92"></circle>
       <circle cx="-7" cy="2" r="9" fill="#4E7C56" opacity=".9"></circle>
       <circle cx="7" cy="2" r="9" fill="#6B9E72" opacity=".9"></circle>
@@ -453,116 +457,166 @@ function dessinerElement(el, edit) {
     </g>`;
   }
 
-  // bâtiment ou zone (rectangle)
   const w = v.largeur ?? def.w ?? 100, h = v.hauteur ?? def.h ?? 70;
   const zone = def.forme === 'zone';
   const fill = v.couleur || def.fill || '#ccc';
   return `<g class="${cls}" data-id="${v.id}" data-kind="elem" transform="translate(${v.x},${v.y})">
-    <rect x="0" y="0" width="${w}" height="${h}" rx="${zone ? 22 : 10}"
-      fill="${fill}" ${zone ? 'opacity=".55"' : ''}
-      ${zone ? 'stroke="#9FB8A8" stroke-dasharray="7 6"' : 'stroke="rgba(255,255,255,.35)"'} stroke-width="1.5"></rect>
-    ${!zone && def.icone ? `<path d="${def.icone}" transform="translate(${w / 2 - 12}, ${h / 2 - 20}) scale(1)"
+    <rect x="0" y="0" width="${w}" height="${h}" rx="${zone ? 22 : 10}" fill="${fill}"
+      ${zone ? 'opacity=".55" stroke="#9FB8A8" stroke-dasharray="7 6"' : 'stroke="rgba(255,255,255,.35)"'} stroke-width="1.5"></rect>
+    ${!zone && def.icone ? `<path d="${def.icone}" transform="translate(${w / 2 - 12}, ${h / 2 - 21})"
       fill="none" stroke="${def.fg}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".9"></path>` : ''}
-    <text class="celem-lib" x="${w / 2}" y="${zone ? h / 2 : h / 2 + 20}"
-      fill="${zone ? '#3E5A4B' : def.fg}">${esc(lib)}</text>
-    ${edit ? `<circle class="handle" data-h="size" cx="${w}" cy="${h}" r="7"></circle>` : ''}
+    <text class="celem-lib" x="${w / 2}" y="${zone ? h / 2 : h / 2 + 20}" fill="${zone ? '#3E5A4B' : def.fg}">${esc(lib)}</text>
+    ${edit && sel ? `<circle class="handle" data-h="size" cx="${w}" cy="${h}" r="7"></circle>` : ''}
   </g>`;
 }
 
 function renderCarte() {
   const st = carteState;
   const edit = st.mode === 'edit';
-
   const placed = [], unplaced = [];
   st.emplacements.forEach((e) => (carteCoords(e) ? placed : unplaced).push(e));
 
   const decor = st.elements.map((el) => dessinerElement(el, edit)).join('');
-
   const pins = placed.map((e) => {
     const c = carteCoords(e);
     const x = carteClamp(c.coord_x, CARTE_PAD, CARTE_W - CARTE_PAD);
     const y = carteClamp(c.coord_y, CARTE_PAD, CARTE_H - CARTE_PAD);
     const sel = st.selected?.kind === 'emp' && st.selected.id === e.id ? ' selected' : '';
     return `<g class="pin${sel}" data-id="${e.id}" data-kind="emp" transform="translate(${x},${y})">
-      <circle r="13" fill="${carteColor(e)}"></circle>
-      <text>${esc(e.numero)}</text>
-    </g>`;
+      <circle r="13" fill="${carteColor(e)}"></circle><text>${esc(e.numero)}</text></g>`;
   }).join('');
 
-  const nDirty = st.dirty.size + st.dirtyElems.size;
-  const selEmp = st.selected?.kind === 'emp' ? st.emplacements.find((e) => e.id === st.selected.id) : null;
-  const selElem = st.selected?.kind === 'elem' ? st.elements.find((e) => e.id === st.selected.id) : null;
-
-  const toolbar = edit
-    ? `<div class="map-tools">
-        ${nDirty ? `<span class="map-dirty">${nDirty} modif.</span>` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
-        <button class="btn btn-primary btn-sm" onclick="saveCarte()" ${nDirty ? '' : 'disabled'}>Enregistrer le plan</button>
-      </div>`
-    : `<button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>`;
-
-  const palette = edit ? `
-    <div class="map-tray">
-      <div class="map-tray-head">Ajouter au plan</div>
-      <div class="map-chips">
-        ${Object.entries(ELEM_DEFS).map(([k, d]) => `<button class="map-chip" onclick="ajouterElement('${k}')">${esc(d.lib)}</button>`).join('')}
-      </div>
-      ${unplaced.length ? `
-        <div class="map-tray-head" style="margin-top:16px">Emplacements à placer (${unplaced.length})</div>
-        <div class="map-chips">${unplaced.map((e) => `<button class="map-chip" onclick="placeEmplacement('${e.id}')">${esc(e.numero)}</button>`).join('')}</div>` : ''}
-    </div>` : '';
+  const n = nbModifs();
+  const groupes = {};
+  Object.entries(ELEM_DEFS).forEach(([k, d]) => { (groupes[d.grp] ||= []).push([k, d]); });
 
   $('#main').innerHTML = `
     <div class="page-head">
       <div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
-      ${toolbar}
-    </div>
-    ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql pour ajouter accueil, allées et décor.</p>' : ''}
-    ${edit
-      ? `<div class="map-editbar">
-          <span class="muted">Glisse les éléments pour les placer. Poignée dorée = redimensionner (bâtiments) ou étirer (allées).</span>
-          <span style="display:flex;gap:8px">
-            ${selElem ? `<button class="btn btn-ghost btn-sm" onclick="renommerElement()">Renommer</button>
-                         <button class="btn btn-ghost btn-sm" onclick="supprimerElement()">Supprimer</button>` : ''}
-            ${selEmp ? `<button class="btn btn-ghost btn-sm" onclick="retirerSelection()">Retirer « ${esc(selEmp.numero)} » du plan</button>` : ''}
-          </span>
+      ${edit ? `<div class="map-tools">
+          <span class="map-dirty ${n ? '' : 'hidden'}">${n} modif.</span>
+          <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
+          <button class="btn btn-primary btn-sm" onclick="saveCarte()" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
         </div>`
-      : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
-    <div class="map-wrap${edit ? ' editing' : ''}">
-      <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
-        <g class="layer-decor">${decor}</g>
-        <g class="layer-pins">${pins}</g>
-      </svg>
-      <div class="map-legend">
-        <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.impaye}"></span>Impayé</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.reserve}"></span>Réservé</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
-      </div>
+        : `<button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>`}
     </div>
-    ${palette}
-    ${!edit && unplaced.length ? `<p class="muted" style="margin-top:12px">Sans position : ${unplaced.map((e) => esc(e.numero)).join(', ')} — passer en mode édition pour les placer.</p>` : ''}`;
+    ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
+    ${edit ? '' : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
+
+    <div class="${edit ? 'map-edit-layout' : ''}">
+      <div>
+        <div class="map-wrap${edit ? ' editing' : ''}">
+          <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
+            <g class="layer-decor">${decor}</g>
+            <g class="layer-pins">${pins}</g>
+          </svg>
+          <div class="map-legend">
+            <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
+            <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
+            <span><span class="dot" style="background:${STATUT_COLOR.impaye}"></span>Impayé</span>
+            <span><span class="dot" style="background:${STATUT_COLOR.reserve}"></span>Réservé</span>
+            <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
+          </div>
+        </div>
+        ${!edit && unplaced.length ? `<p class="muted" style="margin-top:12px">Sans position : ${unplaced.map((e) => esc(e.numero)).join(', ')} — passer en mode édition pour les placer.</p>` : ''}
+      </div>
+
+      ${edit ? `<aside class="map-panel">
+        <div id="map-props"></div>
+        <div class="map-panel-sec">
+          <h3>Ajouter</h3>
+          ${Object.entries(groupes).map(([g, items]) => `
+            <div class="map-grp">${esc(g)}</div>
+            <div class="map-chips">${items.map(([k, d]) => `<button class="map-chip" onclick="ajouterElement('${k}')">${esc(d.lib)}</button>`).join('')}</div>`).join('')}
+        </div>
+        ${unplaced.length ? `<div class="map-panel-sec">
+          <h3>Emplacements à placer <span class="map-count">${unplaced.length}</span></h3>
+          <div class="map-chips">${unplaced.map((e) => `<button class="map-chip" onclick="placeEmplacement('${e.id}')">${esc(e.numero)}</button>`).join('')}</div>
+        </div>` : ''}
+        <p class="map-aide">Glisse pour déplacer · poignée dorée pour redimensionner · <kbd>Suppr</kbd> pour retirer · <kbd>Échap</kbd> pour désélectionner. Aimantation automatique.</p>
+      </aside>` : ''}
+    </div>`;
 
   wireCarte();
+  renderProps();
 }
 
-function updateCarteTools() {
-  const n = carteState.dirty.size + carteState.dirtyElems.size;
-  const tools = document.querySelector('.map-tools');
-  if (!tools) return;
-  const save = tools.querySelector('.btn-primary');
-  if (save) save.disabled = !n;
-  let badge = tools.querySelector('.map-dirty');
-  if (n && !badge) {
-    badge = document.createElement('span');
-    badge.className = 'map-dirty';
-    tools.insertBefore(badge, tools.firstChild);
+/* --------------------- panneau de propriétés --------------------- */
+
+function renderProps() {
+  const box = $('#map-props');
+  if (!box) return;
+  const st = carteState;
+  const s = st.selected;
+
+  if (!s) {
+    box.innerHTML = `<div class="map-panel-sec map-empty">Sélectionne un élément du plan pour le modifier.</div>`;
+    return;
   }
-  if (badge) badge.textContent = n + ' modif.';
+
+  if (s.kind === 'emp') {
+    const e = st.emplacements.find((x) => x.id === s.id);
+    box.innerHTML = `<div class="map-panel-sec">
+      <h3>Emplacement ${esc(e.numero)}</h3>
+      <p class="muted" style="margin:0 0 10px">${esc(e.secteur || '')} ${e.type ? '· ' + esc(e.type) : ''}</p>
+      <button class="btn btn-ghost btn-sm btn-block" onclick="retirerSelection()">Retirer du plan</button>
+    </div>`;
+    return;
+  }
+
+  const el = st.elements.find((x) => x.id === s.id);
+  if (!el) { box.innerHTML = ''; return; }
+  const v = elemVals(el);
+  const def = ELEM_DEFS[v.type] || {};
+  box.innerHTML = `<div class="map-panel-sec">
+    <h3>${esc(def.lib || v.type)}</h3>
+    <label style="margin-bottom:10px">Nom affiché
+      <input id="prop-lib" value="${esc(v.libelle || '')}" placeholder="${esc(def.lib || '')}"></label>
+    ${def.forme === 'bati' || def.forme === 'zone' ? `
+      <div style="display:flex;gap:8px">
+        <label>Largeur<input id="prop-w" type="number" step="10" value="${Math.round(v.largeur ?? def.w)}"></label>
+        <label>Hauteur<input id="prop-h" type="number" step="10" value="${Math.round(v.hauteur ?? def.h)}"></label>
+      </div>` : ''}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="dupliquerElement()">Dupliquer</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="supprimerElement()">Supprimer</button>
+    </div>
+  </div>`;
+
+  const maj = (patch) => {
+    const prev = st.dirtyElems.get(el.id) || {};
+    st.dirtyElems.set(el.id, { ...prev, ...patch });
+    redessinerDecor();
+    majOutils();
+  };
+  $('#prop-lib').addEventListener('input', (e) => maj({ libelle: e.target.value }));
+  $('#prop-w')?.addEventListener('input', (e) => maj({ largeur: Math.max(40, Number(e.target.value) || 40) }));
+  $('#prop-h')?.addEventListener('input', (e) => maj({ hauteur: Math.max(30, Number(e.target.value) || 30) }));
 }
 
-/* --------------------------- interactions --------------------------- */
+function majOutils() {
+  const n = nbModifs();
+  const badge = document.querySelector('.map-dirty');
+  const save = document.querySelector('.map-tools .btn-primary');
+  if (badge) { badge.textContent = n + ' modif.'; badge.classList.toggle('hidden', !n); }
+  if (save) save.disabled = !n;
+}
+
+// redessine la couche décor SANS toucher au nœud en cours de glisser
+function redessinerDecor() {
+  const layer = document.querySelector('.layer-decor');
+  if (!layer) return;
+  layer.innerHTML = carteState.elements.map((el) => dessinerElement(el, carteState.mode === 'edit')).join('');
+  wireDecor();
+}
+
+/* ---------------------------- interactions ---------------------------- */
+
+function svgPoint(svg, evt) {
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
 
 function wireCarte() {
   const st = carteState;
@@ -570,149 +624,175 @@ function wireCarte() {
   if (!svg) return;
 
   if (st.mode !== 'edit') {
-    svg.querySelectorAll('.pin').forEach((g) => {
-      g.addEventListener('click', () => ficheEmplacement(g.dataset.id));
-    });
+    svg.querySelectorAll('.pin').forEach((g) => g.addEventListener('click', () => ficheEmplacement(g.dataset.id)));
     return;
   }
 
-  const toSvg = (evt) => {
-    const pt = svg.createSVGPoint();
-    pt.x = evt.clientX; pt.y = evt.clientY;
-    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-    return { x: p.x, y: p.y };
-  };
-
+  // clic dans le vide -> désélection
   svg.addEventListener('pointerdown', (e) => {
     if (e.target === svg && st.selected) { st.selected = null; renderCarte(); }
   });
 
-  // --- poignées (redimensionner / étirer) ---
-  svg.querySelectorAll('.handle').forEach((h) => {
-    h.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const g = h.closest('.celem');
-      const id = g.dataset.id;
-      const el = elemVals(st.elements.find((x) => x.id === id));
-      st.drag = { kind: 'handle', id, mode: h.dataset.h, el };
-      try { h.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    h.addEventListener('pointermove', (e) => {
-      if (st.drag?.kind !== 'handle' || st.drag.id !== h.closest('.celem').dataset.id) return;
-      const p = toSvg(e);
-      const el = st.drag.el;
-      const prev = st.dirtyElems.get(el.id) || {};
-      if (st.drag.mode === 'size') {
-        st.dirtyElems.set(el.id, { ...prev,
-          largeur: Math.max(40, Math.round(p.x - el.x)),
-          hauteur: Math.max(30, Math.round(p.y - el.y)) });
-      } else {
-        st.dirtyElems.set(el.id, { ...prev,
-          x2: Math.round(carteClamp(p.x, 0, CARTE_W)),
-          y2: Math.round(carteClamp(p.y, 0, CARTE_H)) });
+  // pastilles
+  svg.querySelectorAll('.pin').forEach((g) => attacherDrag(g, svg));
+  wireDecor();
+
+  // clavier : Suppr / Échap
+  if (!window._carteKeys) {
+    window._carteKeys = (e) => {
+      if (!carteState || carteState.mode !== 'edit' || !carteState.selected) return;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if (e.key === 'Escape') { carteState.selected = null; renderCarte(); }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        if (carteState.selected.kind === 'elem') supprimerElement();
+        else retirerSelection();
       }
-      renderCarteLive();
-    });
-    const endH = (e) => {
-      if (st.drag?.kind !== 'handle') return;
-      st.drag = null; updateCarteTools();
-      try { h.releasePointerCapture(e.pointerId); } catch (_) {}
     };
-    h.addEventListener('pointerup', endH);
-    h.addEventListener('pointercancel', endH);
-  });
-
-  // --- déplacement (emplacements + éléments) ---
-  svg.querySelectorAll('.pin, .celem').forEach((g) => {
-    const id = g.dataset.id;
-    const kind = g.dataset.kind;
-
-    g.addEventListener('pointerdown', (e) => {
-      if (e.target.classList.contains('handle')) return;
-      e.preventDefault();
-      try { g.setPointerCapture(e.pointerId); } catch (_) {}
-      const p = toSvg(e);
-      if (kind === 'elem') {
-        const el = elemVals(st.elements.find((x) => x.id === id));
-        st.drag = { kind, id, moved: false, offX: p.x - el.x, offY: p.y - el.y, el };
-      } else {
-        st.drag = { kind, id, moved: false };
-      }
-      g.classList.add('dragging');
-    });
-
-    g.addEventListener('pointermove', (e) => {
-      if (!st.drag || st.drag.id !== id || st.drag.kind === 'handle') return;
-      const p = toSvg(e);
-      if (kind === 'emp') {
-        const x = carteClamp(p.x, CARTE_PAD, CARTE_W - CARTE_PAD);
-        const y = carteClamp(p.y, CARTE_PAD, CARTE_H - CARTE_PAD);
-        g.setAttribute('transform', `translate(${x},${y})`);
-        st.dirty.set(id, { coord_x: Math.round(x), coord_y: Math.round(y) });
-      } else {
-        const el = st.drag.el;
-        const nx = Math.round(carteClamp(p.x - st.drag.offX, -10, CARTE_W - 20));
-        const ny = Math.round(carteClamp(p.y - st.drag.offY, -10, CARTE_H - 20));
-        const prev = st.dirtyElems.get(id) || {};
-        const patch = { ...prev, x: nx, y: ny };
-        // une allée se déplace avec ses deux extrémités
-        if (el.x2 != null || ELEM_DEFS[el.type]?.forme === 'ligne') {
-          const x2 = el.x2 ?? el.x + (ELEM_DEFS[el.type].long || 200);
-          const y2 = el.y2 ?? el.y;
-          patch.x2 = Math.round(x2 + (nx - el.x));
-          patch.y2 = Math.round(y2 + (ny - el.y));
-        }
-        st.dirtyElems.set(id, patch);
-        renderCarteLive();
-      }
-      st.drag.moved = true;
-    });
-
-    const end = (e) => {
-      if (!st.drag || st.drag.id !== id || st.drag.kind === 'handle') return;
-      const moved = st.drag.moved;
-      st.drag = null;
-      g.classList.remove('dragging');
-      try { g.releasePointerCapture(e.pointerId); } catch (_) {}
-      if (moved) updateCarteTools();
-      else { st.selected = { kind, id }; setTimeout(renderCarte, 0); }
-    };
-    g.addEventListener('pointerup', end);
-    g.addEventListener('pointercancel', end);
-  });
+    document.addEventListener('keydown', window._carteKeys);
+  }
 }
 
-// redessine seulement la couche décor (fluide pendant le glisser)
-function renderCarteLive() {
-  const layer = document.querySelector('.layer-decor');
-  if (!layer) return;
-  layer.innerHTML = carteState.elements.map((el) => dessinerElement(el, true)).join('');
-  wireCarte();
+function wireDecor() {
+  const svg = document.querySelector('.map-svg');
+  if (!svg || carteState.mode !== 'edit') return;
+  svg.querySelectorAll('.celem').forEach((g) => attacherDrag(g, svg));
+  svg.querySelectorAll('.handle').forEach((h) => attacherHandle(h, svg));
 }
 
-/* ----------------------------- actions ----------------------------- */
+// Glisser : on modifie le nœud DOM en place, sans jamais re-render pendant le drag.
+function attacherDrag(g, svg) {
+  if (g._wired) return;
+  g._wired = true;
+  const st = carteState;
+  const id = g.dataset.id;
+  const kind = g.dataset.kind;
+
+  g.addEventListener('pointerdown', (e) => {
+    if (e.target.classList.contains('handle')) return;
+    e.preventDefault();
+    const p = svgPoint(svg, e);
+    const base = kind === 'elem'
+      ? elemVals(st.elements.find((x) => x.id === id))
+      : (carteCoords(st.emplacements.find((x) => x.id === id)) || { coord_x: p.x, coord_y: p.y });
+    const ox = kind === 'elem' ? p.x - base.x : p.x - base.coord_x;
+    const oy = kind === 'elem' ? p.y - base.y : p.y - base.coord_y;
+    st.drag = { kind, id, moved: false, ox, oy, base, node: g };
+    g.classList.add('dragging');
+    try { g.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  g.addEventListener('pointermove', (e) => {
+    const d = st.drag;
+    if (!d || d.id !== id || d.node !== g) return;
+    const p = svgPoint(svg, e);
+    d.moved = true;
+
+    if (kind === 'emp') {
+      const x = snap(carteClamp(p.x - d.ox, CARTE_PAD, CARTE_W - CARTE_PAD));
+      const y = snap(carteClamp(p.y - d.oy, CARTE_PAD, CARTE_H - CARTE_PAD));
+      g.setAttribute('transform', `translate(${x},${y})`);
+      d.next = { coord_x: x, coord_y: y };
+      return;
+    }
+
+    const b = d.base;
+    const nx = snap(carteClamp(p.x - d.ox, -10, CARTE_W - 20));
+    const ny = snap(carteClamp(p.y - d.oy, -10, CARTE_H - 20));
+    const patch = { x: nx, y: ny };
+    const def = ELEM_DEFS[b.type] || {};
+    if (def.forme === 'ligne') {
+      const x2 = b.x2 ?? b.x + (def.long || 200), y2 = b.y2 ?? b.y;
+      patch.x2 = Math.round(x2 + (nx - b.x));
+      patch.y2 = Math.round(y2 + (ny - b.y));
+      // les lignes ne sont pas en translate() : on décale le groupe visuellement
+      g.setAttribute('transform', `translate(${nx - b.x},${ny - b.y})`);
+    } else {
+      g.setAttribute('transform', `translate(${nx},${ny})`);
+    }
+    d.next = patch;
+  });
+
+  const fin = (e) => {
+    const d = st.drag;
+    if (!d || d.id !== id || d.node !== g) return;
+    st.drag = null;
+    g.classList.remove('dragging');
+    try { g.releasePointerCapture(e.pointerId); } catch (_) {}
+
+    if (d.moved && d.next) {
+      if (kind === 'emp') st.dirty.set(id, d.next);
+      else st.dirtyElems.set(id, { ...(st.dirtyElems.get(id) || {}), ...d.next });
+      st.selected = { kind, id };
+      renderCarte();           // re-render UNE FOIS, après le drag
+    } else {
+      st.selected = { kind, id };
+      renderCarte();
+    }
+  };
+  g.addEventListener('pointerup', fin);
+  g.addEventListener('pointercancel', fin);
+}
+
+function attacherHandle(h, svg) {
+  if (h._wired) return;
+  h._wired = true;
+  const st = carteState;
+  const g = h.closest('.celem');
+  const id = g.dataset.id;
+  const mode = h.dataset.h;
+
+  h.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    st.drag = { kind: 'handle', id, mode, base: elemVals(st.elements.find((x) => x.id === id)) };
+    try { h.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  h.addEventListener('pointermove', (e) => {
+    const d = st.drag;
+    if (d?.kind !== 'handle' || d.id !== id) return;
+    const p = svgPoint(svg, e);
+    const b = d.base;
+    const prev = st.dirtyElems.get(id) || {};
+    if (mode === 'size') {
+      st.dirtyElems.set(id, { ...prev,
+        largeur: Math.max(40, snap(p.x - b.x)), hauteur: Math.max(30, snap(p.y - b.y)) });
+    } else if (mode === 'a') {
+      st.dirtyElems.set(id, { ...prev, x: snap(carteClamp(p.x, 0, CARTE_W)), y: snap(carteClamp(p.y, 0, CARTE_H)) });
+    } else {
+      st.dirtyElems.set(id, { ...prev, x2: snap(carteClamp(p.x, 0, CARTE_W)), y2: snap(carteClamp(p.y, 0, CARTE_H)) });
+    }
+    d.moved = true;
+    redessinerDecor();
+  });
+
+  const fin = (e) => {
+    const d = st.drag;
+    if (d?.kind !== 'handle') return;
+    st.drag = null;
+    try { h.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (d.moved) { majOutils(); renderProps(); }
+  };
+  h.addEventListener('pointerup', fin);
+  h.addEventListener('pointercancel', fin);
+}
+
+/* ------------------------------ actions ------------------------------ */
 
 window.toggleCarteEdit = () => {
-  const st = carteState;
-  if (st.mode === 'view') st.mode = 'edit';
-  else {
-    if ((st.dirty.size + st.dirtyElems.size) && !confirm('Des modifications non enregistrées seront perdues. Continuer ?')) return;
-    st.dirty.clear(); st.dirtyElems.clear(); st.selected = null; st.mode = 'view';
-  }
+  carteState.mode = 'edit';
   renderCarte();
 };
 
 window.cancelCarteEdit = () => {
-  vueCarte();   // rechargement propre depuis le serveur
+  if (nbModifs() && !confirm('Abandonner les modifications non enregistrées ?')) return;
+  vueCarte();
 };
 
 window.placeEmplacement = (id) => {
   const st = carteState;
-  const offset = (st.dirty.size % 10) * 24;
-  st.dirty.set(id, {
-    coord_x: Math.round(carteClamp(CARTE_PAD + 70 + offset, CARTE_PAD, CARTE_W - CARTE_PAD)),
-    coord_y: Math.round(carteClamp(CARTE_PAD + 70 + offset, CARTE_PAD, CARTE_H - CARTE_PAD)),
-  });
+  const off = (st.dirty.size % 8) * 30;
+  st.dirty.set(id, { coord_x: snap(80 + off), coord_y: snap(80 + off) });
   st.selected = { kind: 'emp', id };
   renderCarte();
 };
@@ -727,48 +807,44 @@ window.retirerSelection = () => {
 
 window.ajouterElement = async (type) => {
   const def = ELEM_DEFS[type];
-  let libelle = def.lib;
-  if (type === 'texte' || type === 'zone' || type === 'allee') {
-    const saisi = prompt(type === 'allee' ? 'Nom de l\u2019allée' : type === 'zone' ? 'Nom de la zone' : 'Texte à afficher',
-      type === 'allee' ? 'Allée des Tilleuls' : def.lib);
-    if (saisi === null) return;
-    libelle = saisi.trim() || def.lib;
-  }
-  const body = { type, libelle, x: 120, y: 120 };
-  if (def.forme === 'ligne') { body.x2 = 120 + (def.long || 200); body.y2 = 120; }
-  if (def.forme === 'zone' || def.forme === 'bati') { body.largeur = def.w; body.hauteur = def.h; }
+  const body = { type, libelle: def.lib, x: 140, y: 140 };
+  if (def.forme === 'ligne') { body.x2 = 140 + (def.long || 200); body.y2 = 140; }
+  if (def.forme === 'bati' || def.forme === 'zone') { body.largeur = def.w; body.hauteur = def.h; }
   try {
     const { element } = await api('/api/carte-elements', { method: 'POST', body });
-    carteState.elements.push({
-      ...element,
-      x: Number(element.x), y: Number(element.y),
-      largeur: element.largeur == null ? null : Number(element.largeur),
-      hauteur: element.hauteur == null ? null : Number(element.hauteur),
-      x2: element.x2 == null ? null : Number(element.x2),
-      y2: element.y2 == null ? null : Number(element.y2),
-    });
+    const num = (v) => (v == null ? null : Number(v));
+    carteState.elements.push({ ...element, x: Number(element.x), y: Number(element.y),
+      largeur: num(element.largeur), hauteur: num(element.hauteur), x2: num(element.x2), y2: num(element.y2) });
     carteState.selected = { kind: 'elem', id: element.id };
     renderCarte();
     toast(`${def.lib} ajouté — glisse-le à sa place`);
   } catch (e) { toast(e.message, true); }
 };
 
-window.renommerElement = () => {
+window.dupliquerElement = async () => {
   const st = carteState;
   if (st.selected?.kind !== 'elem') return;
-  const el = st.elements.find((x) => x.id === st.selected.id);
-  const v = prompt('Nom affiché sur le plan', elemVals(el).libelle || ELEM_DEFS[el.type]?.lib || '');
-  if (v === null) return;
-  const prev = st.dirtyElems.get(el.id) || {};
-  st.dirtyElems.set(el.id, { ...prev, libelle: v.trim() });
-  renderCarte();
+  const v = elemVals(st.elements.find((x) => x.id === st.selected.id));
+  const body = { type: v.type, libelle: v.libelle, x: v.x + 30, y: v.y + 30,
+    largeur: v.largeur, hauteur: v.hauteur, couleur: v.couleur };
+  if (v.x2 != null) { body.x2 = v.x2 + 30; body.y2 = v.y2 + 30; }
+  try {
+    const { element } = await api('/api/carte-elements', { method: 'POST', body });
+    const num = (n) => (n == null ? null : Number(n));
+    st.elements.push({ ...element, x: Number(element.x), y: Number(element.y),
+      largeur: num(element.largeur), hauteur: num(element.hauteur), x2: num(element.x2), y2: num(element.y2) });
+    st.selected = { kind: 'elem', id: element.id };
+    renderCarte();
+    toast('Élément dupliqué');
+  } catch (e) { toast(e.message, true); }
 };
 
 window.supprimerElement = async () => {
   const st = carteState;
   if (st.selected?.kind !== 'elem') return;
   const el = st.elements.find((x) => x.id === st.selected.id);
-  if (!confirm(`Supprimer « ${elemVals(el).libelle || ELEM_DEFS[el.type]?.lib} » du plan ?`)) return;
+  const nom = elemVals(el).libelle || ELEM_DEFS[el.type]?.lib || 'cet élément';
+  if (!confirm(`Supprimer « ${nom} » du plan ?`)) return;
   try {
     await api(`/api/carte-elements/${el.id}`, { method: 'DELETE' });
     st.elements = st.elements.filter((x) => x.id !== el.id);
@@ -781,27 +857,26 @@ window.supprimerElement = async () => {
 
 window.saveCarte = async () => {
   const st = carteState;
-  if (!st.dirty.size && !st.dirtyElems.size) return;
+  if (!nbModifs()) return;
   try {
     if (st.dirty.size) {
       const positions = [...st.dirty.entries()].map(([id, v]) => ({
-        id, coord_x: v ? v.coord_x : null, coord_y: v ? v.coord_y : null,
-      }));
+        id, coord_x: v ? v.coord_x : null, coord_y: v ? v.coord_y : null }));
       await api('/api/emplacements/positions', { method: 'PUT', body: { positions } });
-      for (const { id, coord_x, coord_y } of positions) {
+      positions.forEach(({ id, coord_x, coord_y }) => {
         const e = st.emplacements.find((x) => x.id === id);
         if (e) { e.coord_x = coord_x; e.coord_y = coord_y; }
-      }
+      });
     }
     if (st.dirtyElems.size) {
       const elements = [...st.dirtyElems.entries()].map(([id, v]) => ({ id, ...v }));
       await api('/api/carte-elements/batch', { method: 'PUT', body: { elements } });
-      for (const e of elements) {
+      elements.forEach((e) => {
         const el = st.elements.find((x) => x.id === e.id);
         if (el) Object.assign(el, e);
-      }
+      });
     }
-    st.dirty.clear(); st.dirtyElems.clear(); st.selected = null; st.mode = 'view';
+    st.dirty.clear(); st.dirtyElems.clear();
     toast('Plan enregistré');
     renderCarte();
   } catch (err) { toast(err.message, true); }
