@@ -139,9 +139,20 @@ router.get('/me', auth, campingScope, async (req, res) => {
     .select('id, email, nom, prenom')
     .eq('id', req.user.uid)
     .maybeSingle();
+
+  // noms des campings accessibles (pour le sélecteur d'espace)
+  let campings = req.campings;
+  if (req.campingIds?.length) {
+    const { data: noms } = await supabase.from('campings')
+      .select('id,nom,raison_sociale').in('id', req.campingIds);
+    const map = {};
+    (noms || []).forEach((c) => { map[c.id] = c.nom || c.raison_sociale || 'Camping'; });
+    campings = req.campings.map((c) => ({ ...c, nom: map[c.camping_id] || 'Camping' }));
+  }
+
   res.json({
     user,
-    campings: req.campings,
+    campings,
     activeCampingId: req.activeCampingId,
     activeRole: req.activeRole,
   });

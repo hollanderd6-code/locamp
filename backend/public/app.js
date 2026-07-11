@@ -72,28 +72,77 @@ function startApp() {
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
   $('#user-name').textContent = `${USER.prenom || ''} ${USER.nom || ''}`.trim() || USER.email;
-  if (CAMPINGS.length > 1) {
-    const sel = $('#camping-select');
-    sel.innerHTML = CAMPINGS.map((c) => `<option value="${c.camping_id}">${esc(c.camping_id.slice(0, 8))}… (${esc(c.role)})</option>`).join('');
-    sel.value = ACTIVE_CAMPING || CAMPINGS[0].camping_id;
-    sel.onchange = () => { ACTIVE_CAMPING = sel.value; localStorage.setItem('lc_camping', ACTIVE_CAMPING); route(); };
-    $('#camping-switch').classList.remove('hidden');
-    loadCampingNames(sel);
-  }
+  renderCampingSwitch();
   if (!location.hash) location.hash = '#/dashboard';
   route();
 }
 
-async function loadCampingNames(sel) {
-  for (const opt of sel.options) {
-    try {
-      const saved = ACTIVE_CAMPING; ACTIVE_CAMPING = opt.value;
-      const { camping } = await api('/api/camping');
-      opt.textContent = camping.nom || opt.value.slice(0, 8);
-      ACTIVE_CAMPING = saved;
-    } catch { /* ignore */ }
-  }
+// Sélecteur d'espace : toujours visible (les noms viennent de /api/auth/me).
+// Changer d'espace recharge tout — aucune donnée d'un camping ne persiste sur l'autre.
+function renderCampingSwitch() {
+  const sel = $('#camping-select');
+  if (!sel) return;
+  if (!CAMPINGS.length) { $('#camping-switch').classList.add('hidden'); return; }
+
+  const actif = CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) ? ACTIVE_CAMPING : CAMPINGS[0].camping_id;
+  ACTIVE_CAMPING = actif;
+  localStorage.setItem('lc_camping', ACTIVE_CAMPING);
+
+  sel.innerHTML = CAMPINGS.map((c) => `<option value="${c.camping_id}">${esc(c.nom || 'Camping')}</option>`).join('')
+    + '<option value="__new__">+ Nouvel espace camping…</option>';
+  sel.value = ACTIVE_CAMPING;
+  sel.onchange = () => {
+    if (sel.value === '__new__') { sel.value = ACTIVE_CAMPING; formNouveauCamping(); return; }
+    changerCamping(sel.value);
+  };
+  $('#camping-switch').classList.remove('hidden');
 }
+
+// Bascule d'espace : on repart du tableau de bord, état local vidé.
+function changerCamping(id) {
+  if (id === ACTIVE_CAMPING) return;
+  ACTIVE_CAMPING = id;
+  localStorage.setItem('lc_camping', ACTIVE_CAMPING);
+  carteState = null;
+  const c = CAMPINGS.find((x) => x.camping_id === id);
+  location.hash = '#/dashboard';
+  route();
+  toast(`Espace : ${c?.nom || 'camping'}`);
+}
+
+window.formNouveauCamping = () => {
+  openDrawer(`
+    <h2>Nouvel espace camping</h2>
+    <p class="muted" style="margin-top:4px">Un espace séparé, avec ses propres résidents, emplacements et factures. Tu en seras administrateur.</p>
+    <form id="f-newcamp" class="form-grid" style="margin-top:14px">
+      <label class="full">Nom *<input name="nom" required placeholder="Camping des Princes"></label>
+      <label class="full">Raison sociale<input name="raison_sociale"></label>
+      <label>SIRET<input name="siret"></label>
+      <label>N° TVA<input name="tva"></label>
+      <label class="full">Adresse<input name="adresse"></label>
+      <label>E-mail<input name="email" type="email"></label>
+      <label>Téléphone<input name="telephone"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Créer l'espace</button></div>
+    </form>`);
+  $('#f-newcamp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    for (const k in body) if (!body[k]) delete body[k];
+    try {
+      const { camping } = await api('/api/camping', { method: 'POST', body });
+      const me = await api('/api/auth/me');
+      CAMPINGS = me.campings || [];
+      closeDrawer();
+      ACTIVE_CAMPING = camping.id;
+      localStorage.setItem('lc_camping', ACTIVE_CAMPING);
+      renderCampingSwitch();
+      location.hash = '#/parametres';
+      route();
+      toast(`Espace « ${camping.nom} » créé — complète son identité`);
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
 
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();

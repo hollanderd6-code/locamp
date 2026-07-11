@@ -57,6 +57,39 @@ router.post('/logo', requireRole('admin'), upload.single('file'), async (req, re
   } catch (e) { console.error('[camping:logo]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// POST /api/camping  -> crée un nouvel espace camping ; le créateur en devient admin.
+// Volontairement hors requireRole : il s'agit de créer un camping, pas d'agir sur l'actif.
+router.post('/', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nom = String(b.nom || '').trim();
+    if (!nom) return res.status(400).json({ error: 'Nom du camping requis' });
+
+    const row = {
+      nom,
+      raison_sociale: b.raison_sociale || null,
+      siret: b.siret || null,
+      tva: b.tva || null,
+      adresse: b.adresse || null,
+      email: b.email || null,
+      telephone: b.telephone || null,
+      parametres: {},
+    };
+    const { data: camping, error } = await supabase.from('campings').insert(row).select().single();
+    if (error) throw error;
+
+    const { error: linkErr } = await supabase.from('user_campings')
+      .insert({ user_id: req.user.uid, camping_id: camping.id, role: 'admin' });
+    if (linkErr) {
+      await supabase.from('campings').delete().eq('id', camping.id);   // pas d'espace orphelin
+      throw linkErr;
+    }
+
+    await writeAudit(req, { action: 'create', entite: 'campings', entite_id: camping.id, apres: { nom } });
+    res.status(201).json({ camping });
+  } catch (e) { console.error('[camping:create]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // PUT /api/camping/parametres  -> fusionne les paramètres (facturation, taxe_sejour, plan...)
 router.put('/parametres', requireRole('admin'), async (req, res) => {
   try {
