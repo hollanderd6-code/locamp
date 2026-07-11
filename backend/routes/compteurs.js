@@ -87,7 +87,7 @@ router.post('/releve', requireRole('admin', 'gestionnaire'), async (req, res) =>
         const ins = await supabase.from('prestations').insert({
           camping_id: req.activeCampingId, resident_id: resident.id, emplacement_id: b.emplacement_id,
           type: 'charge',
-          designation: `Électricité — compteur ${Number(prec.index_kwh)} -> ${index_kwh} (${conso} kWh)`,
+          designation: `Charges [${Number(prec.index_kwh)}\u203a${index_kwh}|${conso} kWh]`,
           date_debut: prec.date_releve, date_fin: date_releve,
           quantite: conso, pu_ht: prix, taux_tva: taux,
           montant_ht: ht, montant_ttc: r2(ht * (1 + taux / 100)),

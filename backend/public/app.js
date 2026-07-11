@@ -1175,7 +1175,7 @@ window.formPrestation = async (residentId, type) => {
           <select id="presta-article"><option value="">— saisie libre —</option>
             ${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))} TTC</option>`).join('')}
           </select></label>` : ''}
-      <label class="full" style="${lbl}">Désignation *<input name="designation" required placeholder="${type === 'sejour' ? 'Séjour MH 1 chambre' : type === 'charge' ? 'Charges énergies' : type === 'caution' ? 'Caution location' : 'Bouteille de gaz'}"></label>
+      <label class="full" style="${lbl}">Désignation *<input name="designation" required placeholder="${type === 'sejour' ? 'Séjour MH 1 chambre' : type === 'charge' ? 'Charges' : type === 'caution' ? 'Caution location' : 'Bouteille de gaz'}"></label>
       ${type === 'sejour' ? `
         <label>Emplacement
           <select name="emplacement_id"><option value="">—</option>

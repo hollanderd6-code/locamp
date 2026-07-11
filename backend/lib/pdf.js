@@ -8,6 +8,17 @@ const IVOIRE = '#F6F3EC';
 const GRIS = '#6B7A74';
 const HAIR = '#E4DFD3';
 
+// Détecte le motif d'index compteur "[ancien→nouveau|conso]" dans une désignation.
+// Renvoie { titre, sous } — sous = 'Index : ancien → nouveau · conso' ou null.
+function parseDesignation(designation) {
+  const d = String(designation || '');
+  const m = d.match(/^(.*?)\s*\[\s*([^\]|]+?)\s*(?:\u2192|\u203a|->)\s*([^\]|]+?)\s*(?:\|\s*([^\]]+?))?\s*\]\s*$/);
+  if (!m) return { titre: d, sous: null };
+  const titre = m[1].trim() || 'Charges';
+  const sous = `Index : ${m[2].trim()} › ${m[3].trim()}${m[4] ? '   ·   ' + m[4].trim() : ''}`;
+  return { titre, sous };
+}
+
 // échéance = date_emission + délai (jours). Renvoie une date FR ou ''.
 function echeanceStr(dateEmission, delai) {
   if (!dateEmission) return '';
@@ -248,12 +259,15 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
         recap[taux] = recap[taux] || { base: 0, tva: 0 };
         recap[taux].base += ht; recap[taux].tva += tvaM;
 
-        const hDes = doc.heightOfString(String(l.designation || ''), { width: 150, fontSize: 9 });
-        const rowH = Math.max(hDes, 12) + 9;
+        const dg = parseDesignation(l.designation);
+        const hTitre = doc.heightOfString(dg.titre, { width: 150, fontSize: 9 });
+        const hSous = dg.sous ? 11 : 0;
+        const rowH = Math.max(hTitre + hSous, 12) + 9;
         if (y + rowH > 700) { doc.addPage(); doc.rect(0, 0, doc.page.width, 4).fill(accent); y = 56; drawHeader(); }
         if (i % 2 === 1) { doc.rect(L, y - 4, W, rowH).fill('#FBF9F4'); }
         doc.fillColor(INK).font('Helvetica-Bold').fontSize(9);
-        doc.text(String(l.designation || ''), C.des + 8, y, { width: 150 });
+        doc.text(dg.titre, C.des + 8, y, { width: 150 });
+        if (dg.sous) doc.fillColor(GRIS).font('Helvetica').fontSize(7.5).text(dg.sous, C.des + 8, y + hTitre + 1, { width: 150 });
         doc.font('Helvetica').fontSize(9).fillColor('#444');
         if (hasDates) {
           doc.text(fmtDateShort(l.date_debut), C.du, y, { width: 42 });
