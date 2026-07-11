@@ -3,7 +3,7 @@ const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { recomputeFacture, autoAffectations } = require('../lib/paiement');
 const { getStripe } = require('../lib/stripe');
-const { auth, campingScope, requireRole } = require('../middleware/auth');
+const { auth, campingScope, requireRole, requirePerm } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(auth, campingScope);
@@ -21,7 +21,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/reglements  { resident_id?, mode, montant, date_reglement?, reference?, statut_cheque?, affectations?[] }
 // Si affectations absentes et resident_id fourni -> lettrage auto (plus anciennes factures d'abord).
-router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
+router.post('/', requirePerm('encaisser'), async (req, res) => {
   try {
     const { resident_id, mode, montant, date_reglement, reference, statut_cheque } = req.body || {};
     if (!mode || montant == null) return res.status(400).json({ error: 'mode et montant requis' });
@@ -47,7 +47,7 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
 });
 
 // PUT /api/reglements/:id/statut-cheque  { statut_cheque }
-router.put('/:id/statut-cheque', requireRole('admin', 'gestionnaire'), async (req, res) => {
+router.put('/:id/statut-cheque', requirePerm('encaisser'), async (req, res) => {
   try {
     const { statut_cheque } = req.body || {};
     if (!['recu', 'remis', 'encaisse'].includes(statut_cheque)) return res.status(400).json({ error: 'statut_cheque invalide' });
@@ -73,7 +73,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // POST /api/reglements/facture/:id/lien-paiement  -> crée une session Stripe Checkout
-router.post('/facture/:id/lien-paiement', requireRole('admin', 'gestionnaire'), async (req, res) => {
+router.post('/facture/:id/lien-paiement', requirePerm('encaisser'), async (req, res) => {
   try {
     const stripe = getStripe();
     if (!stripe) return res.status(400).json({ error: 'Stripe non configuré (STRIPE_SECRET_KEY manquant)' });

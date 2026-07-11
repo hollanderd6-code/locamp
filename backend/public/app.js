@@ -4,6 +4,7 @@ let TOKEN = localStorage.getItem('lc_token') || null;
 let CAMPINGS = [];
 let ACTIVE_CAMPING = localStorage.getItem('lc_camping') || null;
 let USER = null;
+let MES_DROITS = {};
 
 /* ---------- utilitaires ---------- */
 const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -63,6 +64,8 @@ async function boot() {
   try {
     const me = await api('/api/auth/me');
     USER = me.user; CAMPINGS = me.campings || [];
+    try { const d = await api('/api/admin/mes-droits'); MES_DROITS = d.droits || {}; }
+    catch { MES_DROITS = {}; }
     if (!ACTIVE_CAMPING && me.activeCampingId) ACTIVE_CAMPING = me.activeCampingId;
     startApp();
   } catch { logout(); }
@@ -73,6 +76,8 @@ function startApp() {
   $('#app').classList.remove('hidden');
   $('#user-name').textContent = `${USER.prenom || ''} ${USER.nom || ''}`.trim() || USER.email;
   renderCampingSwitch();
+  const navAdmin = $('#nav-admin');
+  if (navAdmin) navAdmin.classList.toggle('hidden', !MES_DROITS.admin);
   if (!location.hash) location.hash = '#/dashboard';
   route();
 }
@@ -99,11 +104,16 @@ function renderCampingSwitch() {
 }
 
 // Bascule d'espace : on repart du tableau de bord, état local vidé.
-function changerCamping(id) {
+async function changerCamping(id) {
   if (id === ACTIVE_CAMPING) return;
   ACTIVE_CAMPING = id;
   localStorage.setItem('lc_camping', ACTIVE_CAMPING);
   carteState = null;
+  // les droits sont propres à chaque camping : on les recharge avant d'afficher
+  try { const d = await api('/api/admin/mes-droits'); MES_DROITS = d.droits || {}; }
+  catch { MES_DROITS = {}; }
+  const navAdmin = $('#nav-admin');
+  if (navAdmin) navAdmin.classList.toggle('hidden', !MES_DROITS.admin);
   const c = CAMPINGS.find((x) => x.camping_id === id);
   location.hash = '#/dashboard';
   route();
@@ -168,7 +178,7 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, parametres: vueParametres };
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, parametres: vueParametres, administration: vueAdministration };
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
   const [name, param] = raw.split('/');
@@ -1069,6 +1079,202 @@ window.releverCompteur = async (empId) => {
     else toast(r.info || 'Relevé enregistré');
     route();
   } catch (err) { toast(err.message, true); }
+};
+
+/* ---------- Administration : comptes, droits, journal ---------- */
+let ADMIN_DROITS = null;   // référentiel (libellés + matrice par rôle)
+
+async function vueAdministration() {
+  const [{ utilisateurs }, ref] = await Promise.all([
+    api('/api/admin/utilisateurs'),
+    ADMIN_DROITS ? Promise.resolve(ADMIN_DROITS) : api('/api/admin/droits'),
+  ]);
+  ADMIN_DROITS = ref;
+  const LIB = ref.libelles;
+
+  const puces = (d) => ref.droits.filter((k) => d[k] && k !== 'admin')
+    .map((k) => `<span class="ptype vente" style="margin:2px 3px 2px 0">${esc(LIB[k])}</span>`).join('') || '<span class="muted">Lecture seule</span>';
+
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <div><div class="eyebrow">Administration</div><h1>Comptes &amp; activité</h1></div>
+      <button class="btn btn-primary" onclick="formUtilisateur()">Ajouter un compte</button>
+    </div>
+
+    <div class="fiche-tabs">
+      <button class="fiche-tab active" data-tab="comptes" onclick="switchFicheTab('comptes')">Comptes (${utilisateurs.length})</button>
+      <button class="fiche-tab" data-tab="journal" onclick="switchFicheTab('journal');chargerJournal()">Journal d'activité</button>
+    </div>
+
+    <section data-panel="comptes">
+      <div class="card">
+        <h2>Accès à cet espace</h2>
+        <p class="muted" style="margin-top:2px">Les droits ci-dessous ne valent que pour le camping actif. Un même compte peut avoir des droits différents sur un autre camping.</p>
+        <table style="margin-top:12px"><thead><tr><th>Compte</th><th>Rôle</th><th>Droits</th><th></th></tr></thead>
+        <tbody>${utilisateurs.map((u) => `
+          <tr>
+            <td><strong>${esc((u.prenom || '') + ' ' + (u.nom || ''))}</strong>${u.est_moi ? ' <span class="badge reglee">vous</span>' : ''}
+              <div class="muted">${esc(u.email || '')}</div></td>
+            <td><span class="badge ${u.role === 'admin' ? 'reglee' : 'occupe'}">${esc(u.role)}</span></td>
+            <td style="max-width:340px">${puces(u.droits)}</td>
+            <td class="right">
+              <button class="btn btn-ghost btn-sm" onclick="formUtilisateur('${u.id}')">Modifier</button>
+              ${u.est_moi ? '' : `<button class="btn btn-ghost btn-sm" onclick="retirerAcces('${u.id}','${esc((u.prenom || '') + ' ' + (u.nom || ''))}')">Retirer</button>`}
+            </td>
+          </tr>`).join('')}</tbody></table>
+      </div>
+    </section>
+
+    <section data-panel="journal" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
+          <div>
+            <h2 style="margin:0">Journal d'activité</h2>
+            <p class="muted" style="margin:4px 0 0">Toutes les opérations sont horodatées et conservées : qui a fait quoi, quand, depuis quelle adresse IP.</p>
+          </div>
+          <div class="toolbar">
+            <label style="text-transform:none;letter-spacing:0;font-size:11px">Du<input type="date" id="j-debut"></label>
+            <label style="text-transform:none;letter-spacing:0;font-size:11px">Au<input type="date" id="j-fin"></label>
+            <select id="j-entite" style="width:auto"><option value="">Tout</option>
+              <option value="reglements">Encaissements</option>
+              <option value="factures">Factures</option>
+              <option value="prestations">Prestations</option>
+              <option value="residents">Résidents</option>
+              <option value="user_campings">Accès utilisateurs</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="chargerJournal()">Filtrer</button>
+            <button class="btn btn-primary btn-sm" onclick="exportJournal()">Export fisc (CSV)</button>
+          </div>
+        </div>
+        <div id="journal-body" style="margin-top:14px"><p class="muted">Chargement…</p></div>
+      </div>
+    </section>`;
+}
+
+window.chargerJournal = async () => {
+  const p = new URLSearchParams();
+  const d = $('#j-debut')?.value, f = $('#j-fin')?.value, e = $('#j-entite')?.value;
+  if (d) p.set('debut', d);
+  if (f) p.set('fin', f);
+  if (e) p.set('entite', e);
+  const box = $('#journal-body');
+  if (!box) return;
+  box.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { entrees, limite } = await api('/api/admin/journal?' + p.toString());
+    box.innerHTML = entrees.length ? `
+      <table><thead><tr><th>Date &amp; heure</th><th>Auteur</th><th>Opération</th><th>Détail</th><th>IP</th></tr></thead>
+      <tbody>${entrees.map((x) => `
+        <tr>
+          <td style="white-space:nowrap">${new Date(x.horodatage).toLocaleString('fr-FR')}</td>
+          <td>${esc(x.auteur_email || '—')}</td>
+          <td><span class="ptype ${x.entite === 'reglements' ? 'sejour' : 'charge'}">${esc(x.entite_lib || '—')}</span> <span class="muted">${esc(x.action_lib)}</span></td>
+          <td class="muted" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(resumeAudit(x))}</td>
+          <td class="muted">${esc(x.ip || '—')}</td>
+        </tr>`).join('')}</tbody></table>
+      ${entrees.length >= limite ? `<p class="muted" style="margin-top:10px">${limite} dernières entrées affichées — affine les dates ou exporte en CSV pour tout voir.</p>` : ''}`
+      : '<p class="muted">Aucune opération sur cette période.</p>';
+  } catch (err) { box.innerHTML = `<p class="form-error">${esc(err.message)}</p>`; }
+};
+
+function resumeAudit(x) {
+  const a = x.apres || x.avant || {};
+  if (x.entite === 'reglements' && a.montant != null) return `${a.montant} € — ${a.mode || ''} ${a.reference || ''}`.trim();
+  if (a.numero) return a.numero;
+  if (a.nom || a.email) return `${a.nom || ''} ${a.email || ''}`.trim();
+  if (a.role) return `rôle : ${a.role}`;
+  if (a.lignes != null) return `${a.lignes} ligne(s)`;
+  return x.entite_id ? x.entite_id.slice(0, 8) + '…' : '—';
+}
+
+window.exportJournal = () => {
+  const d = $('#j-debut')?.value || '2000-01-01';
+  const f = $('#j-fin')?.value || new Date().toISOString().slice(0, 10);
+  const url = `/api/admin/journal/export?debut=${d}&fin=${f}`;
+  fetch(url, { headers: { Authorization: 'Bearer ' + TOKEN, 'x-camping-id': ACTIVE_CAMPING } })
+    .then((r) => { if (!r.ok) throw new Error('Export refusé'); return r.blob(); })
+    .then((blob) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `journal_activite_${d}_${f}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
+      toast('Journal exporté');
+    })
+    .catch((e) => toast(e.message, true));
+};
+
+window.formUtilisateur = async (userId) => {
+  const ref = ADMIN_DROITS || await api('/api/admin/droits');
+  ADMIN_DROITS = ref;
+  let u = null;
+  if (userId) {
+    const { utilisateurs } = await api('/api/admin/utilisateurs');
+    u = utilisateurs.find((x) => x.id === userId);
+    if (!u) { toast('Compte introuvable', true); return; }
+  }
+  const role = u?.role || 'gestionnaire';
+
+  const casesDroits = (r) => ref.droits.map((d) => {
+    const parRole = ref.droits_par_role[r] || {};
+    const val = (u && typeof u.permissions[d] === 'boolean') ? u.permissions[d] : !!parRole[d];
+    return `<label style="flex-direction:row;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:500;color:var(--encre)">
+      <input type="checkbox" name="d_${d}" ${val ? 'checked' : ''} style="width:auto">${esc(ref.libelles[d])}</label>`;
+  }).join('');
+
+  openDrawer(`
+    <h2>${u ? 'Modifier l\u2019accès' : 'Ajouter un compte'}</h2>
+    <p class="muted" style="margin-top:4px">${u ? esc(u.email) : 'Le compte recevra ses identifiants par e-mail. Les droits ne valent que pour le camping actif.'}</p>
+    <form id="f-user" class="form-grid" style="margin-top:14px">
+      ${u ? '' : `
+        <label class="full">E-mail *<input name="email" type="email" required></label>
+        <label>Prénom<input name="prenom"></label>
+        <label>Nom<input name="nom"></label>`}
+      <label class="full">Rôle
+        <select name="role" id="u-role">
+          ${ref.roles.map((r) => `<option value="${r}"${r === role ? ' selected' : ''}>${esc(r)}</option>`).join('')}
+        </select></label>
+      <div class="full">
+        <div class="muted" style="margin-bottom:8px">Droits — cochés par défaut selon le rôle, ajustables un par un.</div>
+        <div id="u-droits" style="display:flex;flex-direction:column;gap:9px">${casesDroits(role)}</div>
+      </div>
+      <div class="full"><button class="btn btn-primary btn-block">${u ? 'Enregistrer' : 'Créer le compte'}</button></div>
+    </form>`);
+
+  $('#u-role').addEventListener('change', (e) => {
+    if (u) return;   // en modification, on garde les cases telles quelles
+    $('#u-droits').innerHTML = ref.droits.map((d) => {
+      const val = !!(ref.droits_par_role[e.target.value] || {})[d];
+      return `<label style="flex-direction:row;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:500;color:var(--encre)">
+        <input type="checkbox" name="d_${d}" ${val ? 'checked' : ''} style="width:auto">${esc(ref.libelles[d])}</label>`;
+    }).join('');
+  });
+
+  $('#f-user').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const permissions = {};
+    ref.droits.forEach((d) => { permissions[d] = fd.get('d_' + d) === 'on'; });
+    const body = { role: fd.get('role'), permissions };
+    try {
+      if (u) {
+        await api(`/api/admin/utilisateurs/${u.id}`, { method: 'PUT', body });
+        toast('Droits mis à jour');
+      } else {
+        body.email = fd.get('email'); body.nom = fd.get('nom'); body.prenom = fd.get('prenom');
+        const r = await api('/api/admin/utilisateurs', { method: 'POST', body });
+        toast(r.mot_de_passe_temporaire
+          ? `Compte créé — mot de passe provisoire : ${r.mot_de_passe_temporaire}`
+          : 'Compte créé — identifiants envoyés par e-mail');
+      }
+      closeDrawer(); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.retirerAcces = async (id, nom) => {
+  if (!confirm(`Retirer l\u2019accès de ${nom} à ce camping ? Son compte et ses autres accès sont conservés.`)) return;
+  try { await api(`/api/admin/utilisateurs/${id}`, { method: 'DELETE' }); toast('Accès retiré'); route(); }
+  catch (e) { toast(e.message, true); }
 };
 
 async function vueParametres() {
