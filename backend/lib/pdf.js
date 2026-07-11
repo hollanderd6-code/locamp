@@ -317,6 +317,37 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement de 40 €.', L, doc.y + 2, { width: W });
       if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', L, doc.y + 2, { width: W });
 
+      // ===== Mentions libres (paramétrables) =====
+      if (params.mentions_libres && String(params.mentions_libres).trim()) {
+        y = doc.y + 8;
+        doc.fillColor('#555').font('Helvetica').fontSize(8.5).text(String(params.mentions_libres).trim(), L, y, { width: W });
+      }
+
+      // ===== Coordonnées bancaires (RIB) — factures uniquement =====
+      const rib = params.rib || {};
+      const hasRib = !isProforma && !isAvoir && (rib.iban || rib.bic || rib.titulaire);
+      if (hasRib) {
+        const ribY = doc.y + 12;
+        const ribH = 20 + (rib.titulaire ? 13 : 0) + (rib.iban ? 13 : 0) + (rib.bic ? 13 : 0);
+        doc.roundedRect(L, ribY, W, ribH, 8).fill(IVOIRE);
+        doc.roundedRect(L, ribY, W, ribH, 8).lineWidth(1).stroke(HAIR);
+        doc.rect(L, ribY + 10, 3, ribH - 20).fill(LAITON);
+        doc.fillColor(LAITON).font('Helvetica-Bold').fontSize(8)
+          .text('COORDONNÉES BANCAIRES', L + 16, ribY + 10, { characterSpacing: 1 });
+        let by = ribY + 24;
+        doc.fontSize(9);
+        const ribLine = (label, val) => {
+          doc.fillColor(GRIS).font('Helvetica-Bold').text(label, L + 16, by, { width: 66, continued: false });
+          doc.fillColor(INK).font('Helvetica').text(val, L + 86, by, { width: W - 100 });
+          by += 13;
+        };
+        if (rib.titulaire) ribLine('Titulaire', rib.titulaire);
+        if (rib.iban) ribLine('IBAN', String(rib.iban).replace(/\s+/g, ' ').toUpperCase());
+        if (rib.bic) ribLine('BIC', String(rib.bic).replace(/\s+/g, '').toUpperCase());
+        doc.fillColor('#8A8A8A').font('Helvetica').fontSize(7.5)
+          .text('Merci d\u2019indiquer le numéro de facture en référence de votre virement.', L + 16, by + 1, { width: W - 32 });
+      }
+
       // ===== Pied de page =====
       const footY = 792;
       doc.moveTo(L, footY).lineTo(R, footY).lineWidth(0.5).strokeColor(HAIR).stroke();
