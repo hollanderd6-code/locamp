@@ -1221,11 +1221,15 @@ window.supprimerPrestation = async (pid, residentId) => {
   catch (err) { toast(err.message, true); }
 };
 
-window.encaisserClient = (id) => {
+window.encaisserClient = async (id) => {
+  const { moyens } = await api('/api/moyens-paiement').catch(() => ({ moyens: [] }));
   openDrawer(`
     <h2>Encaisser un paiement</h2>
     <form id="f-enc" class="form-grid" style="margin-top:14px">
-      <label>Mode<select name="mode"><option value="espece">Espèces</option><option value="cheque">Chèque</option><option value="virement">Virement</option><option value="tpe">Carte (TPE)</option></select></label>
+      <label>Moyen de paiement<select name="mode">${
+        moyens.length ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
+                      : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'
+      }</select></label>
       <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
       <label class="full">Référence<input name="reference" placeholder="n° chèque, libellé virement…"></label>
       <div class="full"><button class="btn btn-primary btn-block">Encaisser (lettrage automatique)</button></div>
@@ -1416,8 +1420,22 @@ async function vueAdministration() {
 
     <div class="fiche-tabs">
       <button class="fiche-tab active" data-tab="comptes" onclick="switchFicheTab('comptes')">Comptes (${utilisateurs.length})</button>
+      <button class="fiche-tab" data-tab="moyens" onclick="switchFicheTab('moyens');chargerMoyens()">Moyens de paiement</button>
       <button class="fiche-tab" data-tab="journal" onclick="switchFicheTab('journal');chargerJournal()">Journal d'activité</button>
     </div>
+
+    <section data-panel="moyens" class="hidden">
+      <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Moyens de paiement</h2>
+            <p class="muted" style="margin:4px 0 0">Un moyen « remisable » (chèques, ANCV) apparaît dans les remises en banque, avec son propre bordereau.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="formMoyen()">Ajouter un moyen</button>
+        </div>
+        <div id="moyens-body" style="margin-top:12px"><p class="muted">Chargement…</p></div>
+      </div>
+    </section>
 
     <section data-panel="comptes">
       <div class="card">
@@ -1463,6 +1481,90 @@ async function vueAdministration() {
       </div>
     </section>`;
 }
+
+const TYPES_MOYEN = { espece: 'Espèces', cheque: 'Chèque', virement: 'Virement', carte: 'Carte', ancv: 'ANCV', autre: 'Autre' };
+
+window.chargerMoyens = async () => {
+  const box = $('#moyens-body');
+  if (!box) return;
+  box.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { moyens, migration_manquante } = await api('/api/moyens-paiement?tous=1');
+    if (migration_manquante) {
+      box.innerHTML = '<p class="form-error">Table « moyens_paiement » absente — exécute la migration db/16_moyens_paiement_remises.sql dans Supabase.</p>';
+      return;
+    }
+    box.innerHTML = moyens.length ? `
+      <table><thead><tr><th>Libellé</th><th>Code</th><th>Type</th><th>Compte</th><th>Remisable</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${moyens.map((m) => `
+        <tr${m.actif ? '' : ' style="opacity:.55"'}>
+          <td><strong>${esc(m.libelle)}</strong></td>
+          <td class="muted"><code>${esc(m.code)}</code></td>
+          <td class="muted">${esc(TYPES_MOYEN[m.type] || m.type)}</td>
+          <td class="muted">${esc(m.compte_comptable || '—')}</td>
+          <td>${m.remisable ? '<span class="badge reglee">bordereau</span>' : '<span class="muted">—</span>'}</td>
+          <td>${m.actif ? '<span class="badge libre">actif</span>' : '<span class="badge indisponible">inactif</span>'}</td>
+          <td class="right">
+            <button class="btn btn-ghost btn-sm" onclick="formMoyen('${m.id}')">Modifier</button>
+            ${m.actif ? `<button class="btn btn-ghost btn-sm" onclick="retirerMoyen('${m.id}','${esc(m.libelle)}')">Désactiver</button>` : ''}
+          </td>
+        </tr>`).join('')}</tbody></table>`
+      : '<p class="muted">Aucun moyen de paiement. Ajoute-en un.</p>';
+  } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.formMoyen = async (id) => {
+  let m = null;
+  if (id) {
+    const { moyens } = await api('/api/moyens-paiement?tous=1');
+    m = moyens.find((x) => x.id === id);
+    if (!m) { toast('Moyen introuvable', true); return; }
+  }
+  openDrawer(`
+    <h2>${m ? 'Modifier le moyen' : 'Nouveau moyen de paiement'}</h2>
+    ${m ? `<p class="muted" style="margin-top:4px">Code <code>${esc(m.code)}</code> — non modifiable (il est inscrit dans l'historique des règlements).</p>` : ''}
+    <form id="f-moyen" class="form-grid" style="margin-top:14px">
+      <label class="full">Libellé *<input name="libelle" required value="${esc(m?.libelle || '')}" placeholder="Chèques-vacances ANCV"></label>
+      <label>Type
+        <select name="type">${Object.entries(TYPES_MOYEN).map(([k, v]) => `<option value="${k}"${m?.type === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      <label>Compte comptable<input name="compte_comptable" value="${esc(m?.compte_comptable || '')}" placeholder="511500"></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:10px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--encre)">
+        <input type="checkbox" name="remisable" ${m?.remisable ? 'checked' : ''} style="width:auto">
+        Se remet en banque (bordereau dédié)</label>
+      ${m ? `<label class="full" style="flex-direction:row;align-items:center;gap:10px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--encre)">
+        <input type="checkbox" name="actif" ${m.actif ? 'checked' : ''} style="width:auto">
+        Actif (proposé à l'encaissement)</label>` : ''}
+      <div class="full"><button class="btn btn-primary btn-block">${m ? 'Enregistrer' : 'Créer le moyen'}</button></div>
+    </form>`);
+
+  $('#f-moyen').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      libelle: fd.get('libelle'),
+      type: fd.get('type'),
+      compte_comptable: fd.get('compte_comptable') || null,
+      remisable: fd.get('remisable') === 'on',
+    };
+    if (m) body.actif = fd.get('actif') === 'on';
+    try {
+      if (m) await api(`/api/moyens-paiement/${m.id}`, { method: 'PUT', body });
+      else await api('/api/moyens-paiement', { method: 'POST', body });
+      closeDrawer();
+      toast(m ? 'Moyen mis à jour' : 'Moyen de paiement créé');
+      chargerMoyens();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.retirerMoyen = async (id, libelle) => {
+  if (!confirm(`Désactiver « ${libelle} » ? Il ne sera plus proposé à l'encaissement. L'historique est conservé.`)) return;
+  try {
+    const r = await api(`/api/moyens-paiement/${id}`, { method: 'DELETE' });
+    toast(r.message || (r.supprime ? 'Moyen supprimé' : 'Moyen désactivé'));
+    chargerMoyens();
+  } catch (e) { toast(e.message, true); }
+};
 
 window.chargerJournal = async () => {
   const p = new URLSearchParams();
@@ -1898,25 +2000,37 @@ window.faireAvoir = async (id) => {
 
 /* ---------- Règlements ---------- */
 async function vueReglements() {
-  const [{ reglements }, { residents }] = await Promise.all([api('/api/reglements'), api('/api/residents')]);
+  const [{ reglements }, { residents }, moyRes] = await Promise.all([
+    api('/api/reglements'), api('/api/residents'),
+    api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
+  ]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
+  const moyens = moyRes.moyens || [];
+  const mlib = {}; moyens.forEach((m) => { mlib[m.code] = m.libelle; });
+
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
     <div class="card">
       <h2>Enregistrer un paiement</h2>
       <form id="f-reg" class="form-grid" style="margin-top:10px">
         <label>Résident *<select name="resident_id" required>${residents.map((r) => `<option value="${r.id}">${esc(rmap[r.id])}</option>`).join('')}</select></label>
-        <label>Mode *<select name="mode"><option value="espece">Espèces</option><option value="cheque">Chèque</option><option value="virement">Virement</option><option value="tpe">Carte (TPE)</option></select></label>
+        <label>Moyen de paiement *<select name="mode" required>
+          ${moyens.length
+            ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
+            : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'}
+        </select></label>
         <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
-        <label>Référence<input name="reference" placeholder="n° chèque, libellé virement…"></label>
+        <label>Référence<input name="reference" placeholder="n° chèque, n° titre ANCV, libellé virement…"></label>
         <div class="full"><button class="btn btn-primary">Encaisser (lettrage automatique)</button></div>
       </form>
+      ${moyens.length ? '' : '<p class="muted" style="margin-top:8px">Moyens de paiement par défaut — configure-les dans Administration.</p>'}
     </div>
-    <div class="card"><table><thead><tr><th>Date</th><th>Résident</th><th>Mode</th><th>Référence</th><th class="right">Montant</th></tr></thead>
+    <div class="card"><table><thead><tr><th>Date</th><th>Résident</th><th>Moyen</th><th>Référence</th><th class="right">Montant</th></tr></thead>
     <tbody>${reglements.map((g) => `
       <tr><td class="muted">${dfr(g.date_reglement)}</td><td>${esc(rmap[g.resident_id] || '—')}</td>
-      <td class="muted">${esc(g.mode)}</td><td class="muted">${esc(g.reference || '—')}</td>
+      <td class="muted">${esc(mlib[g.mode] || g.mode)}</td><td class="muted">${esc(g.reference || '—')}</td>
       <td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun règlement enregistré.</td></tr>'}</tbody></table></div>`;
+
   $('#f-reg').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
@@ -1924,65 +2038,107 @@ async function vueReglements() {
     try { await api('/api/reglements', { method: 'POST', body }); toast('Paiement enregistré et lettré'); route(); }
     catch (err) { toast(err.message, true); }
   });
-  // Remises en banque (chèques)
+
   $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
   chargerRemises();
 }
 
+// Remises en banque : un bordereau par moyen de paiement (chèques ≠ ANCV).
 async function chargerRemises() {
   const zone = $('#remises-zone');
   if (!zone) return;
   try {
-    const { en_attente, remises } = await api('/api/remises');
-    zone.innerHTML = `
+    const { moyens, en_attente, remises } = await api('/api/remises');
+
+    // regroupement des règlements en attente par moyen
+    const parMoyen = {};
+    (en_attente || []).forEach((c) => { (parMoyen[c.mode] ||= []).push(c); });
+
+    const blocsAttente = (moyens || []).map((m) => {
+      const list = parMoyen[m.code] || [];
+      if (!list.length) return '';
+      const total = list.reduce((s, c) => s + Number(c.montant), 0);
+      return `
       <div class="card">
-        <div class="card-actions"><h2>Chèques à remettre</h2>
-          <button class="btn btn-primary btn-sm" id="btn-remise" ${en_attente.length ? '' : 'disabled'}>Créer la remise</button></div>
-        ${en_attente.length ? `<table><thead><tr><th></th><th>Date</th><th>Tireur</th><th>N° chèque</th><th class="right">Montant</th></tr></thead>
-        <tbody>${en_attente.map((c) => `<tr>
-          <td><input type="checkbox" class="chk-remise" value="${c.id}" checked></td>
+        <div class="card-actions">
+          <h2>${esc(m.libelle)} à remettre <span class="map-count">${list.length}</span></h2>
+          <button class="btn btn-primary btn-sm" onclick="creerRemise('${esc(m.code)}','${esc(m.libelle)}')">Créer le bordereau</button>
+        </div>
+        <table><thead><tr><th></th><th>Date</th><th>Tireur</th><th>Référence</th><th class="right">Montant</th></tr></thead>
+        <tbody>${list.map((c) => `<tr>
+          <td><input type="checkbox" class="chk-remise" data-moyen="${esc(m.code)}" value="${c.id}" checked></td>
           <td class="muted">${dfr(c.date_reglement)}</td><td>${esc(c.tireur)}</td>
           <td class="muted">${esc(c.reference || '—')}</td>
-          <td class="right"><strong>${eur(c.montant)}</strong></td></tr>`).join('')}</tbody></table>`
-        : '<p class="muted">Aucun chèque en attente de remise.</p>'}
-      </div>
+          <td class="right"><strong>${eur(c.montant)}</strong></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="4" class="right muted">Total sélectionnable</td>
+          <td class="right"><strong>${eur(total)}</strong></td></tr></tfoot></table>
+      </div>`;
+    }).join('');
+
+    const badgeStatut = (s) => s === 'encaissee'
+      ? '<span class="badge reglee">encaissée</span>'
+      : s === 'annulee' ? '<span class="badge annulee">annulée</span>'
+      : '<span class="badge emise">remise</span>';
+
+    zone.innerHTML = `
+      ${blocsAttente || '<div class="card"><p class="muted" style="margin:0">Aucun règlement en attente de remise (chèques, ANCV…).</p></div>'}
       <div class="card">
         <h2>Remises en banque</h2>
-        ${remises.length ? `<table><thead><tr><th>N°</th><th>Date</th><th>Banque</th><th>Chèques</th><th class="right">Total</th><th>Statut</th><th></th></tr></thead>
-        <tbody>${remises.map((r) => `<tr>
-          <td><strong>${esc(r.numero)}</strong></td><td class="muted">${dfr(r.date_remise)}</td>
-          <td class="muted">${esc(r.banque || '—')}</td><td>${r.nb_cheques}</td>
+        ${(remises || []).length ? `<table><thead><tr><th>N°</th><th>Date</th><th>Moyen</th><th>Banque</th><th>Titres</th><th class="right">Total</th><th>Statut</th><th></th></tr></thead>
+        <tbody>${remises.map((r) => `<tr${r.statut === 'annulee' ? ' style="opacity:.6"' : ''}>
+          <td><strong>${esc(r.numero)}</strong></td>
+          <td class="muted">${dfr(r.date_remise)}</td>
+          <td class="muted">${esc(r.moyen_libelle || '—')}</td>
+          <td class="muted">${esc(r.banque || '—')}</td>
+          <td>${r.nb_cheques}</td>
           <td class="right">${eur(r.total)}</td>
-          <td><span class="badge ${r.statut === 'encaissee' ? 'reglee' : 'emise'}">${r.statut === 'encaissee' ? 'encaissée' : 'remise'}</span></td>
+          <td>${badgeStatut(r.statut)}${r.motif_annulation ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(r.motif_annulation)}</div>` : ''}</td>
           <td class="right">
             <button class="btn btn-ghost btn-sm" onclick="pdfRemise('${r.id}','${esc(r.numero)}')">Bordereau</button>
-            ${r.statut !== 'encaissee' ? `<button class="btn btn-ghost btn-sm" onclick="encaisserRemise('${r.id}')">Encaissée ✓</button>` : ''}
-          </td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune remise. Sélectionnez des chèques ci-dessus.</p>'}
+            ${r.statut === 'remise' ? `<button class="btn btn-ghost btn-sm" onclick="encaisserRemise('${r.id}')">Encaissée ✓</button>` : ''}
+            ${r.statut !== 'annulee' ? `<button class="btn btn-ghost btn-sm" onclick="annulerRemise('${r.id}','${esc(r.numero)}',${r.statut === 'encaissee'})">Annuler</button>` : ''}
+          </td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune remise.</p>'}
       </div>`;
-    const btn = $('#btn-remise');
-    if (btn) btn.addEventListener('click', async () => {
-      const ids = [...document.querySelectorAll('.chk-remise:checked')].map((x) => x.value);
-      if (!ids.length) { toast('Sélectionnez au moins un chèque', true); return; }
-      const banque = prompt('Banque (optionnel) :') || undefined;
-      try {
-        const { remise } = await api('/api/remises', { method: 'POST', body: { reglement_ids: ids, banque } });
-        toast(`Remise ${remise.numero} créée (${ids.length} chèque${ids.length > 1 ? 's' : ''})`);
-        chargerRemises();
-      } catch (e) { toast(e.message, true); }
-    });
   } catch (e) {
-    zone.innerHTML = `<p class="form-error">Remises : ${esc(e.message)} — exécuter db/12_remises_banque.sql dans Supabase.</p>`;
+    zone.innerHTML = `<p class="form-error">Remises : ${esc(e.message)}</p>`;
   }
 }
+
+window.creerRemise = async (code, libelle) => {
+  const ids = [...document.querySelectorAll(`.chk-remise[data-moyen="${code}"]:checked`)].map((x) => x.value);
+  if (!ids.length) { toast('Sélectionne au moins un titre', true); return; }
+  const banque = prompt(`Banque pour ce bordereau ${libelle} (optionnel) :`) || undefined;
+  try {
+    const { remise } = await api('/api/remises', { method: 'POST', body: { reglement_ids: ids, banque } });
+    toast(`Bordereau ${remise.numero} créé — ${ids.length} ${libelle.toLowerCase()}(s)`);
+    chargerRemises();
+  } catch (e) { toast(e.message, true); }
+};
+
 window.pdfRemise = async (id, numero) => {
   telechargerExport('/api/remises/' + id + '/pdf', 'remise_' + numero + '.pdf');
 };
+
 window.encaisserRemise = async (id) => {
   if (!confirm('Marquer cette remise comme encaissée en banque ?')) return;
   try { await api(`/api/remises/${id}/encaisser`, { method: 'PUT' }); toast('Remise encaissée'); chargerRemises(); }
   catch (e) { toast(e.message, true); }
 };
 
+// Annulation : motif obligatoire, remise conservée (statut « annulée »), tout est tracé.
+window.annulerRemise = async (id, numero, etaitEncaissee) => {
+  const avert = etaitEncaissee
+    ? `\n\nATTENTION : cette remise est DÉJÀ ENCAISSÉE. L'annulation ne supprime pas l'encaissement bancaire — pense à passer la contre-écriture en comptabilité.`
+    : '';
+  const motif = prompt(`Annuler la remise ${numero} ?${avert}\n\nMotif d'annulation (obligatoire, conservé au journal) :`);
+  if (motif === null) return;
+  if (motif.trim().length < 3) { toast('Motif obligatoire (3 caractères minimum)', true); return; }
+  try {
+    const r = await api(`/api/remises/${id}/annuler`, { method: 'PUT', body: { motif: motif.trim() } });
+    toast(r.message || 'Remise annulée');
+    chargerRemises();
+  } catch (e) { toast(e.message, true); }
+};
 
 /* ---------- Impayés ---------- */
 async function vueImpayes() {

@@ -392,10 +392,21 @@ function buildRemisePdf({ camping = {}, remise = {}, cheques = [] }) {
       if (camping.siret) doc.text(`SIRET ${camping.siret}`);
 
       doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(18)
-        .text('REMISE DE CHÈQUES', 300, 56, { width: 242, align: 'right' });
+        .text((remise.moyen_libelle || 'Chèques').toUpperCase() === 'CHÈQUE'
+          ? 'REMISE DE CHÈQUES'
+          : `REMISE — ${(remise.moyen_libelle || '').toUpperCase()}`, 300, 56, { width: 242, align: 'right' });
       doc.fillColor('#222').font('Helvetica').fontSize(9);
       doc.text(`Bordereau n° ${remise.numero || '—'}`, 300, undefined, { width: 242, align: 'right' });
       doc.text(`Date de remise : ${fmtDate(remise.date_remise)}`, 300, undefined, { width: 242, align: 'right' });
+      if (remise.statut === 'annulee') {
+        doc.fillColor('#A8402A').font('Helvetica-Bold').fontSize(11)
+          .text('BORDEREAU ANNULÉ', 300, undefined, { width: 242, align: 'right' });
+        if (remise.motif_annulation) {
+          doc.font('Helvetica').fontSize(8)
+            .text(`Motif : ${remise.motif_annulation}`, 300, undefined, { width: 242, align: 'right' });
+        }
+        doc.fillColor('#222').font('Helvetica').fontSize(9);
+      }
       if (remise.banque) doc.text(`Banque : ${remise.banque}`, 300, undefined, { width: 242, align: 'right' });
 
       let y = 170;
@@ -404,7 +415,7 @@ function buildRemisePdf({ camping = {}, remise = {}, cheques = [] }) {
       doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
       doc.text('#', X.n + 4, y + 6);
       doc.text('Tireur', X.tireur, y + 6);
-      doc.text('N° chèque', X.ref, y + 6);
+      doc.text(((remise.moyen_libelle || '').toLowerCase().includes('ancv') ? 'N° titre' : 'N° chèque'), X.ref, y + 6);
       doc.text('Date', X.date, y + 6);
       doc.text('Montant', X.mont, y + 6, { width: 58, align: 'right' });
       y += 26;
@@ -425,7 +436,8 @@ function buildRemisePdf({ camping = {}, remise = {}, cheques = [] }) {
 
       y += 8;
       doc.font('Helvetica-Bold').fontSize(11).fillColor(GREEN);
-      doc.text(`Total (${cheques.length} chèque${cheques.length > 1 ? 's' : ''})`, 300, y, { width: 160, align: 'right' });
+      const uniteLib = (remise.moyen_libelle || 'chèque').toLowerCase().includes('ancv') ? 'titre' : 'chèque';
+      doc.text(`Total (${cheques.length} ${uniteLib}${cheques.length > 1 ? 's' : ''})`, 300, y, { width: 160, align: 'right' });
       doc.text(fmtEur(total), 462, y, { width: 80, align: 'right' });
 
       doc.moveDown(3);

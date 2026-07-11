@@ -26,14 +26,26 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
     const { resident_id, mode, montant, date_reglement, reference, statut_cheque } = req.body || {};
     if (!mode || montant == null) return res.status(400).json({ error: 'mode et montant requis' });
 
+    // Le mode doit correspondre à un moyen de paiement actif du camping.
+    let moyen = null;
+    const { data: moyens } = await supabase.from('moyens_paiement')
+      .select('code,libelle,remisable,actif').eq('camping_id', req.activeCampingId).eq('code', mode).maybeSingle()
+      .then((r) => r, () => ({ data: null }));
+    moyen = moyens || null;
+    if (moyen && moyen.actif === false) return res.status(400).json({ error: `Moyen de paiement « ${moyen.libelle} » désactivé` });
+
     let affectations = Array.isArray(req.body.affectations) ? req.body.affectations : null;
     if (!affectations && resident_id) affectations = await autoAffectations(req.activeCampingId, resident_id, montant);
     affectations = affectations || [];
 
+    // Un moyen remisable (chèque, ANCV…) entre dans le circuit des remises : statut « reçu ».
+    const remisable = moyen ? !!moyen.remisable : mode === 'cheque';
+    const statut = statut_cheque || (remisable ? 'recu' : null);
+
     const { data: reglement, error } = await supabase.from('reglements').insert({
       camping_id: req.activeCampingId, resident_id: resident_id || null, mode, montant,
       date_reglement: date_reglement || new Date().toISOString().slice(0, 10),
-      reference: reference || null, statut_cheque: statut_cheque || null, affectations,
+      reference: reference || null, statut_cheque: statut, affectations,
       auteur_id: req.user.uid,
     }).select().single();
     if (error) throw error;
