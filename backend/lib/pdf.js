@@ -2,6 +2,19 @@ const PDFDocument = require('pdfkit');
 
 const GREEN = '#0E6E63';
 const INK = '#14302E';
+const SAPIN = '#175243';
+const LAITON = '#B98A3C';
+const IVOIRE = '#F6F3EC';
+const GRIS = '#6B7A74';
+const HAIR = '#E4DFD3';
+
+// échéance = date_emission + délai (jours). Renvoie une date FR ou ''.
+function echeanceStr(dateEmission, delai) {
+  if (!dateEmission) return '';
+  const d = new Date(dateEmission);
+  d.setDate(d.getDate() + Number(delai || 0));
+  return d.toLocaleDateString('fr-FR');
+}
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -128,73 +141,103 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
     try {
       const params = (camping.parametres && camping.parametres.facturation) || {};
       const isAvoir = facture.statut === 'avoir';
-      const isProforma = !!facture.proforma;
-      const doc = new PDFDocument({ size: 'A4', margin: 56 });
+      const isProforma = !!facture.proforma || facture.nature === 'proforma';
+      const accent = isProforma ? GRIS : SAPIN;
+      const doc = new PDFDocument({ size: 'A4', margin: 0 });
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const L = 56, R = 539;          // largeur utile : 483 pt
-      const headerY = 48;
+      const L = 56, R = 539, W = R - L;     // largeur utile 483
 
-      // --- Logo (optionnel) ---
+      // ===== Bandeau de tête (filet laiton) =====
+      doc.rect(0, 0, doc.page.width, 4).fill(accent);
+      doc.rect(0, 4, doc.page.width, 2).fill(LAITON);
+
+      const headerY = 54;
+      // Logo dans une pastille verte, ou monogramme
       let sellerX = L;
+      const logoBox = 56;
       if (camping.logo && Buffer.isBuffer(camping.logo)) {
-        try { doc.image(camping.logo, L, headerY, { fit: [112, 58] }); sellerX = L + 124; }
-        catch (_) { /* logo illisible : ignoré */ }
+        try {
+          doc.roundedRect(L, headerY, logoBox, logoBox, 12).fill(accent);
+          doc.image(camping.logo, L + 6, headerY + 6, { fit: [logoBox - 12, logoBox - 12] });
+          sellerX = L + logoBox + 16;
+        } catch (_) { sellerX = L; }
+      } else if (camping.nom || camping.raison_sociale) {
+        doc.roundedRect(L, headerY, logoBox, logoBox, 12).fill(accent);
+        doc.fillColor('#F2EBDD').font('Helvetica-Bold').fontSize(28)
+          .text(((camping.raison_sociale || camping.nom || 'C')[0] || 'C').toUpperCase(),
+            L, headerY + 15, { width: logoBox, align: 'center' });
+        sellerX = L + logoBox + 16;
       }
 
-      // --- Émetteur ---
-      doc.fillColor(INK).font('Helvetica-Bold').fontSize(13)
-        .text(camping.raison_sociale || camping.nom || 'Camping', sellerX, headerY, { width: 300 });
-      doc.font('Helvetica').fontSize(8.5).fillColor('#555');
-      if (camping.adresse) doc.text(camping.adresse, sellerX, undefined, { width: 300 });
-      const contact = [camping.telephone, camping.email].filter(Boolean).join('   ·   ');
-      if (contact) doc.text(contact, sellerX, undefined, { width: 300 });
-      const legal = [camping.siret ? `SIRET ${camping.siret}` : null, camping.tva ? `TVA ${camping.tva}` : null]
-        .filter(Boolean).join('   ·   ');
-      if (legal) doc.text(legal, sellerX, undefined, { width: 300 });
+      // Émetteur
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(14)
+        .text(camping.raison_sociale || camping.nom || 'Camping', sellerX, headerY + 2, { width: 250 });
+      doc.font('Helvetica').fontSize(8.5).fillColor(GRIS);
+      const eLines = [camping.adresse,
+        [camping.telephone, camping.email].filter(Boolean).join('   ·   '),
+        [camping.siret ? 'SIRET ' + camping.siret : null, camping.tva ? 'TVA ' + camping.tva : null].filter(Boolean).join('   ·   ')]
+        .filter(Boolean);
+      let ey = headerY + 22;
+      eLines.forEach((t) => { doc.text(t, sellerX, ey, { width: 250 }); ey += 12; });
 
-      // --- Titre + méta (droite) ---
-      doc.fillColor(isProforma ? '#8A8A8A' : GREEN).font('Helvetica-Bold').fontSize(20)
-        .text(isProforma ? 'PROFORMA' : (isAvoir ? 'AVOIR' : 'FACTURE'), 360, headerY, { width: 179, align: 'right' });
-      doc.fillColor('#222').font('Helvetica').fontSize(9);
-      if (!isProforma) doc.text(`N° ${facture.numero || '—'}`, 360, undefined, { width: 179, align: 'right' });
-      else doc.text('Document non comptable', 360, undefined, { width: 179, align: 'right' });
-      doc.text(`Date : ${fmtDate(facture.date_emission)}`, 360, undefined, { width: 179, align: 'right' });
-      if (facture.periode) doc.text(`Période : ${facture.periode}`, 360, undefined, { width: 179, align: 'right' });
+      // Titre à droite
+      doc.fillColor(accent).font('Helvetica-Bold').fontSize(26)
+        .text(isProforma ? 'PROFORMA' : (isAvoir ? 'AVOIR' : 'FACTURE'), 340, headerY - 2, { width: 199, align: 'right' });
+      doc.font('Helvetica').fontSize(9.5).fillColor('#333');
+      let my = headerY + 34;
+      const meta = (label, val) => {
+        doc.fillColor(GRIS).font('Helvetica').text(label, 340, my, { width: 100, align: 'right' });
+        doc.fillColor(INK).font('Helvetica-Bold').text(val, 444, my, { width: 95, align: 'right' });
+        my += 15;
+      };
+      if (!isProforma) meta('N°', facture.numero || '—'); else meta('Réf.', 'Non comptable');
+      meta('Date', fmtDate(facture.date_emission));
+      if (facture.periode) meta('Période', facture.periode);
+      const ech = echeanceStr(facture.date_emission, params.delai_paiement);
+      if (ech && !isProforma && !isAvoir) meta('Échéance', ech);
 
-      // --- Client (encadré) ---
+      // ===== Bloc client encadré =====
       const clientY = 150;
-      doc.roundedRect(340, clientY, 199, 68, 5).lineWidth(1).stroke('#DADED9');
-      doc.fillColor('#666').font('Helvetica-Bold').fontSize(8).text('FACTURÉ À', 350, clientY + 8);
-      doc.fillColor('#222').font('Helvetica-Bold').fontSize(10)
-        .text(`${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', 350, clientY + 20, { width: 179 });
+      doc.roundedRect(L, clientY, 250, 86, 8).fill(IVOIRE);
+      doc.roundedRect(L, clientY, 250, 86, 8).lineWidth(1).stroke(HAIR);
+      doc.rect(L, clientY + 10, 3, 66).fill(LAITON);
+      doc.fillColor(LAITON).font('Helvetica-Bold').fontSize(8).text('FACTURÉ À', L + 16, clientY + 12, { characterSpacing: 1 });
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(12)
+        .text(`${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', L + 16, clientY + 26, { width: 224 });
       doc.font('Helvetica').fontSize(9).fillColor('#444');
-      if (resident.adresse) doc.text(resident.adresse, 350, undefined, { width: 179 });
-      if (resident.email) doc.text(resident.email, 350, undefined, { width: 179 });
+      let cy = clientY + 44;
+      if (resident.adresse) { doc.text(resident.adresse, L + 16, cy, { width: 224 }); cy += 12; }
+      if (resident.email) { doc.text(resident.email, L + 16, cy, { width: 224 }); cy += 12; }
+      if (resident.compte_comptable) doc.fillColor(GRIS).fontSize(8).text('Compte ' + resident.compte_comptable, L + 16, cy, { width: 224 });
 
-      // --- Tableau des lignes ---
-      let y = clientY + 88;
-      const C = { des: 56, du: 196, au: 244, nu: 292, qte: 322, puht: 352, totht: 402, tva: 452, ttc: 486 };
+      // ===== Tableau =====
+      let y = clientY + 108;
+      const C = { des: L, du: 214, au: 258, nu: 302, qte: 330, puht: 360, totht: 410, tva: 458, ttc: 488 };
+      const hasDates = (facture.lignes || []).some((l) => l.date_debut || l.date_fin || l.nuits != null);
+
       const drawHeader = () => {
-        doc.rect(L, y, 483, 18).fill(GREEN);
-        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5);
-        doc.text('Désignation', C.des + 3, y + 5, { width: 136 });
-        doc.text('Du', C.du, y + 5, { width: 46 });
-        doc.text('Au', C.au, y + 5, { width: 46 });
-        doc.text('Nuits', C.nu, y + 5, { width: 26, align: 'right' });
-        doc.text('Qté', C.qte, y + 5, { width: 26, align: 'right' });
-        doc.text('PU HT', C.puht, y + 5, { width: 46, align: 'right' });
-        doc.text('Total HT', C.totht, y + 5, { width: 46, align: 'right' });
-        doc.text('TVA', C.tva, y + 5, { width: 30, align: 'right' });
-        doc.text('TTC', C.ttc, y + 5, { width: 51, align: 'right' });
-        y += 22;
+        doc.roundedRect(L, y, W, 22, 4).fill(accent);
+        doc.fillColor('#EAF3F0').font('Helvetica-Bold').fontSize(7.5);
+        doc.text('DÉSIGNATION', C.des + 8, y + 7, { width: 150 });
+        if (hasDates) {
+          doc.text('DU', C.du, y + 7, { width: 42 });
+          doc.text('AU', C.au, y + 7, { width: 42 });
+          doc.text('NUITS', C.nu, y + 7, { width: 26, align: 'right' });
+        }
+        doc.text('QTÉ', C.qte, y + 7, { width: 26, align: 'right' });
+        doc.text('PU HT', C.puht, y + 7, { width: 46, align: 'right' });
+        doc.text('TOTAL HT', C.totht, y + 7, { width: 44, align: 'right' });
+        doc.text('TVA', C.tva, y + 7, { width: 26, align: 'right' });
+        doc.text('TTC', C.ttc, y + 7, { width: 43, align: 'right' });
+        y += 26;
       };
       drawHeader();
 
-      const recap = {};   // taux -> { base, tva }
+      const recap = {};
       (facture.lignes || []).forEach((l, i) => {
         const q = Number(l.quantite || 1);
         const pu = Number(l.pu_ht || 0);
@@ -205,71 +248,81 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
         recap[taux] = recap[taux] || { base: 0, tva: 0 };
         recap[taux].base += ht; recap[taux].tva += tvaM;
 
-        const hDes = doc.heightOfString(String(l.designation || ''), { width: 136, fontSize: 7.5 });
-        const rowH = Math.max(hDes, 10) + 6;
-        if (y + rowH > 720) { doc.addPage(); y = 56; drawHeader(); }
-        if (i % 2 === 1) { doc.rect(L, y - 3, 483, rowH).fillOpacity(0.05).fill(GREEN).fillOpacity(1); }
-        doc.fillColor('#222').font('Helvetica').fontSize(7.5);
-        doc.text(String(l.designation || ''), C.des + 3, y, { width: 136 });
-        doc.text(fmtDateShort(l.date_debut), C.du, y, { width: 46 });
-        doc.text(fmtDateShort(l.date_fin), C.au, y, { width: 46 });
-        doc.text(l.nuits != null ? String(l.nuits) : '', C.nu, y, { width: 26, align: 'right' });
+        const hDes = doc.heightOfString(String(l.designation || ''), { width: 150, fontSize: 9 });
+        const rowH = Math.max(hDes, 12) + 9;
+        if (y + rowH > 700) { doc.addPage(); doc.rect(0, 0, doc.page.width, 4).fill(accent); y = 56; drawHeader(); }
+        if (i % 2 === 1) { doc.rect(L, y - 4, W, rowH).fill('#FBF9F4'); }
+        doc.fillColor(INK).font('Helvetica-Bold').fontSize(9);
+        doc.text(String(l.designation || ''), C.des + 8, y, { width: 150 });
+        doc.font('Helvetica').fontSize(9).fillColor('#444');
+        if (hasDates) {
+          doc.text(fmtDateShort(l.date_debut), C.du, y, { width: 42 });
+          doc.text(fmtDateShort(l.date_fin), C.au, y, { width: 42 });
+          doc.text(l.nuits != null ? String(l.nuits) : '', C.nu, y, { width: 26, align: 'right' });
+        }
         doc.text(String(q), C.qte, y, { width: 26, align: 'right' });
         doc.text(fmtEur(pu), C.puht, y, { width: 46, align: 'right' });
-        doc.text(fmtEur(ht), C.totht, y, { width: 46, align: 'right' });
-        doc.text(`${taux} %`, C.tva, y, { width: 30, align: 'right' });
-        doc.text(fmtEur(ttc), C.ttc, y, { width: 51, align: 'right' });
+        doc.fillColor(INK).text(fmtEur(ht), C.totht, y, { width: 44, align: 'right' });
+        doc.fillColor('#444').text(`${taux} %`, C.tva, y, { width: 26, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor(INK).text(fmtEur(ttc), C.ttc, y, { width: 43, align: 'right' });
         y += rowH;
+        doc.moveTo(L, y - 3).lineTo(R, y - 3).lineWidth(0.5).strokeColor('#EFEBE0').stroke();
       });
 
-      doc.moveTo(L, y + 2).lineTo(R, y + 2).lineWidth(0.5).stroke('#DADED9');
-      y += 14;
-
-      // --- Récap TVA (gauche) + Totaux (droite) ---
+      y += 16;
       const blockY = y;
+
+      // Récap TVA (gauche)
       const tauxList = Object.keys(recap).map(Number).sort((a, b) => a - b);
       if (tauxList.length) {
-        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#666');
-        doc.text('Taux', 56, y, { width: 44 });
-        doc.text('Base HT', 100, y, { width: 66, align: 'right' });
-        doc.text('Montant TVA', 170, y, { width: 74, align: 'right' });
-        y += 12;
-        doc.font('Helvetica').fontSize(7.5).fillColor('#222');
+        const boxH = 22 + tauxList.length * 13;
+        doc.roundedRect(L, blockY, 230, boxH, 8).fill(IVOIRE);
+        doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(7.5);
+        doc.text('TAUX', L + 12, blockY + 10, { width: 44 });
+        doc.text('BASE HT', L + 60, blockY + 10, { width: 74, align: 'right' });
+        doc.text('MONTANT TVA', L + 138, blockY + 10, { width: 80, align: 'right' });
+        let ry = blockY + 24;
+        doc.font('Helvetica').fontSize(8.5).fillColor(INK);
         tauxList.forEach((t) => {
-          doc.text(`${t} %`, 56, y, { width: 44 });
-          doc.text(fmtEur(recap[t].base), 100, y, { width: 66, align: 'right' });
-          doc.text(fmtEur(recap[t].tva), 170, y, { width: 74, align: 'right' });
-          y += 11;
+          doc.text(`${t} %`, L + 12, ry, { width: 44 });
+          doc.text(fmtEur(recap[t].base), L + 60, ry, { width: 74, align: 'right' });
+          doc.text(fmtEur(recap[t].tva), L + 138, ry, { width: 80, align: 'right' });
+          ry += 13;
         });
       }
 
-      let ty = blockY;
-      const totRow = (label, val, bold) => {
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 11 : 9).fillColor(bold ? GREEN : '#222');
-        doc.text(label, 360, ty, { width: 100, align: 'right' });
-        doc.text(fmtEur(val), 462, ty, { width: 77, align: 'right' });
-        ty += bold ? 18 : 14;
+      // Totaux (droite)
+      let ty = blockY + 2;
+      const totRow = (label, val) => {
+        doc.font('Helvetica').fontSize(9.5).fillColor(GRIS).text(label, 330, ty, { width: 110, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor(INK).text(fmtEur(val), 444, ty, { width: 95, align: 'right' });
+        ty += 16;
       };
       totRow('Total HT', facture.total_ht);
       totRow('TVA', facture.total_tva);
-      totRow(isAvoir ? 'Total avoir TTC' : 'Total TTC', facture.total_ttc, true);
+      ty += 4;
+      doc.roundedRect(330, ty, 209, 34, 8).fill(accent);
+      doc.fillColor('#EAF3F0').font('Helvetica-Bold').fontSize(9)
+        .text(isAvoir ? 'TOTAL AVOIR TTC' : 'TOTAL TTC', 344, ty + 12, { width: 90 });
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(15)
+        .text(fmtEur(facture.total_ttc), 424, ty + 9, { width: 103, align: 'right' });
 
-      y = Math.max(y, ty) + 24;
+      y = Math.max(ty + 34, blockY + (tauxList.length ? 30 + tauxList.length * 13 : 0)) + 28;
 
-      // --- Mentions légales ---
-      doc.fillColor('#666').font('Helvetica').fontSize(7.5);
-      if (isProforma) doc.text('Proforma établie à titre indicatif — ne vaut pas facture.', 56, y, { width: 483 });
-      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) doc.text(params.mention_tva, 56, isProforma ? undefined : y, { width: 483 });
-      doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}`, 56, undefined, { width: 483 });
-      doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement de 40 €.', 56, undefined, { width: 483 });
-      if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', 56, undefined, { width: 483 });
+      // ===== Mentions =====
+      doc.fillColor(GRIS).font('Helvetica').fontSize(8);
+      if (isProforma) { doc.text('Proforma établie à titre indicatif — ne vaut pas facture et n\u2019ouvre aucun droit à déduction de TVA.', L, y, { width: W }); y = doc.y + 2; }
+      if (Number(facture.total_tva || 0) === 0 && params.mention_tva) { doc.text(params.mention_tva, L, y, { width: W }); y = doc.y + 2; }
+      doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}${ech && !isProforma && !isAvoir ? '  ·  Échéance : ' + ech : ''}`, L, y, { width: W });
+      doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement de 40 €.', L, doc.y + 2, { width: W });
+      if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', L, doc.y + 2, { width: W });
 
-      // --- Pied de page légal ---
-      doc.moveDown(0.8);
+      // ===== Pied de page =====
+      const footY = 792;
+      doc.moveTo(L, footY).lineTo(R, footY).lineWidth(0.5).strokeColor(HAIR).stroke();
       const foot = [camping.raison_sociale || camping.nom, camping.adresse,
-        camping.siret ? 'SIRET ' + camping.siret : null, camping.tva ? 'TVA ' + camping.tva : null]
-        .filter(Boolean).join(' — ');
-      if (foot) doc.fillColor('#999').fontSize(6.5).text(foot, 56, undefined, { width: 483, align: 'center' });
+        camping.siret ? 'SIRET ' + camping.siret : null].filter(Boolean).join('  —  ');
+      if (foot) doc.fillColor('#A69C86').font('Helvetica').fontSize(7).text(foot, L, footY + 6, { width: W, align: 'center' });
 
       doc.end();
     } catch (err) {
