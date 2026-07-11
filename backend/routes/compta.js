@@ -4,6 +4,8 @@ const { writeAudit } = require('../lib/audit');
 const { buildEcritures, toFEC, toCSV } = require('../lib/comptabilite');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
+const { exportCompta } = require('../lib/export-compta');
+
 const router = express.Router();
 router.use(auth, campingScope);
 
@@ -112,6 +114,21 @@ router.get('/tva-encaissements', requireRole('admin', 'comptabilite'), async (re
     const totalTva = r2(Object.values(parTaux).reduce((s2, v) => s2 + v.tva, 0));
     res.json({ debut, fin, par_taux: parTaux, total_tva_exigible: totalTva, non_ventile: nonVentile, reglements: detail });
   } catch (e) { console.error('[compta:tva-enc]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/compta/export-logiciel?debut=&fin=
+// Fichier d'import du logiciel comptable : colonnes fixes 142 car., ISO-8859-1, CRLF.
+router.get('/export-logiciel', requireRole('admin', 'comptabilite'), async (req, res) => {
+  try {
+    const p = periode(req);
+    const { buffer, lignes, pieces } = await exportCompta(req.activeCampingId, p.debut, p.fin);
+    await writeAudit(req, { action: 'export', entite: 'compta',
+      apres: { debut: p.debut, fin: p.fin, lignes, pieces, format: 'colonnes_fixes' } });
+    const mois = String(p.debut).slice(2, 7).replace('-', '');
+    res.setHeader('Content-Type', 'text/plain; charset=ISO-8859-1');
+    res.setHeader('Content-Disposition', `attachment; filename="Ximport_${mois}.txt"`);
+    res.send(buffer);
+  } catch (e) { console.error('[compta:export-logiciel]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;
