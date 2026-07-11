@@ -304,6 +304,29 @@ tr:hover td{background:#FBF9F3}
   padding:6px 14px;transition:transform .12s,box-shadow .12s,border-color .12s}
 .map-chip:hover{transform:translateY(-1px);border-color:var(--brume);box-shadow:var(--shadow-s)}
 
+/* --- Carte : décor (bâtiments, allées, zones) --- */
+.map-wrap{background:
+  linear-gradient(0deg, rgba(23,82,67,.045) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(23,82,67,.045) 1px, transparent 1px),
+  linear-gradient(165deg,#F4F7EF 0%, #EDF2E6 55%, #E8EFE2 100%);
+  background-size:38px 38px, 38px 38px, 100% 100%}
+.celem{pointer-events:all}
+.celem rect,.celem line,.celem circle{transition:filter .15s}
+.celem-lib{font:700 12px "Inter",sans-serif;text-anchor:middle;dominant-baseline:middle;
+  pointer-events:none;letter-spacing:.01em}
+.celem-allee{font:600 10.5px "Inter",sans-serif;fill:#7E7358;text-anchor:middle;dominant-baseline:middle;
+  pointer-events:none;letter-spacing:.08em;text-transform:uppercase}
+.celem-allee-bg{fill:#F7F2E4;stroke:#E4DCC8;stroke-width:1;pointer-events:none}
+.celem-libre{font:600 15px "Fraunces",serif;fill:#3E5A4B;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+.celem.selected rect,.celem.selected line{filter:drop-shadow(0 0 0 2px var(--laiton-vif))}
+.celem.selected > rect{stroke:var(--laiton-vif);stroke-width:2.5}
+.map-wrap.editing .celem{cursor:grab}
+.map-wrap.editing .celem.dragging{cursor:grabbing;opacity:.9}
+.map-wrap.editing .celem rect{filter:drop-shadow(0 2px 5px rgba(15,35,29,.18))}
+.handle{fill:var(--laiton-vif);stroke:#fff;stroke-width:2;cursor:nwse-resize}
+.handle:hover{r:9}
+.layer-pins .pin circle{stroke:#fff;stroke-width:2.5}
+
 /* ---------------- Lignes de facture / prestation ---------------- */
 .fac-ligne{border:1px solid var(--hairline);border-radius:12px;padding:13px 14px;margin-bottom:10px;background:var(--creme)}
 .fac-ligne > input{width:100%;margin-bottom:9px;font-weight:600}
