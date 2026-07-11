@@ -6,6 +6,29 @@ let ACTIVE_CAMPING = localStorage.getItem('lc_camping') || null;
 let USER = null;
 
 /* ---------- utilitaires ---------- */
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+// Ajoute n mois à une date ISO (clamp fin de mois : 31/01 -> 28/02)
+function addMoisISO(iso, n) {
+  if (!iso) return iso;
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const total = (m - 1) + n;
+  const ny = y + Math.floor(total / 12), nm = (total % 12 + 12) % 12;
+  const last = new Date(ny, nm + 1, 0).getDate();
+  return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+function addMoisPeriode(p, n) { return p ? addMoisISO(p + '-01', n).slice(0, 7) : p; }
+// Décale les noms de mois français dans un libellé ("juillet 2026" -> "août 2026")
+function shiftMoisTexte(txt, n) {
+  if (!txt) return txt;
+  return txt.replace(new RegExp(`(${MOIS_FR.join('|')})(\\s+)(\\d{4})`, 'gi'), (all, mois, sp, annee) => {
+    const i = MOIS_FR.indexOf(mois.toLowerCase());
+    if (i < 0) return all;
+    const total = i + n;
+    const ny = Number(annee) + Math.floor(total / 12);
+    const nm = (total % 12 + 12) % 12;
+    return MOIS_FR[nm] + sp + ny;
+  });
+}
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur = (n) => Number(n || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -86,6 +109,9 @@ $('#login-form').addEventListener('submit', async (e) => {
   } finally { btn.disabled = false; }
 });
 $('#logout-btn').addEventListener('click', logout);
+// menu mobile
+document.getElementById('nav-burger')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
+document.querySelectorAll('.nav a').forEach((a) => a.addEventListener('click', () => document.body.classList.remove('nav-open')));
 
 /* ---------- drawer ---------- */
 function openDrawer(html) { $('#drawer-content').innerHTML = html; $('#drawer').classList.remove('hidden'); }
@@ -93,7 +119,7 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, parametres: vueParametres };
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, parametres: vueParametres };
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
   const [name, param] = raw.split('/');
@@ -649,8 +675,9 @@ async function vueFicheClient(id) {
             <td class="right">${eur(f.total_ttc - f.montant_regle)}</td>
             <td class="right">
               <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
-              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
-              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
+              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="dupliquerFacture('${f.id}')">Dupliquer</button>` : ''}
+              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
+              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
             </td>
           </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture.</td></tr>'}</tbody></table>
       </div>
@@ -924,8 +951,9 @@ async function vueFactures() {
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
         <td class="right">
           <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
-          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
-          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="dupliquerFacture('${f.id}')">Dupliquer</button>` : ''}
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
 }
@@ -1134,7 +1162,7 @@ async function vueParametres() {
       email: f.email_exp || undefined,
       email_auto: f.email_auto === 'true',
     };
-    try { await api('/api/camping/parametres', { method: 'PUT', body: { facturation } }); toast('Facturation enregistrée'); }
+    try { await api('/api/camping/parametres', { method: 'PUT', body: { facturation, exercice_debut_mois: Number(f.exercice_debut_mois || 1) } }); toast('Facturation enregistrée'); }
     catch (err) { toast(err.message, true); }
   });
 
@@ -1177,7 +1205,7 @@ window.supprimerArticle = async (id) => {
   catch (err) { toast(err.message, true); }
 };
 
-window.formFacture = async (presetResidentId) => {
+window.formFacture = async (presetResidentId, preset) => {
   const [{ residents }, artRes] = await Promise.all([
     api('/api/residents'),
     api('/api/articles').catch(() => ({ articles: [] })),
@@ -1185,14 +1213,14 @@ window.formFacture = async (presetResidentId) => {
   const actifs = residents.filter((r) => r.actif !== false);
   const articles = artRes.articles || [];
   const articleMap = {}; articles.forEach((a) => { articleMap[a.id] = a; });
-  const mois = new Date().toISOString().slice(0, 7);
+  const mois = (preset && preset.periode) || new Date().toISOString().slice(0, 7);
 
   const ligneRow = (p = {}) => `
     <div class="fac-ligne">
       <input name="designation" placeholder="Désignation" required value="${esc(p.designation || '')}">
       <div class="fac-grid">
-        <label >Du<input name="date_debut" type="date"></label>
-        <label >Au<input name="date_fin" type="date"></label>
+        <label >Du<input name="date_debut" type="date" value="${p.date_debut || ''}"></label>
+        <label >Au<input name="date_fin" type="date" value="${p.date_fin || ''}"></label>
         <label >Qté<input name="quantite" type="number" step="0.01" value="${p.quantite ?? 1}"></label>
         <label >PU HT €<input name="pu_ht" type="number" step="0.01" required value="${p.pu_ht ?? ''}"></label>
         <label >TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}"></label>
@@ -1218,7 +1246,7 @@ window.formFacture = async (presetResidentId) => {
       </div>` : ''}
       <div class="full">
         <div class="muted" style="margin-bottom:6px">Lignes — loyer, taxe, charges, ventes…</div>
-        <div id="fac-lignes">${ligneRow()}</div>
+        <div id="fac-lignes">${(preset && preset.lignes ? preset.lignes.map((l) => ligneRow(l)).join('') : ligneRow())}</div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneFacture()" style="margin-top:4px">+ Ligne libre</button>
       </div>
       <div class="full"><button class="btn btn-primary btn-block">Créer la facture</button></div>
@@ -1252,6 +1280,22 @@ window.formFacture = async (presetResidentId) => {
       route();
     } catch (err) { toast(err.message, true); }
   });
+};
+
+// Duplique une facture sur le mois suivant : période +1, dates de lignes +1 mois,
+// libellés de mois ajustés. Ouvre le formulaaire prérempli pour vérification.
+window.dupliquerFacture = async (id) => {
+  try {
+    const { facture: f } = await api('/api/factures/' + id);
+    const lignes = (f.lignes || []).map((l) => ({
+      designation: shiftMoisTexte(l.designation, 1),
+      date_debut: l.date_debut ? addMoisISO(l.date_debut, 1) : undefined,
+      date_fin: l.date_fin ? addMoisISO(l.date_fin, 1) : undefined,
+      quantite: l.quantite, pu_ht: l.pu_ht, taux_tva: l.taux_tva,
+    }));
+    formFacture(f.resident_id, { periode: addMoisPeriode(f.periode, 1) || undefined, lignes });
+    toast('Facture dupliquée sur le mois suivant — vérifier puis créer');
+  } catch (e) { toast(e.message, true); }
 };
 
 window.runFacturation = async () => {
@@ -1306,7 +1350,65 @@ async function vueReglements() {
     try { await api('/api/reglements', { method: 'POST', body }); toast('Paiement enregistré et lettré'); route(); }
     catch (err) { toast(err.message, true); }
   });
+  // Remises en banque (chèques)
+  $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
+  chargerRemises();
 }
+
+async function chargerRemises() {
+  const zone = $('#remises-zone');
+  if (!zone) return;
+  try {
+    const { en_attente, remises } = await api('/api/remises');
+    zone.innerHTML = `
+      <div class="card">
+        <div class="card-actions"><h2>Chèques à remettre</h2>
+          <button class="btn btn-primary btn-sm" id="btn-remise" ${en_attente.length ? '' : 'disabled'}>Créer la remise</button></div>
+        ${en_attente.length ? `<table><thead><tr><th></th><th>Date</th><th>Tireur</th><th>N° chèque</th><th class="right">Montant</th></tr></thead>
+        <tbody>${en_attente.map((c) => `<tr>
+          <td><input type="checkbox" class="chk-remise" value="${c.id}" checked></td>
+          <td class="muted">${dfr(c.date_reglement)}</td><td>${esc(c.tireur)}</td>
+          <td class="muted">${esc(c.reference || '—')}</td>
+          <td class="right"><strong>${eur(c.montant)}</strong></td></tr>`).join('')}</tbody></table>`
+        : '<p class="muted">Aucun chèque en attente de remise.</p>'}
+      </div>
+      <div class="card">
+        <h2>Remises en banque</h2>
+        ${remises.length ? `<table><thead><tr><th>N°</th><th>Date</th><th>Banque</th><th>Chèques</th><th class="right">Total</th><th>Statut</th><th></th></tr></thead>
+        <tbody>${remises.map((r) => `<tr>
+          <td><strong>${esc(r.numero)}</strong></td><td class="muted">${dfr(r.date_remise)}</td>
+          <td class="muted">${esc(r.banque || '—')}</td><td>${r.nb_cheques}</td>
+          <td class="right">${eur(r.total)}</td>
+          <td><span class="badge ${r.statut === 'encaissee' ? 'reglee' : 'emise'}">${r.statut === 'encaissee' ? 'encaissée' : 'remise'}</span></td>
+          <td class="right">
+            <button class="btn btn-ghost btn-sm" onclick="pdfRemise('${r.id}','${esc(r.numero)}')">Bordereau</button>
+            ${r.statut !== 'encaissee' ? `<button class="btn btn-ghost btn-sm" onclick="encaisserRemise('${r.id}')">Encaissée ✓</button>` : ''}
+          </td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune remise. Sélectionnez des chèques ci-dessus.</p>'}
+      </div>`;
+    const btn = $('#btn-remise');
+    if (btn) btn.addEventListener('click', async () => {
+      const ids = [...document.querySelectorAll('.chk-remise:checked')].map((x) => x.value);
+      if (!ids.length) { toast('Sélectionnez au moins un chèque', true); return; }
+      const banque = prompt('Banque (optionnel) :') || undefined;
+      try {
+        const { remise } = await api('/api/remises', { method: 'POST', body: { reglement_ids: ids, banque } });
+        toast(`Remise ${remise.numero} créée (${ids.length} chèque${ids.length > 1 ? 's' : ''})`);
+        chargerRemises();
+      } catch (e) { toast(e.message, true); }
+    });
+  } catch (e) {
+    zone.innerHTML = `<p class="form-error">Remises : ${esc(e.message)} — exécuter db/12_remises_banque.sql dans Supabase.</p>`;
+  }
+}
+window.pdfRemise = async (id, numero) => {
+  telechargerExport('/api/remises/' + id + '/pdf', 'remise_' + numero + '.pdf');
+};
+window.encaisserRemise = async (id) => {
+  if (!confirm('Marquer cette remise comme encaissée en banque ?')) return;
+  try { await api(`/api/remises/${id}/encaisser`, { method: 'PUT' }); toast('Remise encaissée'); chargerRemises(); }
+  catch (e) { toast(e.message, true); }
+};
+
 
 /* ---------- Impayés ---------- */
 async function vueImpayes() {
@@ -1331,6 +1433,85 @@ async function vueImpayes() {
 window.runRelancesBtn = async () => {
   try { const r = await api('/api/relances/run', { method: 'POST' }); toast(`Relances : ${r.envoyees} envoyée(s), ${r.ignorees} à échoir`); route(); }
   catch (e) { toast(e.message, true); }
+};
+
+/* ---------- Comptabilité ---------- */
+function exerciceCourant(debutMois) {
+  // debutMois : 1-12 (parametres.exercice_debut_mois). Renvoie {debut, fin} ISO de l'exercice en cours.
+  const dm = Math.min(Math.max(Number(debutMois || 1), 1), 12);
+  const now = new Date();
+  let y = now.getFullYear();
+  if (now.getMonth() + 1 < dm) y -= 1;
+  const debut = `${y}-${String(dm).padStart(2, '0')}-01`;
+  const finDate = new Date(y + (dm === 1 ? 0 : 1), dm === 1 ? 11 : dm - 1, 0); // dernier jour du mois précédent, année suivante
+  const fin = `${finDate.getFullYear()}-${String(finDate.getMonth() + 1).padStart(2, '0')}-${String(finDate.getDate()).padStart(2, '0')}`;
+  return { debut, fin };
+}
+
+async function telechargerExport(url, filename) {
+  try {
+    const headers = { Authorization: 'Bearer ' + TOKEN };
+    if (ACTIVE_CAMPING) headers['x-camping-id'] = ACTIVE_CAMPING;
+    const r = await fetch(url, { headers });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Erreur export'); }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { toast(e.message, true); }
+}
+window.telechargerExport = telechargerExport;
+
+async function vueCompta() {
+  const { camping } = await api('/api/camping');
+  const dm = camping?.parametres?.exercice_debut_mois || 1;
+  const ex = exerciceCourant(dm);
+  const mois = new Date().toISOString().slice(0, 7);
+  $('#main').innerHTML = `
+    <div class="page-head"><div><div class="eyebrow">Comptabilité</div><h1>Compta & TVA</h1></div>
+      <span class="muted">Exercice en cours : <strong>${dfr(ex.debut)} → ${dfr(ex.fin)}</strong>${dm !== 1 ? '' : ' (année civile)'}</span></div>
+
+    <div class="card">
+      <div class="card-actions"><h2>TVA sur les encaissements</h2>
+        <div class="toolbar"><input id="tva-mois" type="month" value="${mois}">
+        <button class="btn btn-primary btn-sm" onclick="chargerTva()">Calculer</button></div></div>
+      <p class="muted">TVA exigible au titre des paiements reçus sur le mois (régime des encaissements), ventilée par taux via le lettrage.</p>
+      <div id="tva-resultat" style="margin-top:12px"><p class="muted">Choisir un mois puis « Calculer ».</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Exports comptables</h2></div>
+      <p class="muted">Période par défaut : l'exercice en cours. Modifiable ci-dessous.</p>
+      <div class="toolbar" style="margin-top:10px">
+        <label style="margin:0">Du<input id="exp-debut" type="date" value="${ex.debut}"></label>
+        <label style="margin:0">Au<input id="exp-fin" type="date" value="${ex.fin}"></label>
+        <button class="btn btn-primary" onclick="telechargerExport('/api/compta/fec?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'FEC_' + $('#exp-fin').value + '.txt')">Export FEC</button>
+        <button class="btn btn-ghost" onclick="telechargerExport('/api/compta/export.csv?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'ecritures_' + $('#exp-debut').value + '_' + $('#exp-fin').value + '.csv')">Écritures CSV</button>
+      </div>
+    </div>`;
+}
+
+window.chargerTva = async () => {
+  const m = $('#tva-mois').value;
+  if (!m) return;
+  const [y, mo] = m.split('-').map(Number);
+  const debut = `${m}-01`;
+  const fin = `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`;
+  const el = $('#tva-resultat');
+  el.innerHTML = '<p class="muted">Calcul…</p>';
+  try {
+    const d = await api(`/api/compta/tva-encaissements?debut=${debut}&fin=${fin}`);
+    const taux = Object.entries(d.par_taux).sort((a, b) => Number(b[0]) - Number(a[0]));
+    el.innerHTML = `
+      <table><thead><tr><th>Taux</th><th class="right">Base HT encaissée</th><th class="right">TVA exigible</th><th class="right">TTC encaissé</th></tr></thead>
+      <tbody>${taux.map(([t, v]) => `<tr><td><strong>${t} %</strong></td>
+        <td class="right">${eur(v.base_ht)}</td><td class="right"><strong>${eur(v.tva)}</strong></td><td class="right">${eur(v.ttc)}</td></tr>`).join('')
+        || '<tr><td colspan="4" class="muted">Aucun encaissement sur la période.</td></tr>'}</tbody></table>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px">
+        <span class="muted">${d.non_ventile > 0 ? `⚠️ ${eur(d.non_ventile)} encaissés non lettrés (TVA non ventilable) — lettrer les règlements concernés.` : 'Tous les encaissements sont lettrés.'}</span>
+        <strong>TVA exigible du mois : ${eur(d.total_tva_exigible)}</strong>
+      </div>`;
+  } catch (e) { el.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
 };
 
 /* ---------- go ---------- */

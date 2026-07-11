@@ -140,7 +140,7 @@ input[type="month"],input[type="date"]{cursor:pointer}
 .user-name{font-size:13px;color:#8FA79D;font-weight:500}
 .sidebar-foot .btn-ghost{color:#C3D2CA;border-color:#2E4A41;font-size:13px}
 .sidebar-foot .btn-ghost:hover{background:rgba(255,255,255,.05);border-color:#40655A}
-.main{padding:38px 44px 60px;max-width:1200px}
+.main{padding:38px 44px 60px;max-width:1200px;min-width:0}
 
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:26px;flex-wrap:wrap}
 .page-head .muted{padding-bottom:5px}
@@ -337,19 +337,93 @@ tr:hover td{background:#FBF9F3}
 .toast.err{background:var(--rouge)}
 
 /* ---------------- Responsive & accessibilité ---------------- */
-@media (max-width:880px){
-  .app{grid-template-columns:1fr}
-  .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:16px}
-  .nav{flex-direction:row;flex-wrap:wrap}
-  .nav a.active::before{display:none}
-  .nav a:hover{padding-left:14px}
-  .sidebar-foot{margin:0 0 0 auto;flex-direction:row;align-items:center;border:none;padding:0}
-  .main{padding:22px 18px 40px}
-  .form-grid{grid-template-columns:1fr}
-  h1{font-size:24px}
-  .synth-item{min-width:46%}
-  .synth-item + .synth-item::before{display:none}
-  .conv .prev{max-width:52vw}
-  .msg-row{max-width:88%}
-}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ================================================================
+   MOBILE — refonte complète (≤880px)
+   ================================================================ */
+.nav-burger{display:none}
+
+@media (max-width:880px){
+  /* --- structure : topbar + menu déroulant --- */
+  .app{grid-template-columns:1fr}
+  .sidebar{position:sticky;top:0;z-index:40;height:auto;flex-direction:row;align-items:center;
+    flex-wrap:nowrap;gap:12px;padding:12px 16px;box-shadow:0 4px 18px rgba(15,35,29,.22)}
+  .brand-side{flex:1;min-width:0}
+  .brand-side .brand-mark{width:36px;height:36px;font-size:20px;border-radius:11px}
+  .brand-side .brand-name{font-size:17px}
+  .nav-burger{display:flex;align-items:center;justify-content:center;order:3;
+    width:42px;height:42px;border:1px solid #2E4A41;border-radius:11px;background:transparent;
+    color:#E8EFEA;font-size:19px;cursor:pointer;flex:none}
+  .camping-switch{order:2;max-width:44vw}
+  .nav{display:none;order:10;width:100%;flex-direction:column;gap:2px;padding-top:10px;
+    border-top:1px solid rgba(255,255,255,.08);margin-top:10px}
+  body.nav-open .nav{display:flex}
+  body.nav-open .sidebar{flex-wrap:wrap}
+  .nav a{padding:13px 14px;font-size:15px}
+  .nav a.active::before{display:none}
+  .sidebar-foot{display:none;order:11;width:100%;margin:0;padding-top:10px;
+    flex-direction:row;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.08)}
+  body.nav-open .sidebar-foot{display:flex}
+
+  /* --- contenu --- */
+  .main{padding:18px 14px 90px;max-width:none;min-width:0}
+  body{overflow-x:hidden}
+  h1{font-size:22px}
+  .page-head{flex-direction:column;align-items:stretch;gap:10px;margin-bottom:16px}
+  .page-head .toolbar{width:100%}
+  .toolbar{gap:8px}
+  .toolbar input,.toolbar select{flex:1;min-width:0}
+  .search{min-width:0;width:100%}
+  .toolbar .btn{flex:1;padding:11px 10px;font-size:13.5px}
+
+  /* --- KPI : 2 colonnes --- */
+  .kpis{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+  .kpi{padding:14px 14px 12px}
+  .kpi .v{font-size:22px}
+  .kpi .l{font-size:11.5px}
+
+  /* --- cartes & tableaux : scroll horizontal fluide --- */
+  .card{padding:16px 14px;border-radius:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .card table{min-width:560px}
+  th{padding:8px 8px;font-size:10px}
+  td{padding:11px 8px;font-size:13.5px}
+  td .btn-sm{padding:6px 9px;font-size:12px}
+  .hide-sm{display:none!important}
+  .card-actions{flex-direction:column;align-items:stretch}
+  .card-actions .btn{width:100%}
+
+  /* --- fiche client --- */
+  .fiche-head{gap:12px}
+  .avatar{width:48px;height:48px;font-size:19px;border-radius:14px}
+  .fiche-id h1{font-size:20px}
+  .fiche-meta .chip{font-size:11px;padding:3px 9px}
+  .fiche-solde-bloc{width:100%;text-align:left;display:flex;align-items:baseline;gap:10px;padding:10px 14px}
+  .fiche-solde-bloc .v{font-size:20px}
+  .fiche-actions{gap:6px}
+  .fiche-actions .btn{flex:1;min-width:calc(50% - 6px);padding:11px 8px;font-size:13px}
+  .tabs{gap:0;margin-left:-14px;margin-right:-14px;padding:0 14px}
+  .tabs a{padding:11px 11px;font-size:12.5px}
+
+  /* --- drawer plein écran --- */
+  .drawer-panel{width:100vw;border-radius:0;padding:22px 18px}
+  .form-grid{grid-template-columns:1fr}
+
+  /* --- chat --- */
+  .chat-fil,.pt-fil{max-height:52vh}
+  .bulle{max-width:88%}
+
+  /* --- carte du camping --- */
+  .map-legend{gap:12px;padding:10px 12px;font-size:11.5px}
+  .pin circle{r:15}
+
+  /* --- toast au-dessus du pouce --- */
+  .toast{bottom:18px;width:calc(100vw - 32px);text-align:center}
+}
+
+/* très petits écrans */
+@media (max-width:400px){
+  .kpis{grid-template-columns:1fr 1fr}
+  .kpi .v{font-size:19px}
+  .fiche-actions .btn{min-width:100%}
+}

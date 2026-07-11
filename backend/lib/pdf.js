@@ -278,7 +278,68 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
   });
 }
 
-module.exports = { buildContratPdf, buildFacturePdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
+// Bordereau de remise de chèques en banque. Renvoie un Buffer.
+function buildRemisePdf({ camping = {}, remise = {}, cheques = [] }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 56 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(13).text(camping.raison_sociale || camping.nom || 'Camping');
+      doc.font('Helvetica').fontSize(8.5).fillColor('#555');
+      if (camping.adresse) doc.text(camping.adresse);
+      if (camping.siret) doc.text(`SIRET ${camping.siret}`);
+
+      doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(18)
+        .text('REMISE DE CHÈQUES', 300, 56, { width: 242, align: 'right' });
+      doc.fillColor('#222').font('Helvetica').fontSize(9);
+      doc.text(`Bordereau n° ${remise.numero || '—'}`, 300, undefined, { width: 242, align: 'right' });
+      doc.text(`Date de remise : ${fmtDate(remise.date_remise)}`, 300, undefined, { width: 242, align: 'right' });
+      if (remise.banque) doc.text(`Banque : ${remise.banque}`, 300, undefined, { width: 242, align: 'right' });
+
+      let y = 170;
+      const X = { n: 56, tireur: 96, ref: 300, date: 400, mont: 480 };
+      doc.rect(56, y, 486, 20).fill(GREEN);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
+      doc.text('#', X.n + 4, y + 6);
+      doc.text('Tireur', X.tireur, y + 6);
+      doc.text('N° chèque', X.ref, y + 6);
+      doc.text('Date', X.date, y + 6);
+      doc.text('Montant', X.mont, y + 6, { width: 58, align: 'right' });
+      y += 26;
+
+      let total = 0;
+      doc.font('Helvetica').fontSize(9).fillColor('#222');
+      cheques.forEach((c, i) => {
+        if (i % 2 === 1) { doc.rect(56, y - 4, 486, 18).fillOpacity(0.05).fill(GREEN).fillOpacity(1); }
+        doc.fillColor('#222');
+        doc.text(String(i + 1), X.n + 4, y);
+        doc.text(String(c.tireur || '—').slice(0, 34), X.tireur, y);
+        doc.text(String(c.reference || '—').slice(0, 16), X.ref, y);
+        doc.text(fmtDate(c.date_reglement), X.date, y);
+        doc.text(fmtEur(c.montant), X.mont, y, { width: 58, align: 'right' });
+        total += Number(c.montant || 0);
+        y += 18;
+      });
+
+      y += 8;
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(GREEN);
+      doc.text(`Total (${cheques.length} chèque${cheques.length > 1 ? 's' : ''})`, 300, y, { width: 160, align: 'right' });
+      doc.text(fmtEur(total), 462, y, { width: 80, align: 'right' });
+
+      doc.moveDown(3);
+      doc.font('Helvetica').fontSize(8.5).fillColor('#666')
+        .text('Bordereau à joindre à la remise. Conserver une copie.', 56, y + 40);
+
+      doc.end();
+    } catch (err) { reject(err); }
+  });
+}
+
+module.exports = { buildContratPdf, buildFacturePdf, buildRemisePdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
 
 // Vérifie qu'une image est décodable par le moteur PDF (PNG/JPEG standard, non-CMYK).
 function canEmbedImage(buffer) {

@@ -51,4 +51,67 @@ router.get('/export.csv', requireRole('admin', 'comptabilite'), async (req, res)
   } catch (e) { console.error('[compta:csv]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// GET /api/compta/tva-encaissements?debut=YYYY-MM-DD&fin=YYYY-MM-DD
+// Régime "TVA sur les encaissements" : la TVA est exigible au paiement.
+// Ventile chaque règlement de la période par taux de TVA, au prorata des factures lettrées.
+router.get('/tva-encaissements', requireRole('admin', 'comptabilite'), async (req, res) => {
+  try {
+    const { debut, fin } = periode(req);
+    const [{ data: regs, error: e1 }, { data: factures, error: e2 }] = await Promise.all([
+      supabase.from('reglements').select('id,resident_id,mode,montant,date_reglement,affectations')
+        .eq('camping_id', req.activeCampingId).gte('date_reglement', debut).lte('date_reglement', fin)
+        .order('date_reglement'),
+      supabase.from('factures').select('id,numero,lignes,total_ttc,total_tva')
+        .eq('camping_id', req.activeCampingId),
+    ]);
+    if (e1) throw e1; if (e2) throw e2;
+    const fmap = {}; (factures || []).forEach((f) => { fmap[f.id] = f; });
+
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    // Répartition TTC par taux d'une facture (à partir de ses lignes)
+    function ttcParTaux(f) {
+      const out = {};
+      for (const l of (f.lignes || [])) {
+        const ht = Number(l.montant_ht != null ? l.montant_ht : (l.quantite || 1) * (l.pu_ht || 0));
+        const taux = Number(l.taux_tva || 0);
+        out[taux] = (out[taux] || 0) + ht * (1 + taux / 100);
+      }
+      return out;
+    }
+
+    const parTaux = {};      // taux -> { base_ht, tva, ttc }
+    const detail = [];
+    let nonVentile = 0;      // encaissements sans lettrage (TVA indéterminable)
+    for (const g of (regs || [])) {
+      const affs = Array.isArray(g.affectations) ? g.affectations : [];
+      let resteRegl = Number(g.montant || 0);
+      const dSplit = {};
+      for (const a of affs) {
+        const f = fmap[a.facture_id];
+        if (!f || !Number(f.total_ttc)) continue;
+        const part = Math.min(Number(a.montant || 0), resteRegl);
+        resteRegl = r2(resteRegl - part);
+        const repart = ttcParTaux(f);
+        const totTtc = Object.values(repart).reduce((s2, v) => s2 + v, 0) || Number(f.total_ttc);
+        for (const [taux, ttcTaux] of Object.entries(repart)) {
+          const ratio = ttcTaux / totTtc;
+          const encaisseTaux = part * ratio;
+          const t = Number(taux);
+          const ht = encaisseTaux / (1 + t / 100);
+          const tva = encaisseTaux - ht;
+          if (!parTaux[t]) parTaux[t] = { base_ht: 0, tva: 0, ttc: 0 };
+          parTaux[t].base_ht += ht; parTaux[t].tva += tva; parTaux[t].ttc += encaisseTaux;
+          dSplit[t] = r2((dSplit[t] || 0) + encaisseTaux);
+        }
+      }
+      if (resteRegl > 0.004) nonVentile = r2(nonVentile + resteRegl);
+      detail.push({ id: g.id, date: g.date_reglement, mode: g.mode, montant: g.montant, ventilation: dSplit,
+        non_ventile: resteRegl > 0.004 ? resteRegl : 0 });
+    }
+    for (const t in parTaux) { parTaux[t].base_ht = r2(parTaux[t].base_ht); parTaux[t].tva = r2(parTaux[t].tva); parTaux[t].ttc = r2(parTaux[t].ttc); }
+    const totalTva = r2(Object.values(parTaux).reduce((s2, v) => s2 + v.tva, 0));
+    res.json({ debut, fin, par_taux: parTaux, total_tva_exigible: totalTva, non_ventile: nonVentile, reglements: detail });
+  } catch (e) { console.error('[compta:tva-enc]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;
