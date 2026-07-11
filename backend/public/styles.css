@@ -96,7 +96,7 @@ input::placeholder,textarea::placeholder{color:#AAB4AE;font-weight:400}
 input[type="checkbox"]{width:17px;height:17px;accent-color:var(--sapin);cursor:pointer;padding:0}
 select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:40px;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23175243' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat:no-repeat;background-position:right 14px center}
+  background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px}
 input[type="month"],input[type="date"]{cursor:pointer}
 .form-error{color:var(--rouge);font-size:13px;margin:2px 0 0;text-transform:none;letter-spacing:0;font-weight:500}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -126,8 +126,12 @@ input[type="month"],input[type="date"]{cursor:pointer}
   color:#E8EFEA;display:flex;flex-direction:column;padding:26px 16px 20px;gap:20px;
   position:sticky;top:0;height:100vh;box-shadow:4px 0 24px rgba(15,35,29,.18)}
 .brand-side .brand-name{color:#F2EEE3}
-.camping-switch select{background:#1B372E;color:#E8EFEA;border-color:#2B4A40;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23C9B27E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>")}
+.camping-switch{width:100%}
+.camping-switch select{width:100%;background-color:#1B372E;color:#E8EFEA;border-color:#2B4A40;font-weight:600;
+  padding:10px 36px 10px 13px;font-size:13.5px;text-overflow:ellipsis;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23C9B27E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px}
+.camping-switch select:hover{background-color:#215043;border-color:#3A6152}
 .nav{display:flex;flex-direction:column;gap:3px;margin-top:2px}
 .nav a{position:relative;color:#A8BBB2;text-decoration:none;padding:11px 14px;border-radius:10px;
   font-weight:500;font-size:14px;transition:background .18s,color .18s,padding .18s var(--ease)}
