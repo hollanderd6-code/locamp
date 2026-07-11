@@ -79,11 +79,25 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/residents  (admin, gestionnaire)
+// Génère le prochain compte auxiliaire client : racine + séquence paddée (ex. 411 + 00001)
+async function nextCompteClient(campingId) {
+  const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
+  const cc = (camp?.parametres || {}).comptabilite || {};
+  const racine = String(cc.racine_client || '411').replace(/[^0-9A-Za-z]/g, '');
+  const lng = Math.min(Math.max(Number(cc.longueur_seq_client || 5), 2), 8);
+  const { data: seqData, error } = await supabase.rpc('next_compteur', { p_camping: campingId, p_cle: 'compte_client' });
+  if (error) throw error;
+  const seq = Array.isArray(seqData) ? seqData[0] : seqData;
+  return racine + String(seq).padStart(lng, '0');
+}
+
 router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {
     const body = pick(req.body || {}, RES_FIELDS);
     if (!body.nom) return res.status(400).json({ error: 'nom requis' });
     body.camping_id = req.activeCampingId;
+    try { body.compte_comptable = await nextCompteClient(req.activeCampingId); }
+    catch (e) { console.error('[residents:compte]', e.message); } // non bloquant (colonne absente, etc.)
 
     const { data, error } = await supabase.from('residents').insert(body).select().single();
     if (error) throw error;
@@ -123,6 +137,25 @@ router.put('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
     console.error('[residents:update]', e.message);
     res.status(500).json({ error: 'Erreur serveur' });
   }
+});
+
+// POST /api/residents/attribuer-comptes  (admin) — attribue un compte aux résidents qui n'en ont pas,
+// par ordre de création (numérotation stable).
+router.post('/attribuer-comptes', requireRole('admin'), async (req, res) => {
+  try {
+    const { data: sans, error } = await supabase.from('residents')
+      .select('id,nom,prenom').eq('camping_id', req.activeCampingId)
+      .is('compte_comptable', null).order('created_at');
+    if (error) throw error;
+    let attribues = 0;
+    for (const r of (sans || [])) {
+      const compte = await nextCompteClient(req.activeCampingId);
+      const { error: upErr } = await supabase.from('residents').update({ compte_comptable: compte }).eq('id', r.id);
+      if (!upErr) attribues++;
+    }
+    await writeAudit(req, { action: 'attribuer_comptes', entite: 'residents', apres: { attribues } });
+    res.json({ attribues, restants: (sans || []).length - attribues });
+  } catch (e) { console.error('[residents:attribuer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;

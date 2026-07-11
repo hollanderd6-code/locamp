@@ -19,7 +19,11 @@ const FEC_COLS = ['JournalCode', 'JournalLib', 'EcritureNum', 'EcritureDate', 'C
 
 function fmtDate(d) { return d ? String(d).slice(0, 10).replace(/-/g, '') : ''; }
 function fmtNum(n) { return (Math.round(Number(n || 0) * 100) / 100).toFixed(2).replace('.', ','); }
-function auxNum(residentId) { return residentId ? 'C' + residentId.replace(/-/g, '').slice(0, 10).toUpperCase() : ''; }
+function auxNum(residentId, rmapComptes) {
+  if (!residentId) return '';
+  // compte auxiliaire réel (411…) si attribué, sinon code technique de secours
+  return (rmapComptes && rmapComptes[residentId]) || ('C' + residentId.replace(/-/g, '').slice(0, 10).toUpperCase());
+}
 
 // Construit les lignes d'écritures (partie double) sur une période [debut, fin].
 async function buildEcritures(campingId, debut, fin) {
@@ -33,7 +37,7 @@ async function buildEcritures(campingId, debut, fin) {
       .gte('date_emission', debut).lte('date_emission', fin).order('date_emission'),
     supabase.from('reglements').select('*').eq('camping_id', campingId)
       .gte('date_reglement', debut).lte('date_reglement', fin).order('date_reglement'),
-    supabase.from('residents').select('id,nom,prenom').eq('camping_id', campingId),
+    supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', campingId),
   ]);
   const rmap = {};
   (residents || []).forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom || ''}`.trim(); });
@@ -81,7 +85,7 @@ async function buildEcritures(campingId, debut, fin) {
     const base = { jc: P.journal_ventes, jl: P.journal_ventes_lib, num, date: f.date_emission,
       piece: f.numero, pieceDate: f.date_emission, lib: `${isAvoir ? 'Avoir' : 'Facture'} ${f.numero}` };
     const auxL = rmap[f.resident_id] || '';
-    const aN = auxNum(f.resident_id);
+    const aN = auxNum(f.resident_id, rmapComptes);
 
     let htTaxe = 0, htAutre = 0;
     for (const l of (f.lignes || [])) {
@@ -108,7 +112,7 @@ async function buildEcritures(campingId, debut, fin) {
     const base = { jc: isCaisse ? P.journal_caisse : P.journal_banque, jl: isCaisse ? P.journal_caisse_lib : P.journal_banque_lib,
       num, date: r.date_reglement, piece: r.reference || r.id.slice(0, 8), pieceDate: r.date_reglement, lib: `Règlement ${r.mode} ${r.reference || ''}`.trim() };
     const auxL = rmap[r.resident_id] || '';
-    const aN = auxNum(r.resident_id);
+    const aN = auxNum(r.resident_id, rmapComptes);
     const montant = Number(r.montant || 0);
 
     // lettrage : si le règlement n'affecte qu'une facture soldée

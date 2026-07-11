@@ -1480,6 +1480,18 @@ async function vueCompta() {
     </div>
 
     <div class="card">
+      <div class="card-actions"><h2>Comptes clients (auxiliaires)</h2></div>
+      <p class="muted">Chaque client reçoit automatiquement un numéro de compte à sa création (ex. 41100001). Réglez la racine ci-dessous, puis attribuez un compte aux clients existants qui n'en ont pas.</p>
+      <div class="toolbar" style="margin-top:10px">
+        <label style="margin:0">Racine<input id="cc-racine" value="${esc((camping?.parametres?.comptabilite || {}).racine_client || '411')}" style="width:110px"></label>
+        <label style="margin:0">Chiffres de séquence<input id="cc-lng" type="number" min="2" max="8" value="${(camping?.parametres?.comptabilite || {}).longueur_seq_client || 5}" style="width:90px"></label>
+        <button class="btn btn-ghost" onclick="enregistrerRacine()">Enregistrer</button>
+        <button class="btn btn-primary" onclick="attribuerComptes()">Attribuer aux clients existants</button>
+      </div>
+      <p class="muted" style="margin-top:8px">Aperçu : <strong id="cc-apercu"></strong></p>
+    </div>
+
+    <div class="card">
       <div class="card-actions"><h2>Exports comptables</h2></div>
       <p class="muted">Période par défaut : l'exercice en cours. Modifiable ci-dessous.</p>
       <div class="toolbar" style="margin-top:10px">
@@ -1489,7 +1501,35 @@ async function vueCompta() {
         <button class="btn btn-ghost" onclick="telechargerExport('/api/compta/export.csv?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'ecritures_' + $('#exp-debut').value + '_' + $('#exp-fin').value + '.csv')">Écritures CSV</button>
       </div>
     </div>`;
+  majApercuCompte();
+  $('#cc-racine').addEventListener('input', majApercuCompte);
+  $('#cc-lng').addEventListener('input', majApercuCompte);
 }
+
+function majApercuCompte() {
+  const r = ($('#cc-racine')?.value || '411').replace(/[^0-9A-Za-z]/g, '');
+  const l = Math.min(Math.max(Number($('#cc-lng')?.value || 5), 2), 8);
+  const el = $('#cc-apercu');
+  if (el) el.textContent = r + '1'.padStart(l, '0') + ', ' + r + '2'.padStart(l, '0') + ', …';
+}
+window.enregistrerRacine = async () => {
+  const racine_client = ($('#cc-racine').value || '411').replace(/[^0-9A-Za-z]/g, '');
+  const longueur_seq_client = Math.min(Math.max(Number($('#cc-lng').value || 5), 2), 8);
+  try {
+    const { camping } = await api('/api/camping');
+    const comptabilite = { ...((camping.parametres || {}).comptabilite || {}), racine_client, longueur_seq_client };
+    await api('/api/camping/parametres', { method: 'PUT', body: { comptabilite } });
+    toast('Racine des comptes clients enregistrée');
+    majApercuCompte();
+  } catch (e) { toast(e.message, true); }
+};
+window.attribuerComptes = async () => {
+  if (!confirm('Attribuer un numéro de compte à tous les clients qui n\u2019en ont pas ?')) return;
+  try {
+    const r = await api('/api/residents/attribuer-comptes', { method: 'POST' });
+    toast(`${r.attribues} compte(s) attribué(s)`);
+  } catch (e) { toast(e.message, true); }
+};
 
 window.chargerTva = async () => {
   const m = $('#tva-mois').value;
