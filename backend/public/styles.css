@@ -43,6 +43,10 @@ a{color:var(--sapin)}
 ::selection{background:var(--sapin);color:#F2EEE3}
 .hidden{display:none!important}
 :focus-visible{outline:2px solid var(--sapin);outline-offset:2px;border-radius:4px}
+/* Barre latérale (fond sombre) : anneau laiton discret, en retrait pour ne pas déborder.
+   :focus-visible ne se déclenche qu'au clavier — un clic souris ne laisse aucun cadre. */
+.sidebar :focus-visible{outline:2px solid var(--laiton-vif);outline-offset:-2px;border-radius:10px}
+.sidebar a:focus:not(:focus-visible){outline:none}
 
 /* barres de défilement discrètes */
 *{scrollbar-width:thin;scrollbar-color:#D8D1C0 transparent}
@@ -132,7 +136,8 @@ input[type="month"],input[type="date"]{cursor:pointer}
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23C9B27E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px}
 .camping-switch select:hover{background-color:#215043;border-color:#3A6152}
-.nav{display:flex;flex-direction:column;gap:3px;margin-top:2px}
+.nav{display:flex;flex-direction:column;gap:3px;margin-top:2px;min-width:0}
+.nav a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav a{position:relative;color:#A8BBB2;text-decoration:none;padding:11px 14px;border-radius:10px;
   font-weight:500;font-size:14px;transition:background .18s,color .18s,padding .18s var(--ease)}
 .nav a:hover{background:rgba(255,255,255,.06);color:#F0F4F1;padding-left:17px}
