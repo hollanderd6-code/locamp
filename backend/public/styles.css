@@ -78,11 +78,10 @@ a{color:var(--sapin)}
 
 /* ---------------- Marque ---------------- */
 .brand{display:flex;align-items:center;gap:13px}
-.brand-mark{width:46px;height:46px;border-radius:14px;flex-shrink:0;
-  background:linear-gradient(145deg,var(--sapin) 0%, var(--nuit-2) 100%);
-  color:#F2EBDD;display:flex;align-items:center;justify-content:center;
-  font-family:"Fraunces",serif;font-size:26px;font-weight:700;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 4px 12px rgba(15,35,29,.25)}
+.brand-mark{width:44px;height:44px;flex-shrink:0;line-height:0;
+  border-radius:13px;overflow:hidden;
+  box-shadow:0 3px 10px rgba(15,35,29,.30), inset 0 1px 0 rgba(255,255,255,.10)}
+.brand-mark svg{width:100%;height:100%;display:block}
 .brand-name{font-family:"Fraunces",serif;font-size:21px;font-weight:700;letter-spacing:-.01em}
 .brand-sub{font-size:12.5px;color:var(--brume);margin-top:1px}
 
@@ -127,8 +126,11 @@ input[type="month"],input[type="date"]{cursor:pointer}
 .sidebar{background:
     radial-gradient(500px 300px at 110% -8%, rgba(185,138,60,.13), transparent 60%),
     linear-gradient(178deg,var(--nuit) 0%, #0C1D18 100%);
-  color:#E8EFEA;display:flex;flex-direction:column;padding:26px 16px 20px;gap:20px;
-  position:sticky;top:0;height:100vh;box-shadow:4px 0 24px rgba(15,35,29,.18)}
+  color:#E8EFEA;display:flex;flex-direction:column;padding:22px 14px 16px;gap:0;
+  position:sticky;top:0;height:100vh;height:100dvh;overflow:hidden;
+  box-shadow:4px 0 24px rgba(15,35,29,.18)}
+/* en-tête : ne se comprime jamais */
+.sidebar-head{flex:0 0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:16px}
 .brand-side .brand-name{color:#F2EEE3}
 .camping-switch{width:100%}
 .camping-switch select{width:100%;background-color:#1B372E;color:#E8EFEA;border-color:#2B4A40;font-weight:600;
@@ -136,16 +138,28 @@ input[type="month"],input[type="date"]{cursor:pointer}
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23C9B27E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px}
 .camping-switch select:hover{background-color:#215043;border-color:#3A6152}
-.nav{display:flex;flex-direction:column;gap:3px;margin-top:2px;min-width:0}
-.nav a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nav a{position:relative;color:#A8BBB2;text-decoration:none;padding:11px 14px;border-radius:10px;
-  font-weight:500;font-size:14px;transition:background .18s,color .18s,padding .18s var(--ease)}
-.nav a:hover{background:rgba(255,255,255,.06);color:#F0F4F1;padding-left:17px}
-.nav a.active{background:rgba(255,255,255,.09);color:#fff;font-weight:600}
-.nav a.active::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:3px;
+/* Menu : occupe la place restante et DÉFILE — le pied reste toujours visible. */
+.nav{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  display:flex;flex-direction:column;gap:1px;min-width:0;
+  padding:2px 4px 8px 0;scrollbar-width:thin;scrollbar-color:#2C4A40 transparent}
+.nav::-webkit-scrollbar{width:6px}
+.nav::-webkit-scrollbar-thumb{background:#2C4A40;border-radius:99px}
+.nav::-webkit-scrollbar-track{background:transparent}
+.nav-grp{font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:#6D8478;padding:14px 14px 6px;user-select:none}
+.nav-grp:first-child{padding-top:2px}
+.nav a{position:relative;display:flex;align-items:center;gap:8px;
+  color:#A8BBB2;text-decoration:none;padding:9px 13px;border-radius:9px;
+  font-weight:500;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background .16s,color .16s,padding .16s var(--ease)}
+.nav a:hover{background:rgba(255,255,255,.06);color:#F0F4F1;padding-left:16px}
+.nav a.active{background:rgba(255,255,255,.10);color:#fff;font-weight:600}
+.nav a.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:3px;
   background:linear-gradient(var(--laiton-vif),#8F6A2B)}
-.sidebar-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px;
-  padding-top:16px;border-top:1px solid rgba(255,255,255,.08)}
+/* pas d'anneau de focus sur les liens du menu : l'état actif suffit et il débordait */
+.nav a:focus,.nav a:focus-visible{outline:none}
+.sidebar-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:9px;
+  margin-top:0;padding-top:14px;border-top:1px solid rgba(255,255,255,.10)}
 .user-name{font-size:13px;color:#8FA79D;font-weight:500}
 .sidebar-foot .btn-ghost{color:#C3D2CA;border-color:#2E4A41;font-size:13px}
 .sidebar-foot .btn-ghost:hover{background:rgba(255,255,255,.05);border-color:#40655A}
@@ -402,22 +416,27 @@ tr:hover td{background:#FBF9F3}
 @media (max-width:880px){
   /* --- structure : topbar + menu déroulant --- */
   .app{grid-template-columns:1fr}
-  .sidebar{position:sticky;top:0;z-index:40;height:auto;flex-direction:row;align-items:center;
+  .sidebar{position:sticky;top:0;z-index:40;height:auto;overflow:visible;
+    flex-direction:row;align-items:center;
     flex-wrap:nowrap;gap:12px;padding:12px 16px;box-shadow:0 4px 18px rgba(15,35,29,.22)}
+  /* le conteneur d'en-tête s'efface : ses enfants redeviennent des éléments de la barre */
+  .sidebar-head{display:contents}
   .brand-side{flex:1;min-width:0}
-  .brand-side .brand-mark{width:36px;height:36px;font-size:20px;border-radius:11px}
+  .brand-side .brand-mark{width:36px;height:36px;border-radius:11px}
   .brand-side .brand-name{font-size:17px}
   .nav-burger{display:flex;align-items:center;justify-content:center;order:3;
     width:42px;height:42px;border:1px solid #2E4A41;border-radius:11px;background:transparent;
     color:#E8EFEA;font-size:19px;cursor:pointer;flex:none}
   .camping-switch{order:2;max-width:44vw}
-  .nav{display:none;order:10;width:100%;flex-direction:column;gap:2px;padding-top:10px;
+  .nav{display:none;order:10;width:100%;flex:none;flex-direction:column;gap:2px;padding:10px 0 0;
+    max-height:66vh;overflow-y:auto;
     border-top:1px solid rgba(255,255,255,.08);margin-top:10px}
   body.nav-open .nav{display:flex}
+  .nav-grp{padding:12px 14px 4px}
   body.nav-open .sidebar{flex-wrap:wrap}
   .nav a{padding:13px 14px;font-size:15px}
   .nav a.active::before{display:none}
-  .sidebar-foot{display:none;order:11;width:100%;margin:0;padding-top:10px;
+  .sidebar-foot{display:none;order:11;width:100%;flex:none;margin:0;padding-top:10px;
     flex-direction:row;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.08)}
   body.nav-open .sidebar-foot{display:flex}
 

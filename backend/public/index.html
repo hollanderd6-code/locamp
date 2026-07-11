@@ -15,7 +15,7 @@
 <div id="login-screen" class="login-wrap hidden">
   <div class="login-card">
     <div class="brand">
-      <div class="brand-mark">L</div>
+      <div class="brand-mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" class="brand-mark-svg" role="img" aria-label="Locamp"><defs><linearGradient id="lcBgA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#227057"/><stop offset="1" stop-color="#0E2019"/></linearGradient><linearGradient id="lcBrA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2C97C"/><stop offset="1" stop-color="#B98A3C"/></linearGradient></defs><rect width="64" height="64" rx="17" fill="url(#lcBgA)"/><circle cx="45.5" cy="18.5" r="5.6" fill="url(#lcBrA)"/><path d="M32 11 40 24h-4.6l6 9.6h-4.6L44 45H20l7.2-11.4h-4.6l6-9.6H24z" fill="#F1EBDC"/><rect x="30.2" y="44" width="3.6" height="8.5" rx="1.6" fill="url(#lcBrA)"/></svg></div>
       <div>
         <div class="brand-name">Locamp</div>
         <div class="brand-sub">L'outil des campings résidentiels</div>
@@ -38,31 +38,42 @@
 <div id="app" class="app hidden">
   <aside class="sidebar">
     <button id="nav-burger" class="nav-burger" aria-label="Menu">☰</button>
-    <div class="brand brand-side">
-      <div class="brand-mark">L</div>
-      <div class="brand-name">Locamp</div>
+
+    <div class="sidebar-head">
+      <div class="brand brand-side">
+        <div class="brand-mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" class="brand-mark-svg" role="img" aria-label="Locamp"><defs><linearGradient id="lcBgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#227057"/><stop offset="1" stop-color="#0E2019"/></linearGradient><linearGradient id="lcBrB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2C97C"/><stop offset="1" stop-color="#B98A3C"/></linearGradient></defs><rect width="64" height="64" rx="17" fill="url(#lcBgB)"/><circle cx="45.5" cy="18.5" r="5.6" fill="url(#lcBrB)"/><path d="M32 11 40 24h-4.6l6 9.6h-4.6L44 45H20l7.2-11.4h-4.6l6-9.6H24z" fill="#F1EBDC"/><rect x="30.2" y="44" width="3.6" height="8.5" rx="1.6" fill="url(#lcBrB)"/></svg></div>
+        <div class="brand-name">Locamp</div>
+      </div>
+      <div id="camping-switch" class="camping-switch hidden">
+        <select id="camping-select" title="Camping actif"></select>
+      </div>
     </div>
-    <div id="camping-switch" class="camping-switch hidden">
-      <select id="camping-select" title="Camping actif"></select>
-    </div>
-    <nav class="nav">
+
+    <nav class="nav" id="nav-scroll">
+      <div class="nav-grp">Exploitation</div>
       <a href="#/dashboard" data-nav="dashboard">Tableau de bord</a>
       <a href="#/carte" data-nav="carte">Carte du camping</a>
+      <a href="#/emplacements" data-nav="emplacements">Emplacements</a>
       <a href="#/residents" data-nav="residents">Résidents</a>
       <a href="#/messagerie" data-nav="messagerie">Messagerie <span id="nav-msg-badge" class="hidden"></span></a>
-      <a href="#/emplacements" data-nav="emplacements">Emplacements</a>
+      <a href="#/compteurs" data-nav="compteurs">Compteurs</a>
+
+      <div class="nav-grp">Facturation</div>
       <a href="#/factures" data-nav="factures">Factures</a>
       <a href="#/reglements" data-nav="reglements">Règlements</a>
       <a href="#/impayes" data-nav="impayes">Impayés</a>
-      <a href="#/compteurs" data-nav="compteurs">Compteurs</a>
       <a href="#/compta" data-nav="compta">Comptabilité</a>
+
+      <div class="nav-grp">Configuration</div>
       <a href="#/parametres" data-nav="parametres">Paramètres</a>
       <a href="#/administration" data-nav="administration" id="nav-admin">Administration</a>
     </nav>
+
     <div class="sidebar-foot">
       <span id="user-name" class="user-name"></span>
       <button id="logout-btn" class="btn btn-ghost btn-sm">Se déconnecter</button>
     </div>
+  
   </aside>
   <main id="main" class="main"></main>
 </div>
