@@ -132,6 +132,15 @@ input[type="month"],input[type="date"]{cursor:pointer}
 /* en-tête : ne se comprime jamais */
 .sidebar-head{flex:0 0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:16px}
 .brand-side .brand-name{color:#F2EEE3}
+/* la marque est un lien vers le tableau de bord */
+a.brand-side{text-decoration:none;border-radius:12px;padding:2px;margin:-2px;
+  transition:opacity .16s, transform .16s var(--ease)}
+a.brand-side:hover{opacity:.88}
+a.brand-side:hover .brand-mark{transform:translateY(-1px);
+  box-shadow:0 5px 16px rgba(15,35,29,.42), inset 0 1px 0 rgba(255,255,255,.12)}
+a.brand-side:active{transform:scale(.985)}
+a.brand-side .brand-mark{transition:transform .16s var(--ease), box-shadow .16s}
+a.brand-side:focus-visible{outline:2px solid var(--laiton-vif);outline-offset:2px}
 .camping-switch{width:100%}
 .camping-switch select{width:100%;background-color:#1B372E;color:#E8EFEA;border-color:#2B4A40;font-weight:600;
   padding:10px 36px 10px 13px;font-size:13.5px;text-overflow:ellipsis;
