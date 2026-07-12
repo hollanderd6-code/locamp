@@ -88,7 +88,8 @@ a{color:var(--sapin)}
 /* ---------------- Formulaires ---------------- */
 label{display:flex;flex-direction:column;gap:7px;font-size:11.5px;font-weight:700;
   letter-spacing:.07em;text-transform:uppercase;color:var(--brume)}
-input,select,textarea{font:14.5px/1.4 "Inter",sans-serif;color:var(--encre);
+/* 16px minimum : en dessous, iOS zoome automatiquement au focus (bug classique en app) */
+input,select,textarea{font:16px/1.4 "Inter",sans-serif;color:var(--encre);
   padding:12px 14px;border:1px solid var(--hairline);border-radius:var(--r-s);
   background:var(--carte);transition:border-color .15s, box-shadow .15s;width:100%}
 textarea{resize:vertical;min-height:44px}
@@ -101,6 +102,7 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:40px
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23175243' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px}
 input[type="month"],input[type="date"]{cursor:pointer}
+@media (min-width:900px){input,select,textarea{font-size:14.5px}}
 .form-error{color:var(--rouge);font-size:13px;margin:2px 0 0;text-transform:none;letter-spacing:0;font-weight:500}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .form-grid .full{grid-column:1/-1}
@@ -469,9 +471,10 @@ tr:hover td{background:#FBF9F3}
   .kpi .v{font-size:22px}
   .kpi .l{font-size:11.5px}
 
-  /* --- cartes & tableaux : scroll horizontal fluide --- */
-  .card{padding:16px 14px;border-radius:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .card table{min-width:560px}
+  /* --- cartes --- */
+  /* (les tableaux ne défilent plus horizontalement : ils deviennent des cartes,
+       voir « PASSE MOBILE » en fin de feuille) */
+  .card{padding:16px 14px;border-radius:14px}
   th{padding:8px 8px;font-size:10px}
   td{padding:11px 8px;font-size:13.5px}
   td .btn-sm{padding:6px 9px;font-size:12px}
@@ -541,3 +544,119 @@ a.alerte{transition:transform .14s var(--ease),box-shadow .14s}
 .rel-report td{background:#FBF9F3;font-style:italic}
 .rel-total td{background:var(--ivoire-2);border-top:2px solid var(--hairline);padding-top:12px;padding-bottom:12px}
 tfoot td{font-variant-numeric:tabular-nums}
+
+/* ---------------- Éditeur de zones de signature ---------------- */
+.map-chip.actif{background:var(--sapin);color:#fff;border-color:var(--sapin)}
+.pdf-page .zone:hover{filter:brightness(.94)}
+
+/* ================================================================
+   PASSE MOBILE / APPLICATION
+   Écrans tactiles, encoche iPhone, hauteur dynamique, cibles ≥ 44 px.
+   ================================================================ */
+
+/* Confort tactile : plus de flash gris au tap, pas de sélection accidentelle */
+*{-webkit-tap-highlight-color:transparent}
+.btn,.nav a,.fiche-tab,.map-chip,.row-click,.conv{-webkit-user-select:none;user-select:none}
+input,textarea,select,[contenteditable]{-webkit-user-select:auto;user-select:auto}
+
+/* Encoche et barre d'accueil (iPhone, app Capacitor) */
+.sidebar{padding-top:max(22px, env(safe-area-inset-top))}
+.main{padding-bottom:max(60px, env(safe-area-inset-bottom))}
+.drawer-panel{padding-top:max(30px, env(safe-area-inset-top));
+  padding-bottom:max(30px, env(safe-area-inset-bottom))}
+.toast{bottom:max(26px, calc(env(safe-area-inset-bottom) + 16px))}
+
+/* ---------------- Tableaux : cartes empilées sur mobile ----------------
+   Un tableau à 8 colonnes est illisible sur 390 px. Chaque ligne devient
+   une carte ; l'intitulé de colonne est repris via data-l.                */
+@media (max-width:880px){
+  .card{overflow-x:visible}
+  .card table,.card thead,.card tbody,.card tr,.card td,.card tfoot{
+    display:block;width:100%;min-width:0}
+  .card thead{display:none}
+  .card table{border-collapse:separate}
+  .card tbody tr{background:var(--carte);border:1px solid var(--hairline);border-radius:13px;
+    padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow-s)}
+  .card tbody tr:hover td{background:none}
+  .card td{border:none;padding:6px 0;display:flex;align-items:center;justify-content:space-between;
+    gap:14px;text-align:right;min-height:26px}
+  .card td:empty{display:none}
+  .card td::before{content:attr(data-l);flex:0 0 auto;text-align:left;
+    font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brume)}
+  .card td:not([data-l]){justify-content:flex-start;text-align:left}
+  .card td.right{text-align:right}
+  /* la 1re cellule fait titre de carte */
+  .card tbody td:first-child{padding-top:0;font-size:15px}
+  .card tbody td:last-child{padding-bottom:0;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+  .card tfoot tr{background:var(--ivoire-2);border-color:var(--hairline)}
+  /* actions : boutons confortables */
+  .card td .btn-sm{padding:9px 14px;font-size:13px;min-height:38px}
+}
+
+/* ---------------- Onglets : défilement horizontal ---------------- */
+@media (max-width:880px){
+  .fiche-tabs{display:flex;width:100%;overflow-x:auto;scrollbar-width:none;
+    border-radius:14px;padding:4px;gap:4px}
+  .fiche-tabs::-webkit-scrollbar{display:none}
+  .fiche-tab{flex:0 0 auto;white-space:nowrap;padding:10px 16px;min-height:42px}
+}
+
+/* ---------------- Indicateurs et bandeau de synthèse ---------------- */
+@media (max-width:880px){
+  .kpis{grid-template-columns:repeat(2,1fr);gap:10px}
+  .kpi{padding:15px 16px 13px}
+  .kpi .v{font-size:21px}
+  .kpi .l{font-size:11.5px}
+  .synth{border-radius:14px}
+  .synth-item{flex:1 1 50%;min-width:0;padding:13px 15px}
+  .synth-item .v{font-size:18px}
+  .synth-item + .synth-item::before{display:none}
+  .synth-item:nth-child(odd){border-right:1px solid var(--hairline)}
+  .synth-item:nth-child(n+3){border-top:1px solid var(--hairline)}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ---------------- En-tête de page et barres d'outils ---------------- */
+@media (max-width:880px){
+  .page-head{flex-direction:column;align-items:stretch;gap:14px;margin-bottom:20px}
+  .page-head .toolbar{width:100%}
+  .page-head .toolbar .btn{flex:1;min-height:46px}
+  .toolbar{gap:8px}
+  .toolbar .search{min-width:0;flex:1 1 100%}
+  h1{font-size:23px}
+  .card{padding:18px 16px;border-radius:14px}
+  .card-actions{flex-direction:column;align-items:stretch;gap:12px}
+  .card-actions .toolbar{width:100%}
+}
+
+/* ---------------- Boutons : cibles tactiles ≥ 44 px ---------------- */
+@media (max-width:880px){
+  .btn{min-height:46px;padding:13px 20px}
+  .btn-sm{min-height:40px;padding:10px 15px;font-size:13px}
+  input,select,textarea{min-height:46px}
+  input[type="checkbox"]{width:22px;height:22px}
+  .form-grid{gap:12px}
+}
+
+/* ---------------- Tiroir : plein écran, glissé du bas ---------------- */
+@media (max-width:880px){
+  .drawer-panel{width:100%;max-width:100%;border-radius:20px 20px 0 0;
+    top:auto;bottom:0;height:92dvh;animation:sheetUp .3s var(--ease)}
+  @keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+  .drawer-panel::before{content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);
+    width:38px;height:4px;border-radius:99px;background:var(--hairline)}
+}
+
+/* ---------------- Fil de messages ---------------- */
+@media (max-width:880px){
+  .msg-fil{max-height:52dvh}
+  .msg-row{max-width:86%}
+  .msg-form{position:sticky;bottom:0;background:var(--carte);padding-top:10px}
+}
+
+/* ---------------- Relevé de compte ---------------- */
+@media (max-width:880px){
+  .rel-report td,.rel-total td{background:none}
+  .card tbody tr.rel-report{background:#FBF9F3}
+  .card tfoot tr.rel-total{background:var(--ivoire-2)}
+}

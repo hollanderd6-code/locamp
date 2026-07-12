@@ -188,7 +188,23 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, parametres: vueParametres, administration: vueAdministration };
+// pdf.js (CDN) pour l'éditeur de zones de signature
+function chargerPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return new Promise((ok, ko) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload = () => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      ok();
+    };
+    sc.onerror = ko;
+    document.head.appendChild(sc);
+  });
+}
+
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, signatures: vueSignatures, parametres: vueParametres, administration: vueAdministration };
 let _hashPrec = location.hash;
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
@@ -271,9 +287,9 @@ async function vueDashboard() {
       <tbody>${enRetard.slice(0, 8).map((f) => `
         <tr>
           <td><strong>${esc(f.numero)}</strong></td>
-          <td>${f.resident_id ? `<a href="#/residents/${f.resident_id}" style="color:inherit">${esc(rmap[f.resident_id] || '—')}</a>` : '—'}</td>
-          <td class="right">${eur(f.reste)}</td>
-          <td class="right"><span class="badge en_retard">${f.jours_retard} j</span></td>
+          <td data-l="Résident">${f.resident_id ? `<a href="#/residents/${f.resident_id}" style="color:inherit">${esc(rmap[f.resident_id] || '—')}</a>` : '—'}</td>
+          <td class="right" data-l="Reste dû">${eur(f.reste)}</td>
+          <td class="right" data-l="Retard"><span class="badge en_retard">${f.jours_retard} j</span></td>
           <td class="right">${f.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${f.resident_id}')">Écrire</button>` : ''}</td>
         </tr>`).join('')}</tbody></table>
       ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
@@ -942,9 +958,9 @@ async function vueResidents() {
     $('#res-body').innerHTML = list.map((r) => `
       <tr class="row-click" onclick="location.hash='#/residents/${r.id}'">
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
-        <td class="muted">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
-        <td>${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
-        <td class="right">${eur(r.solde)}</td>
+        <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
+        <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
+        <td class="right" data-l="Solde">${eur(r.solde)}</td>
       </tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
   };
   render(residents);
@@ -1037,10 +1053,10 @@ async function vueFicheClient(id) {
             <td>${p.statut === 'en_cours' ? `<input type="checkbox" class="presta-check" data-pid="${p.id}" data-type="${p.type}" data-ttc="${p.montant_ttc}" onchange="majSelectionPresta('${id}')">` : ''}</td>
             <td>${pillType(p.type)}</td>
             <td><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''}</td>
-            <td class="muted">${p.date_debut ? dfr(p.date_debut) : '—'}</td>
-            <td class="muted">${p.date_fin ? dfr(p.date_fin) : '—'}</td>
-            <td class="right"><strong>${eur(p.montant_ttc)}</strong></td>
-            <td>${etatBadge(p)}</td>
+            <td class="muted" data-l="Du">${p.date_debut ? dfr(p.date_debut) : '—'}</td>
+            <td class="muted" data-l="Au">${p.date_fin ? dfr(p.date_fin) : '—'}</td>
+            <td class="right" data-l="Montant TTC"><strong>${eur(p.montant_ttc)}</strong></td>
+            <td data-l="État">${etatBadge(p)}</td>
             <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
           </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>
         <div id="presta-actionbar" class="selbar hidden">
@@ -1164,15 +1180,15 @@ window.chargerReleve = async (id, annee) => {
             </tr>
             ${d.lignes.map((l) => `
             <tr>
-              <td class="muted">${dfr(l.date)}</td>
-              <td>${l.type === 'reglement'
+              <td class="muted" data-l="Date">${dfr(l.date)}</td>
+              <td data-l="Opération">${l.type === 'reglement'
                     ? `<span class="ptype sejour">Paiement</span> ${esc(l.libelle.replace(/^Paiement — /, ''))}`
                     : l.type === 'avoir'
                       ? `<span class="ptype caution">Avoir</span> ${esc(l.libelle)}`
                       : `<span class="ptype charge">Facture</span> ${esc(l.libelle.replace(/^Facture /, ''))}`}</td>
-              <td class="right">${l.debit ? eur(l.debit) : ''}</td>
-              <td class="right" style="color:var(--sapin)">${l.credit ? eur(l.credit) : ''}</td>
-              <td class="right"><strong>${eur(l.solde)}</strong></td>
+              <td class="right" data-l="Débit">${l.debit ? eur(l.debit) : ''}</td>
+              <td class="right" data-l="Crédit" style="color:var(--sapin)">${l.credit ? eur(l.credit) : ''}</td>
+              <td class="right" data-l="Solde"><strong>${eur(l.solde)}</strong></td>
               <td class="right">${l.facture_id ? `<button class="btn btn-ghost btn-sm" onclick="pdfFacture('${l.facture_id}')">PDF</button>` : ''}</td>
             </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cette année.</td></tr>'}
           </tbody>
@@ -2013,6 +2029,253 @@ window.retirerAcces = async (id, nom) => {
   if (!confirm(`Retirer l\u2019accès de ${nom} à ce camping ? Son compte et ses autres accès sont conservés.`)) return;
   try { await api(`/api/admin/utilisateurs/${id}`, { method: 'DELETE' }); toast('Accès retiré'); route(); }
   catch (e) { toast(e.message, true); }
+};
+
+/* ---------- Signatures électroniques ---------- */
+const SIG_STATUT = { brouillon: 'brouillon', envoye: 'envoyé — en attente', signe: 'signé', refuse: 'refusé', annule: 'annulé' };
+
+async function vueSignatures() {
+  const [{ documents }, { residents }] = await Promise.all([
+    api('/api/signatures'),
+    api('/api/residents'),
+  ]);
+  const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
+
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
+      <button class="btn btn-primary" onclick="formDocSignature()">Déposer un document</button>
+    </div>
+    <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
+
+    <div class="card">
+      ${documents.length ? `<table><thead><tr><th>Document</th><th>Signataire</th><th>Zones</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>
+      <tbody>${documents.map((d) => `
+        <tr>
+          <td><strong>${esc(d.titre)}</strong><div class="muted">${d.nb_pages || 1} page(s)</div></td>
+          <td>${esc(d.resident_nom || '—')}</td>
+          <td class="muted">${(d.champs || []).length}</td>
+          <td><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
+          <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR') : '—'}</td>
+          <td class="right">
+            ${d.statut === 'signe'
+              ? `<button class="btn btn-ghost btn-sm" onclick="voirSignature('${d.id}')">Preuve</button>`
+              : `<button class="btn btn-ghost btn-sm" onclick="editeurZones('${d.id}')">Zones</button>
+                 ${(d.champs || []).length && d.resident_id ? `<button class="btn btn-primary btn-sm" onclick="envoyerSignature('${d.id}')">Envoyer</button>` : ''}
+                 <button class="btn btn-ghost btn-sm" onclick="annulerDocSignature('${d.id}')">Annuler</button>`}
+          </td>
+        </tr>`).join('')}</tbody></table>`
+      : '<p class="muted" style="margin:0">Aucun document. Dépose un PDF pour commencer.</p>'}
+    </div>`;
+}
+
+window.formDocSignature = async () => {
+  const { residents } = await api('/api/residents');
+  const actifs = residents.filter((r) => r.actif !== false && r.email);
+  openDrawer(`
+    <h2>Déposer un document à signer</h2>
+    <p class="muted" style="margin-top:4px">PDF uniquement. Tu placeras ensuite les zones de signature sur le document.</p>
+    <form id="f-docsig" class="form-grid" style="margin-top:14px">
+      <label class="full">Fichier PDF *<input type="file" name="file" accept="application/pdf" required></label>
+      <label class="full">Titre *<input name="titre" required placeholder="Contrat de location — emplacement 077"></label>
+      <label class="full">Signataire *
+        <select name="resident_id" required>
+          <option value="">— choisir —</option>
+          ${actifs.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)} · ${esc(r.email)}</option>`).join('')}
+        </select></label>
+      <label class="full">Message d'accompagnement<textarea name="message" rows="2" style="width:100%"></textarea></label>
+      <div class="full"><button class="btn btn-primary btn-block">Déposer le document</button></div>
+    </form>
+    ${actifs.length ? '' : '<p class="form-error">Aucun résident avec une adresse e-mail — ajoute-la sur sa fiche.</p>'}`);
+
+  $('#f-docsig').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const { document: d } = await api('/api/signatures', { method: 'POST', body: fd });
+      closeDrawer();
+      toast('Document déposé — place maintenant les zones de signature');
+      editeurZones(d.id);
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+/* --- Éditeur de zones : on clique sur le PDF pour poser les champs --- */
+let zonesState = null;
+
+window.editeurZones = async (id) => {
+  await chargerPdfJs();
+  const { document: doc, url } = await api('/api/signatures/' + id);
+  zonesState = { id, champs: [...(doc.champs || [])], outil: 'signature', pages: [] };
+
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <div><div class="eyebrow"><a href="#/signatures" style="color:inherit;text-decoration:none">← Signatures</a></div>
+        <h1>${esc(doc.titre)}</h1></div>
+      <div class="toolbar">
+        <button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'">Fermer</button>
+        <button class="btn btn-primary btn-sm" onclick="enregistrerZones()">Enregistrer les zones</button>
+      </div>
+    </div>
+
+    <div class="map-edit-layout">
+      <div>
+        <div class="card" style="padding:14px;background:#EFEAE0">
+          <div id="pdf-pages"></div>
+        </div>
+      </div>
+      <aside class="map-panel">
+        <div class="map-panel-sec">
+          <h3>Outil</h3>
+          <div class="map-chips" id="outils">
+            <button class="map-chip actif" data-t="signature" onclick="choisirOutil('signature')">Signature</button>
+            <button class="map-chip" data-t="texte" onclick="choisirOutil('texte')">Texte</button>
+            <button class="map-chip" data-t="case" onclick="choisirOutil('case')">Case à cocher</button>
+          </div>
+          <p class="map-aide" style="padding:12px 0 0;background:none;border:none">Clique sur le document à l'endroit où placer la zone.</p>
+        </div>
+        <div class="map-panel-sec">
+          <h3>Zones posées <span class="map-count" id="nb-zones">0</span></h3>
+          <div id="liste-zones"></div>
+        </div>
+      </aside>
+    </div>`;
+
+  const box = $('#pdf-pages');
+  const pdf = await pdfjsLib.getDocument(url).promise;
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const larg = Math.min(box.clientWidth - 4, 740);
+    const vp = page.getViewport({ scale: larg / base.width });
+
+    const holder = document.createElement('div');
+    holder.className = 'pdf-page';
+    holder.dataset.page = n;
+    holder.style.cssText = `position:relative;margin:0 auto 14px;width:${vp.width}px;height:${vp.height}px;box-shadow:var(--shadow-s);border-radius:4px;overflow:hidden;background:#fff;cursor:crosshair`;
+
+    const canvas = document.createElement('canvas');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = vp.width * dpr; canvas.height = vp.height * dpr;
+    canvas.style.cssText = 'width:100%;height:100%;display:block';
+    holder.appendChild(canvas);
+    box.appendChild(holder);
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+    holder.addEventListener('click', (e) => {
+      if (e.target.closest('.zone')) return;
+      const r = holder.getBoundingClientRect();
+      poserZone(n, ((e.clientX - r.left) / r.width) * 100, ((e.clientY - r.top) / r.height) * 100);
+    });
+  }
+  dessinerZones();
+};
+
+window.choisirOutil = (t) => {
+  zonesState.outil = t;
+  document.querySelectorAll('#outils .map-chip').forEach((b) => b.classList.toggle('actif', b.dataset.t === t));
+};
+
+function poserZone(page, x, y) {
+  const t = zonesState.outil;
+  const def = t === 'signature' ? { w: 30, h: 9 } : t === 'case' ? { w: 55, h: 2.4 } : { w: 34, h: 4 };
+  let label = null;
+  if (t === 'case') {
+    label = prompt('Texte de la case à cocher', 'Je certifie avoir lu et approuvé le document');
+    if (label === null) return;
+  } else if (t === 'texte') {
+    label = prompt('Intitulé du champ', 'Nom et prénom');
+    if (label === null) return;
+  }
+  zonesState.champs.push({
+    id: 'z' + Math.random().toString(36).slice(2, 9),
+    type: t, page, x: Math.max(0, x - def.w / 2), y: Math.max(0, y - def.h / 2),
+    w: def.w, h: def.h, label, requis: true,
+  });
+  dessinerZones();
+}
+
+function dessinerZones() {
+  document.querySelectorAll('.zone').forEach((z) => z.remove());
+  const COUL = { signature: '#175243', texte: '#3D5A99', case: '#B98A3C' };
+  const LIB = { signature: 'Signature', texte: 'Texte', case: 'Case' };
+
+  for (const c of zonesState.champs) {
+    const holder = document.querySelector(`.pdf-page[data-page="${c.page}"]`);
+    if (!holder) continue;
+    const d = document.createElement('div');
+    d.className = 'zone';
+    d.dataset.id = c.id;
+    d.style.cssText = `position:absolute;left:${c.x}%;top:${c.y}%;width:${c.w}%;height:${c.h}%;
+      border:2px solid ${COUL[c.type]};background:${COUL[c.type]}22;border-radius:4px;
+      display:flex;align-items:center;justify-content:center;font:600 10px Inter,sans-serif;
+      color:${COUL[c.type]};cursor:pointer`;
+    d.title = c.label || LIB[c.type];
+    d.textContent = LIB[c.type];
+    d.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm(`Retirer la zone « ${c.label || LIB[c.type]} » ?`)) {
+        zonesState.champs = zonesState.champs.filter((x) => x.id !== c.id);
+        dessinerZones();
+      }
+    });
+    holder.appendChild(d);
+  }
+
+  $('#nb-zones').textContent = zonesState.champs.length;
+  $('#liste-zones').innerHTML = zonesState.champs.length
+    ? zonesState.champs.map((c) => `<div class="muted" style="font-size:12.5px;padding:5px 0;border-bottom:1px solid #F1EDE2">
+        <strong style="color:${COUL[c.type]}">${LIB[c.type]}</strong> · p.${c.page}${c.label ? ` — ${esc(c.label.slice(0, 30))}` : ''}</div>`).join('')
+    : '<p class="muted" style="margin:0;font-size:12.5px">Aucune zone. Clique sur le document.</p>';
+}
+
+window.enregistrerZones = async () => {
+  try {
+    await api(`/api/signatures/${zonesState.id}/champs`, { method: 'PUT', body: { champs: zonesState.champs } });
+    toast('Zones enregistrées');
+    location.hash = '#/signatures';
+  } catch (e) { toast(e.message, true); }
+};
+
+window.envoyerSignature = async (id) => {
+  if (!confirm('Envoyer le document au signataire par e-mail ?')) return;
+  try {
+    const r = await api(`/api/signatures/${id}/envoyer`, { method: 'POST' });
+    toast(`Document envoyé à ${r.envoye_a}`);
+    route();
+  } catch (e) { toast(e.message, true); }
+};
+
+window.annulerDocSignature = async (id) => {
+  if (!confirm('Annuler ce document ?')) return;
+  try { await api(`/api/signatures/${id}`, { method: 'DELETE' }); toast('Document annulé'); route(); }
+  catch (e) { toast(e.message, true); }
+};
+
+window.voirSignature = async (id) => {
+  const { document: d, url, preuve } = await api('/api/signatures/' + id);
+  openDrawer(`
+    <h2>Preuve de signature</h2>
+    <p class="muted" style="margin-top:4px">${esc(d.titre)}</p>
+    ${preuve ? `
+      <ul class="list-tight" style="margin-top:14px">
+        <li><span>Signataire</span><span><strong>${esc(preuve.signataire_nom)}</strong></span></li>
+        <li><span>E-mail</span><span>${esc(preuve.signataire_email || '—')}</span></li>
+        <li><span>Date et heure</span><span>${new Date(preuve.horodatage).toLocaleString('fr-FR')}</span></li>
+        <li><span>Adresse IP</span><span><code>${esc(preuve.ip)}</code></span></li>
+        <li><span>Navigateur</span><span class="muted" style="font-size:11px">${esc((preuve.user_agent || '—').slice(0, 46))}…</span></li>
+      </ul>
+      <h2 style="margin-top:18px">Intégrité</h2>
+      <p class="muted" style="font-size:11.5px;word-break:break-all;line-height:1.7">
+        Empreinte du document présenté :<br><code>${esc(preuve.hash_original)}</code><br><br>
+        Empreinte du document signé :<br><code>${esc(preuve.hash_signe)}</code></p>
+      ${preuve.signature_png ? `<h2 style="margin-top:18px">Signature manuscrite</h2>
+        <img src="${preuve.signature_png}" alt="signature" style="max-width:100%;border:1px solid var(--hairline);border-radius:8px;background:#fff;padding:8px">` : ''}
+    ` : '<p class="muted">Dossier de preuve introuvable.</p>'}
+    <button class="btn btn-primary btn-block" style="margin-top:18px" onclick="window.open('${url}','_blank')">Ouvrir le document signé</button>`);
 };
 
 async function vueParametres() {
