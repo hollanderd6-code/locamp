@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
+const { inscrireReglement } = require('../lib/fiscal');
 const { recomputeFacture, autoAffectations } = require('../lib/paiement');
 const { getStripe } = require('../lib/stripe');
 const { auth, campingScope, requireRole, requirePerm } = require('../middleware/auth');
@@ -49,6 +50,9 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
       auteur_id: req.user.uid,
     }).select().single();
     if (error) throw error;
+
+    // Inaltérabilité (art. 286-I-3° bis du CGI) : l'encaissement entre dans la chaîne fiscale.
+    await inscrireReglement(req.activeCampingId, reglement, req);
 
     for (const a of affectations) await recomputeFacture(req.activeCampingId, a.facture_id);
 

@@ -2,6 +2,7 @@ const { supabase } = require('./supabase');
 const { buildFacturePdf } = require('./pdf');
 const { uploadDocument, downloadDocument, BUCKET } = require('./storage');
 const { sendEmail } = require('./email');
+const { inscrireFacture } = require('./fiscal');
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -191,7 +192,7 @@ async function envoyerFactureEmail(campingId, factureId, { force = false } = {})
 }
 
 // Crée une facture à partir de lignes déjà prêtes. Renvoie la facture (avec PDF).
-async function creerFacture({ campingId, resident_id, contrat_id, periode, lignes, statut = 'emise', avoir_de = null }) {
+async function creerFacture({ campingId, resident_id, contrat_id, periode, lignes, statut = 'emise', avoir_de = null, req = null }) {
   const t = computeTotals(lignes);
   const numero = await nextNumeroFacture(campingId);
   const { data: facture, error } = await supabase.from('factures').insert({
@@ -201,6 +202,10 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
     statut, avoir_de,
   }).select().single();
   if (error) throw error;
+
+  // Inaltérabilité (art. 286-I-3° bis du CGI) : la facture entre dans la chaîne fiscale.
+  await inscrireFacture(campingId, facture, req);
+
   await genererPdfFacture(campingId, facture).catch((e) => console.error('[pdf facture]', e.message));
 
   // Envoi automatique au résident (si activé) — best-effort, ne bloque ni ne casse la création.

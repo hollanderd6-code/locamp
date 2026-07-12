@@ -21,6 +21,7 @@ const articlesRoutes = require('./routes/articles');
 const prestationsRoutes = require('./routes/prestations');
 const messagesRoutes = require('./routes/messages');
 const adminRoutes = require('./routes/admin');
+const fiscalRoutes = require('./routes/fiscal');
 const carteElementsRoutes = require('./routes/carte-elements');
 const compteursRoutes = require('./routes/compteurs');
 const portailRoutes = require('./routes/portail');
@@ -55,6 +56,14 @@ async function relancesAutomatiques() {
     }
   } catch (e) { console.error('[relances auto]', e.message); }
 }
+// Clôture fiscale journalière automatique (archivage — art. 286-I-3° bis du CGI)
+async function cloturesAutomatiques() {
+  try { await require('./lib/fiscal').cloturerVeille(); }
+  catch (e) { console.error('[fiscal:cloture auto]', e.message); }
+}
+setTimeout(cloturesAutomatiques, 120 * 1000);
+setInterval(cloturesAutomatiques, 6 * 60 * 60 * 1000);
+
 setTimeout(relancesAutomatiques, 90 * 1000);              // au démarrage (après 90 s)
 setInterval(relancesAutomatiques, 12 * 60 * 60 * 1000);   // puis toutes les 12 h
 
@@ -87,6 +96,7 @@ app.use('/api/articles', articlesRoutes);
 app.use('/api/prestations', prestationsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/fiscal', fiscalRoutes);
 app.use('/api/carte-elements', carteElementsRoutes);
 app.use('/api/compteurs', compteursRoutes);
 app.use('/api/portail', portailRoutes);

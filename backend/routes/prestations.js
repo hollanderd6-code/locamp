@@ -190,7 +190,7 @@ router.post('/facturer', requireRole('admin', 'gestionnaire'), async (req, res) 
       campingId: req.activeCampingId,
       resident_id: req.body.resident_id,
       periode: req.body.periode || new Date().toISOString().slice(0, 7),
-      lignes,
+      lignes, req,
     });
     const ids = prestas.map((p) => p.id);
     const { error: upErr } = await supabase.from('prestations')

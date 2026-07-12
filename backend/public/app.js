@@ -1422,7 +1422,12 @@ async function vueAdministration() {
       <button class="fiche-tab active" data-tab="comptes" onclick="switchFicheTab('comptes')">Comptes (${utilisateurs.length})</button>
       <button class="fiche-tab" data-tab="moyens" onclick="switchFicheTab('moyens');chargerMoyens()">Moyens de paiement</button>
       <button class="fiche-tab" data-tab="journal" onclick="switchFicheTab('journal');chargerJournal()">Journal d'activité</button>
+      <button class="fiche-tab" data-tab="fiscal" onclick="switchFicheTab('fiscal');chargerFiscal()">Conformité fiscale</button>
     </div>
+
+    <section data-panel="fiscal" class="hidden">
+      <div id="fiscal-body"><p class="muted">Chargement…</p></div>
+    </section>
 
     <section data-panel="moyens" class="hidden">
       <div class="card">
@@ -1564,6 +1569,98 @@ window.retirerMoyen = async (id, libelle) => {
     toast(r.message || (r.supprime ? 'Moyen supprimé' : 'Moyen désactivé'));
     chargerMoyens();
   } catch (e) { toast(e.message, true); }
+};
+
+window.chargerFiscal = async () => {
+  const box = $('#fiscal-body');
+  if (!box) return;
+  box.innerHTML = '<p class="muted">Vérification de la chaîne…</p>';
+  try {
+    const { chaine, clotures, cumul_perpetuel } = await api('/api/fiscal/etat');
+    const mois = new Date().toISOString().slice(0, 7);
+    const hier = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Inaltérabilité des données</h2>
+            <p class="muted" style="margin:4px 0 0">Loi anti-fraude TVA — article 286-I-3° bis du CGI. Chaque facture, avoir et encaissement est chaîné par empreinte SHA-256.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="attestationFiscale()">Attestation de conformité</button>
+        </div>
+
+        <div class="kpis" style="margin-top:14px">
+          <div class="kpi ${chaine.integre ? '' : 'bad'}">
+            <div class="v">${chaine.integre ? 'Intègre' : 'ROMPUE'}</div>
+            <div class="l">État de la chaîne</div></div>
+          <div class="kpi"><div class="v">${chaine.enregistrements}</div><div class="l">Enregistrements scellés</div></div>
+          <div class="kpi"><div class="v">${eur(cumul_perpetuel)}</div><div class="l">Cumul perpétuel</div></div>
+          <div class="kpi"><div class="v">${clotures.length}</div><div class="l">Clôtures archivées</div></div>
+        </div>
+
+        ${chaine.integre
+          ? `<p class="muted" style="margin-top:6px">Aucune anomalie. Empreinte finale : <code style="font-size:11px">${esc(chaine.empreinte_finale.slice(0, 32))}…</code></p>`
+          : `<div class="card" style="background:var(--rouge-pale);border-color:#E4C4BC;margin-top:12px">
+              <h2 style="color:var(--rouge);margin:0 0 8px">⚠ Anomalies détectées</h2>
+              <ul class="list-tight">${chaine.anomalies.slice(0, 10).map((a) => `<li><span>N° ${a.seq} — ${esc(a.type)}</span><span class="muted">${esc(a.message)}</span></li>`).join('')}</ul>
+              <p class="muted" style="margin:8px 0 0">Une donnée fiscale a été modifiée ou supprimée hors du logiciel. Conserve cette information : elle doit être signalée en cas de contrôle.</p>
+            </div>`}
+      </div>
+
+      <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Clôtures &amp; archivage</h2>
+            <p class="muted" style="margin:4px 0 0">Une clôture est <strong>définitive</strong> : elle fige les totaux de la période et alimente le cumul perpétuel. La clôture journalière est automatique.</p>
+          </div>
+          <div class="toolbar">
+            <select id="clot-type" style="width:auto">
+              <option value="journaliere">Journalière</option>
+              <option value="mensuelle" selected>Mensuelle</option>
+              <option value="annuelle">Annuelle</option>
+            </select>
+            <input id="clot-periode" value="${mois}" style="width:130px" placeholder="2026-07">
+            <button class="btn btn-ghost btn-sm" onclick="lancerCloture()">Clôturer</button>
+            <button class="btn btn-ghost btn-sm" onclick="archiveFiscale()">Archive (JSON)</button>
+          </div>
+        </div>
+        ${clotures.length ? `<table style="margin-top:12px"><thead><tr><th>Type</th><th>Période</th><th class="right">Factures</th><th class="right">Encaissements</th><th class="right">CA TTC</th><th class="right">Encaissé</th><th class="right">Cumul perpétuel</th><th>Scellée le</th></tr></thead>
+        <tbody>${clotures.map((c) => `<tr>
+          <td><span class="ptype ${c.type === 'annuelle' ? 'caution' : c.type === 'mensuelle' ? 'sejour' : 'charge'}">${esc(c.type)}</span></td>
+          <td><strong>${esc(c.periode)}</strong></td>
+          <td class="right">${c.nb_factures}</td>
+          <td class="right">${c.nb_reglements}</td>
+          <td class="right">${eur(c.total_ttc)}</td>
+          <td class="right">${eur(c.total_encaisse)}</td>
+          <td class="right"><strong>${eur(c.cumul_perpetuel)}</strong></td>
+          <td class="muted" style="font-size:12px">${new Date(c.horodatage).toLocaleString('fr-FR')}</td>
+        </tr>`).join('')}</tbody></table>`
+        : '<p class="muted" style="margin-top:12px">Aucune clôture. La première clôture journalière sera créée automatiquement, ou lance-la manuellement ci-dessus.</p>'}
+        <p class="muted" style="margin-top:10px">Format de période : <code>2026-07-11</code> (journalière), <code>2026-07</code> (mensuelle), <code>2026</code> (annuelle).</p>
+      </div>`;
+  } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.lancerCloture = async () => {
+  const type = $('#clot-type').value;
+  const periode = $('#clot-periode').value.trim();
+  if (!periode) { toast('Indique la période', true); return; }
+  if (!confirm(`Clôturer la période ${periode} ?\n\nUne clôture est DÉFINITIVE : les totaux sont figés et scellés, elle ne pourra pas être annulée.`)) return;
+  try {
+    const r = await api('/api/fiscal/cloturer', { method: 'POST', body: { type, periode } });
+    toast(`Période ${periode} clôturée — ${eur(r.cloture.total_ttc)} scellés`);
+    chargerFiscal();
+  } catch (e) { toast(e.message, true); }
+};
+
+window.attestationFiscale = () => {
+  telechargerExport('/api/fiscal/attestation.pdf', 'attestation_conformite_locamp.pdf');
+};
+
+window.archiveFiscale = () => {
+  const fin = new Date().toISOString().slice(0, 10);
+  telechargerExport(`/api/fiscal/archive?debut=2000-01-01&fin=${fin}`, `archive_fiscale_${fin}.json`);
 };
 
 window.chargerJournal = async () => {

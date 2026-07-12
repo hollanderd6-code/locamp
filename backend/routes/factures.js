@@ -40,7 +40,7 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
     const { resident_id, contrat_id, periode, lignes } = req.body || {};
     if (!resident_id) return res.status(400).json({ error: 'resident_id requis' });
     if (!Array.isArray(lignes) || !lignes.length) return res.status(400).json({ error: 'lignes requises' });
-    const facture = await creerFacture({ campingId: req.activeCampingId, resident_id, contrat_id, periode, lignes });
+    const facture = await creerFacture({ campingId: req.activeCampingId, resident_id, contrat_id, periode, lignes, req });
     await writeAudit(req, { action: 'create', entite: 'factures', entite_id: facture.id,
       apres: { numero: facture.numero, total_ttc: facture.total_ttc } });
     res.status(201).json({ facture });
@@ -73,7 +73,7 @@ router.post('/:id/avoir', requireRole('admin', 'gestionnaire'), async (req, res)
     }));
     const avoir = await creerFacture({
       campingId: req.activeCampingId, resident_id: src.resident_id, contrat_id: src.contrat_id,
-      periode: src.periode, lignes: lignesAvoir, statut: 'avoir', avoir_de: src.id,
+      periode: src.periode, lignes: lignesAvoir, statut: 'avoir', avoir_de: src.id, req,
     });
     await supabase.from('factures').update({ statut: 'annulee' })
       .eq('camping_id', req.activeCampingId).eq('id', src.id);
