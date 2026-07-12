@@ -122,9 +122,10 @@ async function cloturer(campingId, type, periode, req) {
   const { debut, fin } = bornes(type, periode);
 
   const [factRes, reglRes, seqRes] = await Promise.all([
+    // Toutes les factures, y compris celles annulées par un avoir : elles ont bien été
+    // émises. L'avoir (montant déjà négatif) les contrepasse ; les exclure fausserait le total.
     supabase.from('factures').select('id,total_ht,total_tva,total_ttc,statut')
-      .eq('camping_id', campingId).gte('date_emission', debut).lte('date_emission', fin)
-      .neq('statut', 'annulee'),
+      .eq('camping_id', campingId).gte('date_emission', debut).lte('date_emission', fin),
     supabase.from('reglements').select('id,montant,mode')
       .eq('camping_id', campingId).gte('date_reglement', debut).lte('date_reglement', fin),
     supabase.from('journal_fiscal').select('seq')
@@ -134,12 +135,13 @@ async function cloturer(campingId, type, periode, req) {
   const factures = factRes.data || [];
   const reglements = reglRes.data || [];
 
+  // Les montants d'un avoir sont DÉJÀ négatifs : aucun signe supplémentaire,
+  // sinon l'avoir gonflerait le chiffre d'affaires au lieu de le réduire.
   let ht = 0, tva = 0, ttc = 0;
   for (const f of factures) {
-    const s = f.statut === 'avoir' ? -1 : 1;
-    ht += s * Number(f.total_ht || 0);
-    tva += s * Number(f.total_tva || 0);
-    ttc += s * Number(f.total_ttc || 0);
+    ht += Number(f.total_ht || 0);
+    tva += Number(f.total_tva || 0);
+    ttc += Number(f.total_ttc || 0);
   }
   const encaisse = reglements.reduce((s, r) => s + Number(r.montant || 0), 0);
 

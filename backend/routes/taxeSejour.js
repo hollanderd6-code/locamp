@@ -238,10 +238,10 @@ router.get('/etat', async (req, res) => {
       for (const l of (f.lignes || [])) {
         if (!estTaxe(l.designation)) continue;
         const m = f.periode || 'inconnu';
+        // montant déjà négatif pour un avoir : pas de signe supplémentaire
         const mt = Number(l.montant_ht != null ? l.montant_ht : (l.quantite || 1) * (l.pu_ht || 0));
-        const signe = f.statut === 'avoir' ? -1 : 1;
-        parMois[m] = r2((parMois[m] || 0) + signe * mt);
-        total = r2(total + signe * mt);
+        parMois[m] = r2((parMois[m] || 0) + mt);
+        total = r2(total + mt);
       }
     }
     res.json({ annee, total, par_mois: parMois });
