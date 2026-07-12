@@ -23,14 +23,89 @@ const messagesRoutes = require('./routes/messages');
 const adminRoutes = require('./routes/admin');
 const fiscalRoutes = require('./routes/fiscal');
 const rgpdRoutes = require('./routes/rgpd');
+const signaturesRoutes = require('./routes/signatures');
 const carteElementsRoutes = require('./routes/carte-elements');
 const compteursRoutes = require('./routes/compteurs');
 const portailRoutes = require('./routes/portail');
 const cronRoutes = require('./routes/cron');
 const { stripeWebhook } = require('./routes/webhooks');
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 const app = express();
-app.use(cors());
+
+/* ==================== SÉCURITÉ ==================== */
+
+// Derrière le proxy de Render : sans ceci, req.ip renvoie l'IP du proxy et non celle
+// du client — le limiteur de débit bloquerait alors tout le monde en même temps.
+app.set('trust proxy', 1);
+
+// En-têtes de sécurité HTTP (HSTS, anti-clickjacking, anti-sniffing…).
+// La politique de contenu autorise ce dont le front a réellement besoin.
+// Note : 'unsafe-inline' reste requis pour les scripts tant que le front utilise
+// des gestionnaires onclick="…" ; le retirer suppose de les refactoriser.
+const SUPABASE = process.env.SUPABASE_URL || '';
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://js.stripe.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:', SUPABASE].filter(Boolean),
+      connectSrc: ["'self'", SUPABASE, 'https://api.stripe.com'].filter(Boolean),
+      frameSrc: ["'self'", 'https://js.stripe.com'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],           // interdit l'inclusion dans une iframe
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,          // sinon les PDF/CDN externes sont bloqués
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+}));
+
+// CORS restreint : seul le domaine de l'application peut appeler l'API.
+const ORIGINES = [process.env.PUBLIC_APP_URL, process.env.PUBLIC_APP_URL_2]
+  .filter(Boolean).map((u) => u.replace(/\/$/, ''));
+app.use(cors({
+  origin(origin, cb) {
+    // requêtes de même origine (front servi par ce serveur) : pas d'en-tête Origin
+    if (!origin) return cb(null, true);
+    if (!ORIGINES.length) return cb(null, true);   // non configuré : on ne casse rien
+    return cb(null, ORIGINES.includes(origin.replace(/\/$/, '')));
+  },
+  credentials: false,
+}));
+
+// ---- Limitation de débit ----
+const limiteur = (max, minutes, message) => rateLimit({
+  windowMs: minutes * 60 * 1000,
+  max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: message },
+});
+
+// Connexion : protège contre la force brute (sans ceci, un attaquant peut
+// tester des millions de mots de passe sans aucune entrave).
+app.use('/api/auth/login', limiteur(8, 15,
+  'Trop de tentatives de connexion. Réessayez dans 15 minutes.'));
+app.use('/api/auth/register', limiteur(5, 60, 'Trop de créations de compte. Réessayez plus tard.'));
+
+// Lien magique du portail : évite l'envoi massif d'e-mails.
+app.use('/api/portail/demande-acces', limiteur(6, 15,
+  'Trop de demandes. Réessayez dans 15 minutes.'));
+
+// Signature électronique (page publique).
+app.use('/api/signatures/signer', limiteur(30, 15, 'Trop de requêtes. Réessayez plus tard.'));
+
+// Garde-fou général sur l'API.
+app.use('/api/', limiteur(600, 15, 'Trop de requêtes. Réessayez dans quelques minutes.'));
+
+/* ================================================== */
 
 // Webhook Stripe : corps brut requis pour la vérification de signature (AVANT express.json)
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
@@ -99,6 +174,7 @@ app.use('/api/messages', messagesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/fiscal', fiscalRoutes);
 app.use('/api/rgpd', rgpdRoutes);
+app.use('/api/signatures', signaturesRoutes);
 app.use('/api/carte-elements', carteElementsRoutes);
 app.use('/api/compteurs', compteursRoutes);
 app.use('/api/portail', portailRoutes);
