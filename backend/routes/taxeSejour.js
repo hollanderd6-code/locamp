@@ -66,17 +66,19 @@ async function releve(campingId, debut, fin) {
       const au = String(l.date_fin || l.date_debut || f.date_emission).slice(0, 10);
       if (du < debut || du > fin) continue;
 
+      // Les montants d'un avoir sont déjà négatifs : on ne réapplique aucun signe.
+      // Seul le nombre de personnes (issu du libellé) doit être passé en négatif.
       const d = detailTaxe(l, tarif);
-      const signe = avoir ? -1 : 1;
+      const negatif = d.montant < 0;
       lignes.push({
         type: avoir ? 'AV' : 'FA',
         numero: f.numero,
         resident: rmap[f.resident_id] || '—',
         du, au,
-        tarif: d.tarif,
-        personnes: d.personnes != null ? signe * d.personnes : null,
-        nuitees: d.nuitees != null ? signe * d.nuitees : null,
-        montant: signe * d.montant,
+        tarif: Math.abs(d.tarif),
+        personnes: d.personnes != null ? (negatif ? -Math.abs(d.personnes) : d.personnes) : null,
+        nuitees: d.nuitees != null ? (negatif ? -Math.abs(d.nuitees) : Math.abs(d.nuitees)) : null,
+        montant: d.montant,
       });
     }
   }

@@ -1,6 +1,8 @@
 const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
+const { buildReleve } = require('../lib/releve');
+const { buildRelevePdf } = require('../lib/pdf');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -156,6 +158,33 @@ router.post('/attribuer-comptes', requireRole('admin'), async (req, res) => {
     await writeAudit(req, { action: 'attribuer_comptes', entite: 'residents', apres: { attribues } });
     res.json({ attribues, restants: (sans || []).length - attribues });
   } catch (e) { console.error('[residents:attribuer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/residents/:id/releve?annee=  -> relevé de compte (grand livre auxiliaire)
+router.get('/:id/releve', async (req, res) => {
+  try {
+    const d = await buildReleve(req.activeCampingId, req.params.id, req.query.annee);
+    if (!d) return res.status(404).json({ error: 'Résident introuvable' });
+    res.json(d);
+  } catch (e) { console.error('[residents:releve]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/residents/:id/releve.pdf?annee=  -> relevé à envoyer au client
+router.get('/:id/releve.pdf', async (req, res) => {
+  try {
+    const d = await buildReleve(req.activeCampingId, req.params.id, req.query.annee);
+    if (!d) return res.status(404).json({ error: 'Résident introuvable' });
+    const { data: camping } = await supabase.from('campings')
+      .select('nom,raison_sociale,adresse,siret,tva').eq('id', req.activeCampingId).maybeSingle();
+
+    const pdf = await buildRelevePdf({ camping: camping || {}, ...d });
+    await writeAudit(req, { action: 'access', entite: 'residents', entite_id: req.params.id,
+      apres: { doc: 'releve', annee: d.annee } });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="releve_${d.annee}.pdf"`);
+    res.send(pdf);
+  } catch (e) { console.error('[residents:releve-pdf]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;

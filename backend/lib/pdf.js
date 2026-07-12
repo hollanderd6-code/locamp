@@ -449,7 +449,129 @@ function buildRemisePdf({ camping = {}, remise = {}, cheques = [] }) {
   });
 }
 
-module.exports = { buildContratPdf, buildFacturePdf, buildRemisePdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
+
+// Relevé de compte client : mouvements chronologiques et solde progressif.
+function buildRelevePdf({ camping = {}, resident = {}, annee, report_a_nouveau = 0,
+                          lignes = [], totaux = {}, solde_total = 0, par_annee = {} }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 46 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const nomCamping = camping.raison_sociale || camping.nom || 'Camping';
+      const nomClient = `${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim();
+
+      doc.fillColor('#111').font('Helvetica-Bold').fontSize(13).text(nomCamping, 46, 46);
+      doc.font('Helvetica').fontSize(8.5).fillColor('#666');
+      if (camping.adresse) doc.text(camping.adresse, 46, 64, { width: 280 });
+      if (camping.siret) doc.text(`SIRET ${camping.siret}`, 46, doc.y);
+
+      doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(16)
+        .text('RELEVÉ DE COMPTE', 300, 46, { width: 249, align: 'right' });
+      doc.fillColor('#222').font('Helvetica').fontSize(10)
+        .text(`Année ${annee}`, 300, doc.y, { width: 249, align: 'right' });
+
+      const cy = 116;
+      doc.roundedRect(340, cy, 209, 62, 5).lineWidth(1).stroke('#DADED9');
+      doc.fillColor('#666').font('Helvetica-Bold').fontSize(8).text('CLIENT', 350, cy + 8);
+      doc.fillColor('#222').font('Helvetica-Bold').fontSize(11).text(nomClient || '—', 350, cy + 20, { width: 189 });
+      doc.font('Helvetica').fontSize(8.5).fillColor('#555');
+      if (resident.compte_comptable) doc.text(`Compte ${resident.compte_comptable}`, 350, doc.y, { width: 189 });
+      if (resident.adresse) doc.text(resident.adresse, 350, doc.y, { width: 189 });
+
+      let y = cy + 76;
+      const X = { date: 50, lib: 108, deb: 372, cre: 442, sol: 549 };
+      const entete = () => {
+        doc.rect(46, y, 503, 17).fill(GREEN);
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
+        doc.text('Date', X.date, y + 5, { width: 54 });
+        doc.text('Libellé', X.lib, y + 5, { width: 250 });
+        doc.text('Débit', X.deb - 56, y + 5, { width: 56, align: 'right' });
+        doc.text('Crédit', X.cre - 56, y + 5, { width: 56, align: 'right' });
+        doc.text('Solde', X.sol - 62, y + 5, { width: 62, align: 'right' });
+        y += 21;
+      };
+      entete();
+
+      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#555');
+      doc.text('Report à nouveau au 1er janvier', X.lib, y, { width: 250 });
+      doc.font('Helvetica-Bold').fillColor('#222')
+        .text(fmtEur(report_a_nouveau), X.sol - 62, y, { width: 62, align: 'right' });
+      y += 14;
+      doc.moveTo(46, y - 2).lineTo(549, y - 2).lineWidth(0.5).stroke('#E7E1D4');
+      y += 3;
+
+      doc.font('Helvetica').fontSize(8.5);
+      lignes.forEach((l, i) => {
+        if (y > 730) { doc.addPage(); y = 46; entete(); doc.font('Helvetica').fontSize(8.5); }
+        if (i % 2 === 1) doc.rect(46, y - 3, 503, 14).fillOpacity(0.045).fill(GREEN).fillOpacity(1);
+        doc.fillColor('#555').text(fmtDate(l.date), X.date, y, { width: 54 });
+        doc.fillColor(l.type === 'reglement' ? '#1E5C4A' : '#222')
+          .text(l.libelle, X.lib, y, { width: 250, ellipsis: true });
+        doc.fillColor('#222');
+        doc.text(l.debit ? fmtEur(l.debit) : '', X.deb - 56, y, { width: 56, align: 'right' });
+        doc.text(l.credit ? fmtEur(l.credit) : '', X.cre - 56, y, { width: 56, align: 'right' });
+        doc.font('Helvetica-Bold').text(fmtEur(l.solde), X.sol - 62, y, { width: 62, align: 'right' });
+        doc.font('Helvetica');
+        y += 14;
+      });
+
+      y += 6;
+      doc.rect(46, y, 503, 20).fill('#EFEAE0');
+      doc.fillColor('#111').font('Helvetica-Bold').fontSize(9);
+      doc.text(`Total ${annee}`, X.lib, y + 6, { width: 250 });
+      doc.text(fmtEur(totaux.facture), X.deb - 56, y + 6, { width: 56, align: 'right' });
+      doc.text(fmtEur(totaux.regle), X.cre - 56, y + 6, { width: 56, align: 'right' });
+      doc.text(fmtEur(totaux.solde_fin), X.sol - 62, y + 6, { width: 62, align: 'right' });
+      y += 30;
+
+      const du = Number(solde_total) > 0.004;
+      const avoirFav = Number(solde_total) < -0.004;
+      doc.roundedRect(46, y, 503, 40, 6).fill(du ? '#F6E7E2' : '#E8F0EC');
+      doc.fillColor(du ? '#A8402A' : '#175243').font('Helvetica-Bold').fontSize(11)
+        .text(du ? `Solde restant dû : ${fmtEur(solde_total)}`
+                 : (avoirFav ? `Avoir en votre faveur : ${fmtEur(Math.abs(solde_total))}`
+                             : 'Compte soldé — aucun montant dû'),
+          56, y + 8, { width: 483 });
+      doc.font('Helvetica').fontSize(8).fillColor('#666')
+        .text('Situation à la date d\u2019édition, toutes années confondues.', 56, y + 24, { width: 483 });
+      y += 52;
+
+      const annees = Object.keys(par_annee).sort().reverse();
+      if (annees.length > 1) {
+        doc.fillColor('#111').font('Helvetica-Bold').fontSize(9).text('Historique par année', 46, y);
+        y += 14;
+        doc.fontSize(8).fillColor('#666').font('Helvetica-Bold');
+        doc.text('Année', 50, y, { width: 50 });
+        doc.text('Facturé', 200, y, { width: 70, align: 'right' });
+        doc.text('Réglé', 290, y, { width: 70, align: 'right' });
+        doc.text('Solde fin d\u2019année', 380, y, { width: 100, align: 'right' });
+        y += 12;
+        doc.font('Helvetica').fillColor('#222');
+        annees.forEach((a) => {
+          const v = par_annee[a];
+          doc.text(a, 50, y, { width: 50 });
+          doc.text(fmtEur(v.facture), 200, y, { width: 70, align: 'right' });
+          doc.text(fmtEur(v.regle), 290, y, { width: 70, align: 'right' });
+          doc.font('Helvetica-Bold').text(fmtEur(v.solde), 380, y, { width: 100, align: 'right' });
+          doc.font('Helvetica');
+          y += 12;
+        });
+      }
+
+      doc.fontSize(7).fillColor('#999')
+        .text(`Relevé édité le ${new Date().toLocaleDateString('fr-FR')} — ${nomCamping}`,
+          46, 790, { width: 503, align: 'center' });
+
+      doc.end();
+    } catch (err) { reject(err); }
+  });
+}
+
+module.exports = { buildContratPdf, buildFacturePdf, buildRelevePdf, buildRemisePdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
 
 // Vérifie qu'une image est décodable par le moteur PDF (PNG/JPEG standard, non-CMYK).
 function canEmbedImage(buffer) {

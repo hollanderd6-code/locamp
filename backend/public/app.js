@@ -1054,32 +1054,7 @@ async function vueFicheClient(id) {
     </section>
 
     <section data-panel="compte" class="hidden">
-      <div class="card">
-        <h2>Factures</h2>
-        <table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Reste</th><th></th></tr></thead>
-        <tbody>${factures.map((f) => `
-          <tr>
-            <td><strong>${esc(f.numero)}</strong></td>
-            <td class="muted">${esc(f.periode || '—')}</td>
-            <td class="muted">${dfr(f.date_emission)}</td>
-            <td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
-            <td class="right">${eur(f.total_ttc)}</td>
-            <td class="right">${eur(f.total_ttc - f.montant_regle)}</td>
-            <td class="right">
-              <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
-              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="dupliquerFacture('${f.id}')">Dupliquer</button>` : ''}
-              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
-              ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
-            </td>
-          </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture.</td></tr>'}</tbody></table>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <h2>Encaissements</h2>
-        <table><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="right">Montant</th></tr></thead>
-        <tbody>${reglements.map((g) => `
-          <tr><td class="muted">${dfr(g.date_reglement)}</td><td class="muted">${esc(g.mode)}</td>
-          <td class="muted">${esc(g.reference || '—')}</td><td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun encaissement.</td></tr>'}</tbody></table>
-      </div>
+      <div id="releve-zone"><p class="muted">Chargement du relevé…</p></div>
     </section>
 
     <section data-panel="messages" class="hidden">
@@ -1121,6 +1096,7 @@ async function vueFicheClient(id) {
       </div>
     </section>`;
 
+  window._ficheClientId = id;
   const fil = $('#fil-messages');
   if (fil) fil.scrollTop = fil.scrollHeight;
   if (window._openTab) { switchFicheTab(window._openTab); window._openTab = null; }
@@ -1141,6 +1117,94 @@ async function vueFicheClient(id) {
 window.switchFicheTab = (key) => {
   document.querySelectorAll('[data-panel]').forEach((s) => s.classList.toggle('hidden', s.dataset.panel !== key));
   document.querySelectorAll('.fiche-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === key));
+  if (key === 'compte' && window._ficheClientId) chargerReleve(window._ficheClientId);
+};
+
+/* ---------- Relevé de compte (historique + solde) ---------- */
+window.chargerReleve = async (id, annee) => {
+  const zone = $('#releve-zone');
+  if (!zone) return;
+  zone.innerHTML = '<p class="muted">Chargement du relevé…</p>';
+  try {
+    const d = await api(`/api/residents/${id}/releve${annee ? '?annee=' + annee : ''}`);
+    const du = d.solde_total > 0.004;
+    const credit = d.solde_total < -0.004;
+
+    zone.innerHTML = `
+      <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Relevé de compte</h2>
+            <p class="muted" style="margin:4px 0 0">Historique chronologique : factures, avoirs et paiements, avec le solde après chaque opération.</p>
+          </div>
+          <div class="toolbar">
+            <select id="rel-annee" style="width:auto" onchange="chargerReleve('${id}', this.value)">
+              ${d.annees.map((a) => `<option value="${a}"${a === d.annee ? ' selected' : ''}>${a}</option>`).join('') || `<option>${d.annee}</option>`}
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="relevePdf('${id}')">Relevé PDF</button>
+          </div>
+        </div>
+
+        <div class="kpis" style="margin-top:14px">
+          <div class="kpi"><div class="v">${eur(d.report_a_nouveau)}</div><div class="l">Report au 1ᵉʳ janvier</div></div>
+          <div class="kpi"><div class="v">${eur(d.totaux.facture)}</div><div class="l">Facturé en ${d.annee}</div></div>
+          <div class="kpi"><div class="v">${eur(d.totaux.regle)}</div><div class="l">Réglé en ${d.annee}</div></div>
+          <div class="kpi ${du ? 'bad' : ''}"><div class="v">${eur(d.solde_total)}</div>
+            <div class="l">${du ? 'Reste dû aujourd\u2019hui' : credit ? 'Avoir en sa faveur' : 'Compte soldé ✓'}</div></div>
+        </div>
+
+        <table style="margin-top:14px">
+          <thead><tr><th>Date</th><th>Opération</th><th class="right">Débit</th><th class="right">Crédit</th><th class="right">Solde</th><th></th></tr></thead>
+          <tbody>
+            <tr class="rel-report">
+              <td class="muted">01/01/${d.annee}</td>
+              <td class="muted"><em>Report à nouveau</em></td>
+              <td></td><td></td>
+              <td class="right"><strong>${eur(d.report_a_nouveau)}</strong></td><td></td>
+            </tr>
+            ${d.lignes.map((l) => `
+            <tr>
+              <td class="muted">${dfr(l.date)}</td>
+              <td>${l.type === 'reglement'
+                    ? `<span class="ptype sejour">Paiement</span> ${esc(l.libelle.replace(/^Paiement — /, ''))}`
+                    : l.type === 'avoir'
+                      ? `<span class="ptype caution">Avoir</span> ${esc(l.libelle)}`
+                      : `<span class="ptype charge">Facture</span> ${esc(l.libelle.replace(/^Facture /, ''))}`}</td>
+              <td class="right">${l.debit ? eur(l.debit) : ''}</td>
+              <td class="right" style="color:var(--sapin)">${l.credit ? eur(l.credit) : ''}</td>
+              <td class="right"><strong>${eur(l.solde)}</strong></td>
+              <td class="right">${l.facture_id ? `<button class="btn btn-ghost btn-sm" onclick="pdfFacture('${l.facture_id}')">PDF</button>` : ''}</td>
+            </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cette année.</td></tr>'}
+          </tbody>
+          <tfoot><tr class="rel-total">
+            <td colspan="2"><strong>Total ${d.annee}</strong></td>
+            <td class="right"><strong>${eur(d.totaux.facture)}</strong></td>
+            <td class="right"><strong>${eur(d.totaux.regle)}</strong></td>
+            <td class="right"><strong>${eur(d.totaux.solde_fin)}</strong></td><td></td>
+          </tr></tfoot>
+        </table>
+      </div>
+
+      ${Object.keys(d.par_annee).length > 1 ? `
+      <div class="card">
+        <h2>Situation par année</h2>
+        <table style="margin-top:10px"><thead><tr><th>Année</th><th class="right">Facturé</th><th class="right">Réglé</th><th class="right">Solde fin d'année</th></tr></thead>
+        <tbody>${Object.keys(d.par_annee).sort().reverse().map((a) => {
+          const v = d.par_annee[a];
+          return `<tr class="row-click" onclick="chargerReleve('${id}','${a}')">
+            <td><strong>${a}</strong></td>
+            <td class="right">${eur(v.facture)}</td>
+            <td class="right">${eur(v.regle)}</td>
+            <td class="right"><strong style="${v.solde > 0.004 ? 'color:var(--rouge)' : ''}">${eur(v.solde)}</strong></td>
+          </tr>`;
+        }).join('')}</tbody></table>
+      </div>` : ''}`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.relevePdf = (id) => {
+  const a = $('#rel-annee')?.value || new Date().getFullYear();
+  telechargerExport(`/api/residents/${id}/releve.pdf?annee=${a}`, `releve_${a}.pdf`);
 };
 
 window.majSelectionPresta = () => {

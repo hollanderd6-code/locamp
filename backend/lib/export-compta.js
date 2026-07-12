@@ -98,9 +98,12 @@ async function exportCompta(campingId, debut, fin) {
   const [{ data: camping }, { data: factures }, { data: reglements }, { data: residents }, { data: moyens }] =
     await Promise.all([
       supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle(),
+      // Les factures annulées par un avoir RESTENT dans l'export : elles ont bien été
+      // émises, et c'est l'avoir (déjà négatif) qui les contrepasse. Les exclure ferait
+      // disparaître leur produit tout en gardant l'avoir → CA faussé.
       supabase.from('factures').select('*').eq('camping_id', campingId)
         .gte('date_emission', debut).lte('date_emission', fin)
-        .neq('statut', 'annulee').order('date_emission').order('numero'),
+        .order('date_emission').order('numero'),
       supabase.from('reglements').select('*').eq('camping_id', campingId)
         .gte('date_reglement', debut).lte('date_reglement', fin).order('date_reglement'),
       supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', campingId),
@@ -153,14 +156,15 @@ async function exportCompta(campingId, debut, fin) {
         nom: cli.nom,
       }));
 
-      const signe = avoir ? -1 : 1;
+      // Les montants d'un avoir sont DÉJÀ négatifs (lignes à PU négatif) :
+      // n'applique aucun signe supplémentaire, sous peine d'inverser l'écriture.
       for (const l of (f.lignes || [])) {
         const v = ventiler(l.designation, plan);
         const ht = Number(l.montant_ht != null ? l.montant_ht : (l.quantite || 1) * (l.pu_ht || 0));
         const k = `${v.compte}|${v.libelle}`;
-        produits[k] = r2((produits[k] || 0) + signe * ht);
+        produits[k] = r2((produits[k] || 0) + ht);
         const taux = Number(l.taux_tva || 0);
-        if (taux > 0) tva[taux] = r2((tva[taux] || 0) + signe * r2(ht * taux / 100));
+        if (taux > 0) tva[taux] = r2((tva[taux] || 0) + r2(ht * taux / 100));
       }
     }
 
