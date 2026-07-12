@@ -1084,6 +1084,19 @@ async function vueFicheClient(id) {
 
     <section data-panel="documents" class="hidden">
       <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Données personnelles (RGPD)</h2>
+            <p class="muted" style="margin:4px 0 0">Droit d'accès et à la portabilité (art. 15 et 20) ; droit à l'effacement (art. 17).</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="exportDonneesResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Exporter ses données</button>
+            ${r.anonymise_at ? '<span class="badge indisponible">anonymisé</span>'
+              : `<button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Anonymiser</button>`}
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
         <h2>Documents</h2>
         ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
       </div>
@@ -1423,7 +1436,12 @@ async function vueAdministration() {
       <button class="fiche-tab" data-tab="moyens" onclick="switchFicheTab('moyens');chargerMoyens()">Moyens de paiement</button>
       <button class="fiche-tab" data-tab="journal" onclick="switchFicheTab('journal');chargerJournal()">Journal d'activité</button>
       <button class="fiche-tab" data-tab="fiscal" onclick="switchFicheTab('fiscal');chargerFiscal()">Conformité fiscale</button>
+      <button class="fiche-tab" data-tab="rgpd" onclick="switchFicheTab('rgpd');chargerRgpd()">RGPD</button>
     </div>
+
+    <section data-panel="rgpd" class="hidden">
+      <div id="rgpd-body"><p class="muted">Chargement…</p></div>
+    </section>
 
     <section data-panel="fiscal" class="hidden">
       <div id="fiscal-body"><p class="muted">Chargement…</p></div>
@@ -1569,6 +1587,131 @@ window.retirerMoyen = async (id, libelle) => {
     toast(r.message || (r.supprime ? 'Moyen supprimé' : 'Moyen désactivé'));
     chargerMoyens();
   } catch (e) { toast(e.message, true); }
+};
+
+window.chargerRgpd = async () => {
+  const box = $('#rgpd-body');
+  if (!box) return;
+  box.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const d = await api('/api/rgpd/etat');
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Protection des données personnelles</h2>
+            <p class="muted" style="margin:4px 0 0">Règlement (UE) 2016/679. Le registre des traitements (art. 30) est obligatoire et doit être présentable à la CNIL.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="registreRgpd()">Registre des traitements</button>
+        </div>
+        <div class="kpis" style="margin-top:14px">
+          <div class="kpi"><div class="v">${d.anonymises}</div><div class="l">Résidents anonymisés</div></div>
+          <div class="kpi ${d.candidats_purge.length ? 'warn' : ''}"><div class="v">${d.candidats_purge.length}</div><div class="l">À anonymiser (conservation dépassée)</div></div>
+          <div class="kpi"><div class="v">${d.demandes.length}</div><div class="l">Demandes de droits</div></div>
+          <div class="kpi ${d.violations.length ? 'bad' : ''}"><div class="v">${d.violations.length}</div><div class="l">Violations enregistrées</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Durée de conservation dépassée</h2>
+        <p class="muted" style="margin-top:2px">Résidents inactifs depuis plus de ${d.durees.resident_inactif_ans} ans (avant le ${dfr(d.seuil_purge)}). Le RGPD impose de ne pas conserver les données au-delà du nécessaire.</p>
+        ${d.candidats_purge.length ? `<table style="margin-top:12px"><thead><tr><th>Résident</th><th>Inactif depuis</th><th></th></tr></thead>
+        <tbody>${d.candidats_purge.map((r) => `<tr>
+          <td><strong>${esc(r.nom)}</strong></td>
+          <td class="muted">${dfr(r.inactif_depuis)}</td>
+          <td class="right"><button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${r.id}','${esc(r.nom)}')">Anonymiser</button></td>
+        </tr>`).join('')}</tbody></table>`
+        : '<p class="muted" style="margin-top:10px">Aucun résident à anonymiser. ✓</p>'}
+      </div>
+
+      <div class="card">
+        <div class="card-actions">
+          <div>
+            <h2 style="margin:0">Registre des violations de données</h2>
+            <p class="muted" style="margin:4px 0 0">Une violation présentant un risque doit être notifiée à la CNIL sous <strong>72 heures</strong> (art. 33).</p>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="formViolation()">Déclarer une violation</button>
+        </div>
+        ${d.violations.length ? `<table style="margin-top:12px"><thead><tr><th>Date</th><th>Nature</th><th>Description</th><th class="right">Personnes</th><th>CNIL</th></tr></thead>
+        <tbody>${d.violations.map((v) => `<tr>
+          <td class="muted">${dfr(v.date_incident)}</td>
+          <td>${esc(v.nature)}</td>
+          <td class="muted" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.description)}</td>
+          <td class="right">${v.personnes_touchees ?? '—'}</td>
+          <td>${v.cnil_notifiee ? '<span class="badge reglee">notifiée</span>' : '<span class="badge en_retard">non notifiée</span>'}</td>
+        </tr>`).join('')}</tbody></table>`
+        : '<p class="muted" style="margin-top:10px">Aucune violation enregistrée.</p>'}
+      </div>
+
+      ${d.demandes.length ? `<div class="card">
+        <h2>Demandes d'exercice de droits</h2>
+        <table style="margin-top:10px"><thead><tr><th>Date</th><th>Type</th><th>Origine</th><th>Statut</th></tr></thead>
+        <tbody>${d.demandes.map((x) => `<tr>
+          <td class="muted">${new Date(x.created_at).toLocaleString('fr-FR')}</td>
+          <td>${esc(x.type)}</td><td class="muted">${esc(x.origine)}</td>
+          <td><span class="badge ${x.statut === 'traitee' ? 'reglee' : 'emise'}">${esc(x.statut)}</span></td>
+        </tr>`).join('')}</tbody></table></div>` : ''}`;
+  } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.registreRgpd = () => telechargerExport('/api/rgpd/registre.pdf', 'registre_traitements_rgpd.pdf');
+
+window.exportDonneesResident = (id, nom) => {
+  telechargerExport(`/api/rgpd/resident/${id}/export`, `donnees_${(nom || 'resident').replace(/[^a-zA-Z0-9]/g, '_')}.json`);
+  toast('Export des données généré (droit d\u2019accès)');
+};
+
+window.anonymiserResident = async (id, nom) => {
+  const ok = prompt(
+    `ANONYMISER « ${nom} » ?\n\n`
+    + `Seront DÉFINITIVEMENT effacés : identité, coordonnées, documents (pièces d'identité…), messages.\n\n`
+    + `Seront CONSERVÉS : factures et encaissements — obligation légale de conservation `
+    + `(10 ans comptable, 6 ans fiscal ; art. 17.3.b du RGPD).\n\n`
+    + `Cette action est IRRÉVERSIBLE. Tape ANONYMISER pour confirmer :`);
+  if (ok !== 'ANONYMISER') { if (ok !== null) toast('Confirmation incorrecte — annulé', true); return; }
+  try {
+    const r = await api(`/api/rgpd/resident/${id}/anonymiser`, { method: 'POST', body: { confirmation: 'ANONYMISER' } });
+    toast(r.message || 'Résident anonymisé');
+    route();
+  } catch (e) { toast(e.message, true); }
+};
+
+window.formViolation = () => {
+  openDrawer(`
+    <h2>Déclarer une violation de données</h2>
+    <p class="muted" style="margin-top:4px">Perte, vol, accès non autorisé, divulgation, destruction… À notifier à la CNIL sous 72 h si risque pour les personnes.</p>
+    <form id="f-viol" class="form-grid" style="margin-top:14px">
+      <label>Date de l'incident *<input name="date_incident" type="datetime-local" required></label>
+      <label>Nature
+        <select name="nature">
+          <option value="confidentialite">Confidentialité (divulgation, accès non autorisé)</option>
+          <option value="integrite">Intégrité (altération)</option>
+          <option value="disponibilite">Disponibilité (perte, destruction)</option>
+        </select></label>
+      <label class="full">Description *<textarea name="description" rows="3" required style="width:100%"></textarea></label>
+      <label>Personnes touchées<input name="personnes_touchees" type="number" min="0"></label>
+      <label>Données concernées<input name="donnees_touchees" placeholder="identité, e-mails…"></label>
+      <label class="full">Conséquences probables<input name="consequences"></label>
+      <label class="full">Mesures prises<input name="mesures"></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:10px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--encre)">
+        <input type="checkbox" name="cnil_notifiee" style="width:auto"> CNIL notifiée</label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:10px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--encre)">
+        <input type="checkbox" name="personnes_informees" style="width:auto"> Personnes concernées informées</label>
+      <div class="full"><button class="btn btn-primary btn-block">Enregistrer au registre</button></div>
+    </form>`);
+  $('#f-viol').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const body = Object.fromEntries(f.entries());
+    body.cnil_notifiee = f.get('cnil_notifiee') === 'on';
+    body.personnes_informees = f.get('personnes_informees') === 'on';
+    try {
+      const r = await api('/api/rgpd/violations', { method: 'POST', body });
+      closeDrawer();
+      toast(r.rappel || 'Violation enregistrée au registre', !!r.rappel);
+      chargerRgpd();
+    } catch (err) { toast(err.message, true); }
+  });
 };
 
 window.chargerFiscal = async () => {

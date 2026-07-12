@@ -249,4 +249,26 @@ router.post('/messages', async (req, res) => {
   } catch (e) { console.error('[portail:message]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// GET /api/portail/mes-donnees  -> droit d'accès et portabilité (art. 15 & 20 du RGPD)
+// Le résident exerce son droit lui-même, sans intermédiaire.
+router.get('/mes-donnees', async (req, res) => {
+  try {
+    const { exporterDonnees } = require('../lib/rgpd');
+    const data = await exporterDonnees(req.resident.camping_id, req.resident.id);
+    if (!data) return res.status(404).json({ error: 'Introuvable' });
+
+    // la demande est tracée (art. 12 : le responsable doit pouvoir la démontrer)
+    try {
+      await supabase.from('demandes_rgpd').insert({
+        camping_id: req.resident.camping_id, resident_id: req.resident.id,
+        type: 'acces', origine: 'portail', statut: 'traitee',
+      });
+    } catch (e) { console.error('[portail:rgpd]', e.message); }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="mes_donnees.json"');
+    res.send(JSON.stringify(data, null, 2));
+  } catch (e) { console.error('[portail:mes-donnees]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;

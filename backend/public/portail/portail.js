@@ -213,5 +213,18 @@ $('#form-msg').addEventListener('submit', async (e) => {
   finally { btn.disabled = false; }
 });
 
+$('#btn-mes-donnees').addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/portail/mes-donnees', { headers: { Authorization: 'Bearer ' + RTOKEN } });
+    if (!r.ok) throw new Error('Export indisponible');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mes_donnees.json';
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('Vos données ont été téléchargées');
+  } catch (e) { toast(e.message, true); }
+});
+
 $('#btn-logout').addEventListener('click', logout);
 boot();
