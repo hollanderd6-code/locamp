@@ -3,114 +3,93 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mon espace locataire — Locamp</title>
+<title>Locamp — Gestion de camping résidentiel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portail/portail.css">
+<link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 
-<!-- ======= Écran 1 : demander le lien ======= -->
-<div id="ecran-email" class="stage hidden">
-  <div class="panel">
+<!-- ================= ÉCRAN DE CONNEXION ================= -->
+<div id="login-screen" class="login-wrap hidden">
+  <div class="login-card">
     <div class="brand">
-      <div class="brand-mark">L</div>
+      <div class="brand-mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Locamp"><defs><linearGradient id="lcF1" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1D5344"/><stop offset=".55" stop-color="#123A2F"/><stop offset="1" stop-color="#0B1A15"/></linearGradient><linearGradient id="lcO1" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#F6E3B0"/><stop offset=".35" stop-color="#D9B466"/><stop offset=".62" stop-color="#B98A3C"/><stop offset="1" stop-color="#8A6526"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#lcF1)"/><rect x="7" y="7" width="50" height="50" rx="11" fill="none" stroke="url(#lcO1)" stroke-width=".9" opacity=".7"/><rect x="9.6" y="9.6" width="44.8" height="44.8" rx="8.6" fill="none" stroke="url(#lcO1)" stroke-width=".5" opacity=".32"/><text x="25.5" y="46" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="33" font-weight="600" fill="url(#lcO1)">L</text><g fill="none" stroke="url(#lcO1)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M42.5 17 38.5 23h8z"/><path d="M42.5 21.5 36.5 30h12z"/><path d="M42.5 27.5 35 37.5h15z"/></g><path d="M42.5 37.5v5.5" stroke="url(#lcO1)" stroke-width="1.8" stroke-linecap="round"/></svg></div>
       <div>
-        <div class="brand-name">Mon espace locataire</div>
-        <div class="brand-sub" id="brand-camping">Locamp</div>
+        <div class="brand-name">Locamp</div>
+        <div class="brand-sub">L'outil des campings résidentiels</div>
       </div>
     </div>
-    <p class="intro">Saisissez l'adresse e-mail connue de votre camping. Vous recevrez un lien de connexion sécurisé — pas de mot de passe à retenir.</p>
-    <form id="form-email">
-      <label>Adresse e-mail
-        <input type="email" id="email" required placeholder="prenom.nom@mail.fr" autocomplete="email">
+    <form id="login-form" autocomplete="on">
+      <label>E-mail
+        <input type="email" id="login-email" required autocomplete="username">
       </label>
-      <button class="btn btn-primary btn-block" id="btn-email">Recevoir mon lien de connexion</button>
+      <label>Mot de passe
+        <input type="password" id="login-password" required autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">Se connecter</button>
+      <p id="login-error" class="form-error hidden"></p>
     </form>
-    <p id="email-info" class="note hidden"></p>
   </div>
 </div>
 
-<!-- ======= Écran 2 : lien envoyé ======= -->
-<div id="ecran-envoye" class="stage hidden">
-  <div class="panel center">
-    <div class="pictogram">✉️</div>
-    <h1>Vérifiez votre boîte mail</h1>
-    <p class="intro">Si un compte existe pour cette adresse, un lien de connexion vient de vous être envoyé. Il est valable 30 minutes.</p>
-    <button class="btn btn-ghost" onclick="showEmail()">Utiliser une autre adresse</button>
-  </div>
-</div>
+<!-- ================= APPLICATION ================= -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <button id="nav-burger" class="nav-burger" aria-label="Menu">☰</button>
 
-<!-- ======= Espace locataire ======= -->
-<div id="espace" class="hidden">
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark">L</div>
-      <div>
-        <div class="brand-name" id="hello">Bonjour</div>
-        <div class="brand-sub" id="sous-titre"></div>
+    <div class="sidebar-head">
+      <a href="#/dashboard" class="brand brand-side" title="Retour au tableau de bord">
+        <div class="brand-mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Locamp"><defs><linearGradient id="lcF2" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1D5344"/><stop offset=".55" stop-color="#123A2F"/><stop offset="1" stop-color="#0B1A15"/></linearGradient><linearGradient id="lcO2" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#F6E3B0"/><stop offset=".35" stop-color="#D9B466"/><stop offset=".62" stop-color="#B98A3C"/><stop offset="1" stop-color="#8A6526"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#lcF2)"/><rect x="7" y="7" width="50" height="50" rx="11" fill="none" stroke="url(#lcO2)" stroke-width=".9" opacity=".7"/><rect x="9.6" y="9.6" width="44.8" height="44.8" rx="8.6" fill="none" stroke="url(#lcO2)" stroke-width=".5" opacity=".32"/><text x="25.5" y="46" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="33" font-weight="600" fill="url(#lcO2)">L</text><g fill="none" stroke="url(#lcO2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M42.5 17 38.5 23h8z"/><path d="M42.5 21.5 36.5 30h12z"/><path d="M42.5 27.5 35 37.5h15z"/></g><path d="M42.5 37.5v5.5" stroke="url(#lcO2)" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <div class="brand-name">Locamp</div>
+      </a>
+      <div id="camping-switch" class="camping-switch hidden">
+        <select id="camping-select" title="Camping actif"></select>
       </div>
     </div>
-    <button class="btn btn-ghost btn-sm" id="btn-logout">Se déconnecter</button>
-  </header>
 
-  <main class="content">
-    <!-- Solde -->
-    <section class="hero-solde card" id="hero-solde"></section>
+    <nav class="nav" id="nav-scroll">
+      <div class="nav-grp">Exploitation</div>
+      <a href="#/dashboard" data-nav="dashboard">Tableau de bord</a>
+      <a href="#/carte" data-nav="carte">Carte du camping</a>
+      <a href="#/emplacements" data-nav="emplacements">Emplacements</a>
+      <a href="#/residents" data-nav="residents">Résidents</a>
+      <a href="#/signatures" data-nav="signatures">Signatures</a>
+      <a href="#/messagerie" data-nav="messagerie">Messagerie <span id="nav-msg-badge" class="hidden"></span></a>
+      <a href="#/compteurs" data-nav="compteurs">Compteurs</a>
 
-    <!-- Séjours & prestations en préparation -->
-    <section class="card hidden" id="sec-sejours">
-      <div class="card-head"><div class="eyebrow">À venir</div><h2>Mes séjours &amp; prestations</h2></div>
-      <div id="liste-sejours"></div>
-      <p class="note">Ces éléments sont préparés par votre camping et ne sont pas encore facturés.</p>
-    </section>
+      <div class="nav-grp">Facturation</div>
+      <a href="#/factures" data-nav="factures">Factures</a>
+      <a href="#/reglements" data-nav="reglements">Règlements</a>
+      <a href="#/impayes" data-nav="impayes">Impayés</a>
+      <a href="#/compta" data-nav="compta">Comptabilité</a>
 
-    <!-- Factures -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Mes paiements</div><h2>Factures</h2></div>
-      <div id="liste-factures"></div>
-    </section>
+      <div class="nav-grp">Configuration</div>
+      <a href="#/parametres" data-nav="parametres">Paramètres</a>
+      <a href="#/administration" data-nav="administration" id="nav-admin">Administration</a>
+    </nav>
 
-    <!-- Messages -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Échanger avec le camping</div><h2>Messages</h2></div>
-      <div id="fil-messages" class="msg-fil"></div>
-      <form id="form-msg" class="msg-form">
-        <input id="msg-corps" placeholder="Écrire un message…" required>
-        <button class="btn btn-primary" id="btn-msg">Envoyer</button>
-      </form>
-    </section>
+    <div class="sidebar-foot">
+      <span id="user-name" class="user-name"></span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Se déconnecter</button>
+    </div>
+  
+  </aside>
+  <main id="main" class="main"></main>
+</div>
 
-    <!-- Mes données personnelles (RGPD) -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Vos droits</div><h2>Mes données personnelles</h2></div>
-      <p class="note">Vous pouvez à tout moment obtenir une copie de l'ensemble des données que le camping détient sur vous (articles 15 et 20 du RGPD).</p>
-      <button class="btn btn-ghost btn-sm" id="btn-mes-donnees" style="margin-top:10px">Télécharger mes données</button>
-      <p class="note" style="margin-top:10px">Pour rectifier une information ou demander l'effacement de vos données, contactez l'accueil du camping. Les factures et encaissements sont conservés au titre des obligations légales de comptabilité.</p>
-    </section>
-
-    <!-- Documents -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Mon dossier</div><h2>Documents</h2></div>
-      <div id="liste-docs"></div>
-      <form id="form-doc" class="upload-row">
-        <select id="doc-type">
-          <option value="attestation_assurance">Attestation d'assurance</option>
-          <option value="justificatif_domicile">Justificatif de domicile</option>
-          <option value="piece_identite">Pièce d'identité</option>
-          <option value="autre">Autre document</option>
-        </select>
-        <label class="btn btn-ghost file-btn">Choisir un fichier<input type="file" id="doc-file" hidden></label>
-        <button class="btn btn-primary" id="btn-doc" disabled>Envoyer</button>
-      </form>
-      <p class="note" id="doc-note"></p>
-    </section>
-  </main>
-  <footer class="footy">Espace sécurisé — vos documents et paiements sont chiffrés.</footer>
+<!-- ================= PANNEAU LATÉRAL (fiche) ================= -->
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-backdrop" onclick="closeDrawer()"></div>
+  <div class="drawer-panel">
+    <button class="drawer-close" onclick="closeDrawer()" aria-label="Fermer">×</button>
+    <div id="drawer-content"></div>
+  </div>
 </div>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/portail/portail.js"></script>
+
+<script src="/app.js"></script>
 </body>
 </html>

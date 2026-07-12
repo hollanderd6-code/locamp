@@ -2,6 +2,7 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { sendEmail } = require('../lib/email');
+const { creerNotifResident } = require('../lib/notifications');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -79,6 +80,13 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
     if (error) throw error;
     await writeAudit(req, { action: 'create', entite: 'messages', entite_id: data.id, apres: { resident_id } });
 
+    // notification in-app portail (best-effort)
+    creerNotifResident(req.activeCampingId, resident_id, {
+      type: 'nouveau_message', titre: 'Nouveau message',
+      corps: String(corps).trim().slice(0, 140),
+      entite: 'message', entite_id: data.id,
+    }).catch(() => {});
+
     // notification e-mail au résident (best-effort)
     Promise.resolve().then(async () => {
       const [{ data: r }, { data: c }] = await Promise.all([
@@ -125,6 +133,10 @@ router.post('/groupe', requireRole('admin', 'gestionnaire'), async (req, res) =>
       const base = process.env.PUBLIC_APP_URL || '';
       const sender = c?.parametres?.facturation?.email ? { email: c.parametres.facturation.email, name: nomCamping } : { name: nomCamping };
       for (const r of residents) {
+        creerNotifResident(req.activeCampingId, r.id, {
+          type: 'nouveau_message', titre: 'Nouveau message',
+          corps: corps.slice(0, 140), entite: 'message',
+        }).catch(() => {});
         if (!r.email) continue;
         try {
           await sendEmail({

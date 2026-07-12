@@ -208,6 +208,21 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
 
   await genererPdfFacture(campingId, facture).catch((e) => console.error('[pdf facture]', e.message));
 
+  // Notification in-app portail : nouvelle facture (pas les avoirs) — best-effort.
+  if (facture.statut === 'emise' && !avoir_de && resident_id) {
+    Promise.resolve().then(async () => {
+      const { creerNotifResident } = require('./notifications');
+      const reste = Math.round((Number(facture.total_ttc) || 0) * 100) / 100;
+      await creerNotifResident(campingId, resident_id, {
+        type: 'nouvelle_facture',
+        titre: `Nouvelle facture ${facture.numero}`,
+        corps: `Montant : ${reste.toFixed(2)} €. Consultable dans votre espace locataire.`,
+        entite: 'facture', entite_id: facture.id,
+        donnees: { numero: facture.numero, total_ttc: facture.total_ttc },
+      });
+    }).catch((e) => console.error('[facture notif]', e.message));
+  }
+
   // Envoi automatique au résident (si activé) — best-effort, ne bloque ni ne casse la création.
   if (facture.statut === 'emise') {
     Promise.resolve().then(async () => {

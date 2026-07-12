@@ -1,6 +1,7 @@
 const { getStripe } = require('../lib/stripe');
 const { supabase } = require('../lib/supabase');
 const { recomputeFacture } = require('../lib/paiement');
+const { creerNotifsStaff, creerNotifResident } = require('../lib/notifications');
 
 // Handler du webhook Stripe (monté AVANT express.json, avec express.raw).
 async function stripeWebhook(req, res) {
@@ -28,6 +29,29 @@ async function stripeWebhook(req, res) {
             reference: s.payment_intent || s.id, affectations: [{ facture_id, montant }], stripe_session_id: s.id,
           });
           await recomputeFacture(camping_id, facture_id);
+
+          // Notifications : paiement en ligne reçu -> staff (droit encaisser) + confirmation résident
+          const montantFmt = montant.toFixed(2);
+          const { data: fac } = await supabase.from('factures')
+            .select('numero').eq('id', facture_id).maybeSingle();
+          const numero = fac?.numero || '';
+          await creerNotifsStaff(camping_id, {
+            type: 'paiement_recu', perm: 'encaisser',
+            titre: `Paiement reçu : ${montantFmt} €`,
+            corps: numero ? `Règlement en ligne de la facture ${numero}.` : 'Règlement en ligne reçu.',
+            entite: 'facture', entite_id: facture_id,
+            donnees: { montant, numero, mode: 'stripe' },
+          });
+          if (resident_id) {
+            await creerNotifResident(camping_id, resident_id, {
+              type: 'paiement_confirme',
+              titre: 'Paiement confirmé',
+              corps: numero ? `Votre paiement de ${montantFmt} € pour la facture ${numero} a bien été reçu. Merci !`
+                            : `Votre paiement de ${montantFmt} € a bien été reçu. Merci !`,
+              entite: 'facture', entite_id: facture_id,
+              donnees: { montant, numero },
+            });
+          }
         }
       } catch (e) { console.error('[stripe webhook] traitement:', e.message); }
     }

@@ -138,6 +138,9 @@ async function chargerEspace() {
 
   // messages
   renderMessages(msgs.messages || []);
+
+  // documents à signer
+  chargerSignatures();
 }
 
 function renderMessages(list) {
@@ -228,3 +231,206 @@ $('#btn-mes-donnees').addEventListener('click', async () => {
 
 $('#btn-logout').addEventListener('click', logout);
 boot();
+
+/* ==================== SIGNATURE ÉLECTRONIQUE ==================== */
+let SIG = null;          // document en cours de signature
+let sigTrace = false;    // le tracé manuscrit a-t-il commencé ?
+
+async function chargerSignatures() {
+  try {
+    const { a_signer, signes } = await api('/api/portail/signatures');
+    const sec = $('#sec-signer');
+    if (!a_signer.length && !signes.length) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+
+    $('#liste-signer').innerHTML = [
+      ...a_signer.map((d) => `
+        <div class="fac">
+          <div>
+            <div class="l1">${esc(d.titre)}</div>
+            <div class="l2">${d.nb_pages || 1} page(s) · <strong style="color:var(--rouge)">signature requise</strong></div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary btn-sm" onclick="ouvrirSignature('${d.id}')">Lire et signer</button>
+          </div>
+        </div>`),
+      ...signes.map((d) => `
+        <div class="fac">
+          <div>
+            <div class="l1">${esc(d.titre)}</div>
+            <div class="l2">Signé le ${dfr(d.date_signature)} · <span class="badge reglee">signé</span></div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-ghost btn-sm" onclick="ouvrirSignature('${d.id}')">Consulter</button>
+          </div>
+        </div>`),
+    ].join('');
+  } catch (e) { /* table absente : section masquée */ }
+}
+
+window.ouvrirSignature = async (id) => {
+  try {
+    SIG = await api('/api/portail/signatures/' + id);
+    sigTrace = false;
+
+    document.querySelectorAll('.content > section').forEach((s) => s.classList.add('hidden'));
+    $('#sec-signature').classList.remove('hidden');
+    window.scrollTo({ top: 0 });
+
+    $('#sig-titre').textContent = SIG.titre;
+    $('#sig-message').textContent = SIG.message || '';
+    $('#sig-message').style.display = SIG.message ? '' : 'none';
+    $('#sig-consent-txt').textContent = SIG.consentement;
+
+    const dejaSigne = SIG.statut === 'signe';
+    ['#sig-champs', '#sig-bloc-pad', '#sig-consent-txt', '#sig-signer'].forEach((s) => {
+      const el = $(s); if (el) el.style.display = dejaSigne ? 'none' : '';
+    });
+    const cons = $('#sig-consent')?.closest('label');
+    if (cons) cons.style.display = dejaSigne ? 'none' : '';
+
+    await afficherPdfSignature(SIG.url);
+    if (!dejaSigne) {
+      construireChampsSignature(SIG.champs || []);
+      initPadSignature();
+      majBoutonSignature();
+    }
+  } catch (e) { toast(e.message, true); }
+};
+
+$('#sig-retour').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('#sec-signature').classList.add('hidden');
+  document.querySelectorAll('.content > section').forEach((s) => {
+    if (s.id !== 'sec-signature') s.classList.remove('hidden');
+  });
+  chargerEspace();
+});
+
+async function afficherPdfSignature(url) {
+  const zone = $('#sig-pdf');
+  zone.innerHTML = '<p class="note" style="margin:0">Chargement du document…</p>';
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument(url).promise;
+    zone.innerHTML = '';
+    const larg = Math.min(zone.clientWidth - 24, 720);
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const page = await pdf.getPage(n);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: larg / base.width });
+      const c = document.createElement('canvas');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      c.width = vp.width * dpr; c.height = vp.height * dpr;
+      c.style.cssText = 'width:100%;height:auto;display:block;margin:0 auto 10px;background:#fff;border-radius:4px;box-shadow:var(--shadow-s)';
+      zone.appendChild(c);
+      const ctx = c.getContext('2d');
+      ctx.scale(dpr, dpr);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    }
+  } catch (e) {
+    zone.innerHTML = `<p class="note" style="margin:0">Aperçu indisponible. <a href="${url}" target="_blank">Ouvrir le document</a></p>`;
+  }
+}
+
+function construireChampsSignature(champs) {
+  const box = $('#sig-champs');
+  box.innerHTML = '';
+  let sig = false;
+  for (const c of champs) {
+    if (c.type === 'signature') { sig = true; continue; }
+    const d = document.createElement('div');
+    d.style.marginBottom = '14px';
+    if (c.type === 'case') {
+      d.innerHTML = `<label style="display:flex;gap:11px;align-items:flex-start;background:#FDFBF7;
+        border:1px solid var(--hairline);border-radius:11px;padding:13px">
+        <input type="checkbox" data-id="${esc(c.id)}" ${c.requis ? 'data-requis="1"' : ''}
+          style="width:20px;height:20px;accent-color:var(--sapin);margin-top:1px;flex-shrink:0">
+        <span style="font-size:14px;line-height:1.5">${esc(c.label || 'J\u2019accepte')}${c.requis ? ' *' : ''}</span></label>`;
+    } else {
+      d.innerHTML = `<label style="display:block;font-size:11.5px;font-weight:700;letter-spacing:.07em;
+        text-transform:uppercase;color:var(--brume);margin-bottom:6px">${esc(c.label || 'Votre réponse')}${c.requis ? ' *' : ''}</label>
+        <input type="text" data-id="${esc(c.id)}" ${c.requis ? 'data-requis="1"' : ''} style="width:100%">`;
+    }
+    box.appendChild(d);
+  }
+  box.querySelectorAll('input').forEach((i) => i.addEventListener('input', majBoutonSignature));
+  $('#sig-bloc-pad').classList.toggle('hidden', !sig);
+}
+
+function initPadSignature() {
+  const c = $('#sig-pad');
+  const ctx = c.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dim = () => {
+    const r = c.getBoundingClientRect();
+    c.width = r.width * dpr; c.height = r.height * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14283F';
+  };
+  dim();
+
+  let trace = false;
+  const pos = (e) => { const r = c.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  c.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); c.setPointerCapture(e.pointerId); trace = true;
+    const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    if (!sigTrace) { sigTrace = true; $('#sig-hint').style.display = 'none'; majBoutonSignature(); }
+  });
+  c.addEventListener('pointermove', (e) => {
+    if (!trace) return; e.preventDefault();
+    const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+  });
+  const fin = () => { trace = false; };
+  c.addEventListener('pointerup', fin);
+  c.addEventListener('pointercancel', fin);
+
+  $('#sig-effacer').onclick = () => {
+    const r = c.getBoundingClientRect();
+    ctx.clearRect(0, 0, r.width, r.height);
+    sigTrace = false;
+    $('#sig-hint').style.display = 'flex';
+    majBoutonSignature();
+  };
+}
+
+function majBoutonSignature() {
+  const consent = $('#sig-consent').checked;
+  const besoinSig = !$('#sig-bloc-pad').classList.contains('hidden');
+  let ok = true;
+  document.querySelectorAll('#sig-champs input[data-requis]').forEach((i) => {
+    if (i.type === 'checkbox' ? !i.checked : !i.value.trim()) ok = false;
+  });
+  $('#sig-signer').disabled = !(consent && ok && (!besoinSig || sigTrace));
+}
+$('#sig-consent').addEventListener('change', majBoutonSignature);
+
+$('#sig-signer').addEventListener('click', async () => {
+  const btn = $('#sig-signer');
+  btn.disabled = true; btn.textContent = 'Signature en cours…';
+  $('#sig-err').classList.add('hidden');
+
+  const valeurs = {};
+  document.querySelectorAll('#sig-champs input[data-id]').forEach((i) => {
+    valeurs[i.dataset.id] = i.type === 'checkbox' ? i.checked : i.value.trim();
+  });
+  const besoinSig = !$('#sig-bloc-pad').classList.contains('hidden');
+
+  try {
+    const r = await api(`/api/portail/signatures/${SIG.id}/signer`, {
+      method: 'POST',
+      body: {
+        valeurs,
+        signature_png: besoinSig ? $('#sig-pad').toDataURL('image/png') : null,
+        consentement: true,
+      },
+    });
+    toast(r.message || 'Document signé');
+    $('#sig-retour').click();
+  } catch (e) {
+    $('#sig-err').textContent = e.message;
+    $('#sig-err').classList.remove('hidden');
+    btn.disabled = false; btn.textContent = 'Signer le document';
+  }
+});

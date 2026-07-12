@@ -1,5 +1,6 @@
 const { supabase } = require('./supabase');
 const { sendEmail } = require('./email');
+const { creerNotifsStaff } = require('./notifications');
 
 function joursRetard(dateEmission, delai) {
   const ech = new Date(dateEmission);
@@ -61,6 +62,17 @@ async function runRelances(campingId, { cooldownJours = 1 } = {}) {
       statut, message: subject, sent_at: statut === 'envoyee' ? new Date().toISOString() : null,
     });
     if (f.statut !== 'en_retard') await supabase.from('factures').update({ statut: 'en_retard' }).eq('id', f.id);
+
+    // Notification staff « rappel » actionnable : pointe vers la facture pour encaisser directement.
+    const nomResident = `${r?.prenom || ''} ${r?.nom || ''}`.trim() || 'un résident';
+    await creerNotifsStaff(campingId, {
+      type: 'relance', perm: 'encaisser',
+      titre: `Rappel de paiement — facture ${f.numero}`,
+      corps: `${f.reste.toFixed(2)} € dus par ${nomResident} (retard de ${f.jours_retard} j). À encaisser.`,
+      entite: 'facture', entite_id: f.id,
+      donnees: { numero: f.numero, reste: f.reste, jours_retard: f.jours_retard, resident_id: f.resident_id, niveau },
+    });
+
     if (statut === 'envoyee') res.envoyees++;
   }
   return res;

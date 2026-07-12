@@ -7,6 +7,7 @@ const { sendEmail } = require('../lib/email');
 const { checkoutFacture } = require('../lib/stripe');
 const { genererPdfFacture } = require('../lib/facturation');
 const { uploadDocument, signedUrl } = require('../lib/storage');
+const { creerNotifsStaff } = require('../lib/notifications');
 const { authResident } = require('../middleware/auth');
 
 const router = express.Router();
@@ -245,6 +246,21 @@ router.post('/messages', async (req, res) => {
     }).select('id,auteur,corps,created_at').single();
     if (error) throw error;
     await auditPortail(req, req.resident, 'portail_message', { entite: 'messages', entite_id: data.id });
+
+    // Notifier le staff (droit messagerie) — best-effort
+    (async () => {
+      const { data: r } = await supabase.from('residents').select('nom,prenom')
+        .eq('id', req.resident.id).maybeSingle();
+      const nom = `${r?.prenom || ''} ${r?.nom || ''}`.trim() || 'Un résident';
+      await creerNotifsStaff(req.resident.camping_id, {
+        type: 'nouveau_message', perm: 'messagerie',
+        titre: `Nouveau message de ${nom}`,
+        corps: corps.slice(0, 140),
+        entite: 'message', entite_id: data.id,
+        donnees: { resident_id: req.resident.id },
+      });
+    })().catch(() => {});
+
     res.status(201).json({ message: data });
   } catch (e) { console.error('[portail:message]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
@@ -269,6 +285,72 @@ router.get('/mes-donnees', async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="mes_donnees.json"');
     res.send(JSON.stringify(data, null, 2));
   } catch (e) { console.error('[portail:mes-donnees]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// ---------- Notifications du portail locataire ----------
+
+// GET /api/portail/notifications?statut=non-lus&limit=30
+router.get('/notifications', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 30, 100);
+    let q = supabase.from('notifications')
+      .select('id,type,titre,corps,entite,entite_id,lien,donnees,lu,lu_at,created_at')
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (req.query.statut === 'non-lus') q = q.eq('lu', false);
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json({ notifications: data || [] });
+  } catch (e) {
+    console.error('[portail:notifications]', e.message);
+    res.json({ notifications: [] });   // table absente : ne pas casser le portail
+  }
+});
+
+// GET /api/portail/notifications/compteur
+router.get('/notifications/compteur', async (req, res) => {
+  try {
+    const { count, error } = await supabase.from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .eq('lu', false);
+    if (error) throw error;
+    res.json({ non_lues: count || 0 });
+  } catch (e) {
+    console.error('[portail:notif-compteur]', e.message);
+    res.json({ non_lues: 0 });
+  }
+});
+
+// POST /api/portail/notifications/:id/lu
+router.post('/notifications/:id/lu', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('notifications')
+      .update({ lu: true, lu_at: new Date().toISOString() })
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .eq('id', req.params.id)
+      .select('id').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Notification introuvable' });
+    res.json({ ok: true });
+  } catch (e) { console.error('[portail:notif-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/portail/notifications/tout-lu
+router.post('/notifications/tout-lu', async (req, res) => {
+  try {
+    const { error } = await supabase.from('notifications')
+      .update({ lu: true, lu_at: new Date().toISOString() })
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .eq('lu', false);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { console.error('[portail:notif-tout-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;
