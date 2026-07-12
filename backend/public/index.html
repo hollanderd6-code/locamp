@@ -2,122 +2,93 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Signature électronique</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<style>
-:root{--ivoire:#F6F3EC;--carte:#fff;--encre:#1B2E28;--sapin:#175243;--sapin-h:#1C614F;
- --brume:#75837C;--hair:#E7E1D4;--laiton:#B98A3C;--rouge:#A8402A;
- --sh:0 1px 2px rgba(15,35,29,.05),0 2px 8px rgba(15,35,29,.04);
- --shl:0 8px 24px rgba(15,35,29,.10),0 24px 64px rgba(15,35,29,.12)}
-*{box-sizing:border-box}
-body{margin:0;background:var(--ivoire);color:var(--encre);font:15px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.wrap{max-width:860px;margin:0 auto;padding:22px 16px 60px}
-h1{font-family:Fraunces,serif;font-size:24px;margin:0 0 4px}
-h2{font-family:Fraunces,serif;font-size:17px;margin:0 0 10px}
-.eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--laiton)}
-.card{background:var(--carte);border:1px solid var(--hair);border-radius:16px;padding:22px;margin-bottom:16px;box-shadow:var(--sh)}
-.hidden{display:none!important}
-.muted{color:var(--brume);font-size:13.5px}
-.btn{font:600 15px Inter,sans-serif;border:none;border-radius:11px;padding:14px 24px;cursor:pointer;transition:transform .12s,box-shadow .15s}
-.btn:active{transform:translateY(1px)}
-.btn-primary{background:linear-gradient(160deg,var(--sapin-h),var(--sapin));color:#F4EFE4;
- box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 2px 6px rgba(23,82,67,.3)}
-.btn-primary:disabled{opacity:.45;cursor:not-allowed}
-.btn-ghost{background:transparent;border:1px solid var(--hair);color:var(--encre);padding:9px 16px;font-size:13.5px;border-radius:9px}
-.btn-block{width:100%}
-#pdf-zone{background:#EFEAE0;border:1px solid var(--hair);border-radius:12px;padding:14px;
- max-height:64vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-#pdf-zone canvas{display:block;width:100%;height:auto;margin:0 auto 12px;box-shadow:var(--sh);border-radius:4px;background:#fff}
-.champ{margin-bottom:16px}
-label.lb{display:block;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:6px}
-input[type=text]{width:100%;padding:13px 14px;border:1px solid var(--hair);border-radius:11px;font:15px Inter,sans-serif;background:#fff}
-input[type=text]:focus{outline:none;border-color:var(--sapin);box-shadow:0 0 0 3px rgba(23,82,67,.13)}
-.case{display:flex;gap:11px;align-items:flex-start;background:#FDFBF7;border:1px solid var(--hair);border-radius:11px;padding:13px}
-.case input{width:20px;height:20px;accent-color:var(--sapin);margin-top:1px;flex-shrink:0}
-.case span{font-size:14px;line-height:1.5}
-#pad-wrap{border:2px dashed var(--hair);border-radius:12px;background:#fff;position:relative;touch-action:none}
-#pad{width:100%;height:190px;display:block;border-radius:10px;touch-action:none;cursor:crosshair}
-#pad-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
- color:#BFC7C2;font-size:14px;pointer-events:none}
-.consent{background:#FDFBF7;border:1px solid var(--hair);border-left:3px solid var(--laiton);
- border-radius:10px;padding:14px;font-size:13px;line-height:1.6;color:#3E4A45;margin:14px 0}
-.err{color:var(--rouge);font-size:13.5px;margin-top:10px}
-.ok-screen{text-align:center;padding:46px 20px}
-.ok-mark{width:64px;height:64px;border-radius:50%;background:#E8F0EC;color:var(--sapin);
- display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px}
-.legal{font-size:11.5px;color:var(--brume);text-align:center;margin-top:22px;line-height:1.6}
-.bar{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(246,243,236,0),var(--ivoire) 30%);
- padding:16px 0 4px;margin-top:4px}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locamp — Gestion de camping résidentiel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<div class="wrap">
 
-  <div id="chargement" class="card"><p class="muted" style="margin:0">Chargement du document…</p></div>
-
-  <div id="erreur" class="card hidden">
-    <h1>Lien indisponible</h1>
-    <p class="muted" id="erreur-txt"></p>
-  </div>
-
-  <div id="app" class="hidden">
-    <div style="margin-bottom:16px">
-      <div class="eyebrow" id="camping"></div>
-      <h1 id="titre"></h1>
-      <p class="muted" id="message" style="margin:6px 0 0"></p>
-    </div>
-
-    <div class="card">
-      <h2>Le document</h2>
-      <p class="muted" style="margin:-4px 0 12px">Faites défiler pour lire l'intégralité du document avant de signer.</p>
-      <div id="pdf-zone"></div>
-    </div>
-
-    <div class="card">
-      <h2>Votre signature</h2>
-      <div id="champs"></div>
-
-      <div id="bloc-signature" class="champ hidden">
-        <label class="lb">Signez avec le doigt ou la souris</label>
-        <div id="pad-wrap">
-          <canvas id="pad"></canvas>
-          <div id="pad-hint">Signez ici</div>
-        </div>
-        <button class="btn btn-ghost" id="effacer" style="margin-top:9px">Effacer</button>
+<!-- ================= ÉCRAN DE CONNEXION ================= -->
+<div id="login-screen" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Locamp"><defs><linearGradient id="lcF1" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1D5344"/><stop offset=".55" stop-color="#123A2F"/><stop offset="1" stop-color="#0B1A15"/></linearGradient><linearGradient id="lcO1" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#F6E3B0"/><stop offset=".35" stop-color="#D9B466"/><stop offset=".62" stop-color="#B98A3C"/><stop offset="1" stop-color="#8A6526"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#lcF1)"/><rect x="7" y="7" width="50" height="50" rx="11" fill="none" stroke="url(#lcO1)" stroke-width=".9" opacity=".7"/><rect x="9.6" y="9.6" width="44.8" height="44.8" rx="8.6" fill="none" stroke="url(#lcO1)" stroke-width=".5" opacity=".32"/><text x="25.5" y="46" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="33" font-weight="600" fill="url(#lcO1)">L</text><g fill="none" stroke="url(#lcO1)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M42.5 17 38.5 23h8z"/><path d="M42.5 21.5 36.5 30h12z"/><path d="M42.5 27.5 35 37.5h15z"/></g><path d="M42.5 37.5v5.5" stroke="url(#lcO1)" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+      <div>
+        <div class="brand-name">Locamp</div>
+        <div class="brand-sub">L'outil des campings résidentiels</div>
       </div>
-
-      <div class="consent" id="consent-txt"></div>
-
-      <label class="case">
-        <input type="checkbox" id="consent">
-        <span>J'ai lu et j'accepte ce qui précède, et je consens à signer ce document électroniquement.</span>
+    </div>
+    <form id="login-form" autocomplete="on">
+      <label>E-mail
+        <input type="email" id="login-email" required autocomplete="username">
       </label>
-
-      <div id="err" class="err hidden"></div>
-
-      <div class="bar">
-        <button class="btn btn-primary btn-block" id="signer" disabled>Signer le document</button>
-      </div>
-
-      <p class="legal">
-        Signature électronique conforme au règlement eIDAS (UE) n° 910/2014 et aux articles 1366 et 1367
-        du Code civil. Votre adresse IP, la date et l'heure, ainsi que l'empreinte numérique du document
-        sont enregistrées et annexées au document signé à titre de preuve.
-      </p>
-    </div>
+      <label>Mot de passe
+        <input type="password" id="login-password" required autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">Se connecter</button>
+      <p id="login-error" class="form-error hidden"></p>
+    </form>
   </div>
-
-  <div id="fini" class="card hidden">
-    <div class="ok-screen">
-      <div class="ok-mark">✓</div>
-      <h1>Document signé</h1>
-      <p class="muted" id="fini-txt" style="max-width:440px;margin:8px auto 0"></p>
-    </div>
-  </div>
-
 </div>
-<script src="signature.js"></script>
+
+<!-- ================= APPLICATION ================= -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <button id="nav-burger" class="nav-burger" aria-label="Menu">☰</button>
+
+    <div class="sidebar-head">
+      <a href="#/dashboard" class="brand brand-side" title="Retour au tableau de bord">
+        <div class="brand-mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Locamp"><defs><linearGradient id="lcF2" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1D5344"/><stop offset=".55" stop-color="#123A2F"/><stop offset="1" stop-color="#0B1A15"/></linearGradient><linearGradient id="lcO2" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#F6E3B0"/><stop offset=".35" stop-color="#D9B466"/><stop offset=".62" stop-color="#B98A3C"/><stop offset="1" stop-color="#8A6526"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#lcF2)"/><rect x="7" y="7" width="50" height="50" rx="11" fill="none" stroke="url(#lcO2)" stroke-width=".9" opacity=".7"/><rect x="9.6" y="9.6" width="44.8" height="44.8" rx="8.6" fill="none" stroke="url(#lcO2)" stroke-width=".5" opacity=".32"/><text x="25.5" y="46" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="33" font-weight="600" fill="url(#lcO2)">L</text><g fill="none" stroke="url(#lcO2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M42.5 17 38.5 23h8z"/><path d="M42.5 21.5 36.5 30h12z"/><path d="M42.5 27.5 35 37.5h15z"/></g><path d="M42.5 37.5v5.5" stroke="url(#lcO2)" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <div class="brand-name">Locamp</div>
+      </a>
+      <div id="camping-switch" class="camping-switch hidden">
+        <select id="camping-select" title="Camping actif"></select>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav-scroll">
+      <div class="nav-grp">Exploitation</div>
+      <a href="#/dashboard" data-nav="dashboard">Tableau de bord</a>
+      <a href="#/carte" data-nav="carte">Carte du camping</a>
+      <a href="#/emplacements" data-nav="emplacements">Emplacements</a>
+      <a href="#/residents" data-nav="residents">Résidents</a>
+      <a href="#/messagerie" data-nav="messagerie">Messagerie <span id="nav-msg-badge" class="hidden"></span></a>
+      <a href="#/compteurs" data-nav="compteurs">Compteurs</a>
+
+      <div class="nav-grp">Facturation</div>
+      <a href="#/factures" data-nav="factures">Factures</a>
+      <a href="#/reglements" data-nav="reglements">Règlements</a>
+      <a href="#/impayes" data-nav="impayes">Impayés</a>
+      <a href="#/compta" data-nav="compta">Comptabilité</a>
+
+      <div class="nav-grp">Configuration</div>
+      <a href="#/parametres" data-nav="parametres">Paramètres</a>
+      <a href="#/administration" data-nav="administration" id="nav-admin">Administration</a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <span id="user-name" class="user-name"></span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Se déconnecter</button>
+    </div>
+  
+  </aside>
+  <main id="main" class="main"></main>
+</div>
+
+<!-- ================= PANNEAU LATÉRAL (fiche) ================= -->
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-backdrop" onclick="closeDrawer()"></div>
+  <div class="drawer-panel">
+    <button class="drawer-close" onclick="closeDrawer()" aria-label="Fermer">×</button>
+    <div id="drawer-content"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/app.js"></script>
 </body>
 </html>
