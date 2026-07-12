@@ -434,3 +434,133 @@ $('#sig-signer').addEventListener('click', async () => {
     btn.disabled = false; btn.textContent = 'Signer le document';
   }
 });
+
+/* ==================== CLOCHE DE NOTIFICATIONS (portail locataire) ==================== */
+(function () {
+  let built = false, panelOpen = false;
+  const ICONES = { paiement_confirme: '✅', nouvelle_facture: '🧾', nouveau_message: '💬' };
+
+  function tempsRelatif(iso) {
+    const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60) return "à l'instant";
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+    if (diff < 172800) return 'hier';
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  }
+  function scrollVers(sel) { const el = $(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+
+  function build() {
+    if (built) return;
+    const anchor = document.getElementById('btn-logout');
+    if (!anchor) return;
+    built = true;
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-flex;align-items:center;margin-right:8px';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = 'Notifications';
+    btn.style.cssText = 'position:relative;background:none;border:none;cursor:pointer;padding:4px;line-height:1;font-size:20px';
+    btn.innerHTML = '🔔<span id="pnotif-badge" class="hidden" style="position:absolute;top:-2px;right:-2px;min-width:16px;'
+      + 'height:16px;padding:0 4px;border-radius:9px;background:#E5484D;color:#fff;font-size:10px;font-weight:700;'
+      + 'display:flex;align-items:center;justify-content:center">0</span>';
+
+    const panel = document.createElement('div');
+    panel.id = 'pnotif-panel';
+    panel.className = 'hidden';
+    panel.style.cssText = 'position:absolute;top:calc(100% + 8px);right:0;width:340px;max-width:88vw;max-height:70vh;'
+      + 'overflow:auto;background:#fff;border:1px solid #E3E0D6;border-radius:14px;'
+      + 'box-shadow:0 12px 32px rgba(0,0,0,.16);z-index:2000';
+
+    wrap.appendChild(btn); wrap.appendChild(panel);
+    anchor.parentNode.insertBefore(wrap, anchor);
+
+    btn.onclick = (e) => { e.stopPropagation(); panelOpen ? fermer() : ouvrir(); };
+    document.addEventListener('click', (e) => { if (panelOpen && !wrap.contains(e.target)) fermer(); });
+
+    setInterval(majCompteur, 30000);
+    majCompteur();
+  }
+
+  async function majCompteur() {
+    if (!built || !RTOKEN) return;
+    try {
+      const { non_lues } = await api('/api/portail/notifications/compteur');
+      const b = document.getElementById('pnotif-badge');
+      if (!b) return;
+      b.textContent = non_lues > 99 ? '99+' : non_lues;
+      b.classList.toggle('hidden', !non_lues);
+    } catch { /* silencieux */ }
+  }
+
+  function fermer() { const p = document.getElementById('pnotif-panel'); if (p) p.classList.add('hidden'); panelOpen = false; }
+
+  async function ouvrir() {
+    const panel = document.getElementById('pnotif-panel');
+    if (!panel) return;
+    panelOpen = true;
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div style="padding:18px;color:#999;font-size:13px">Chargement…</div>';
+    try {
+      const { notifications } = await api('/api/portail/notifications?limit=30');
+      rendre(notifications || []);
+    } catch (e) {
+      panel.innerHTML = `<div style="padding:18px;color:#B3492F;font-size:13px">${esc(e.message)}</div>`;
+    }
+  }
+
+  function rendre(list) {
+    const panel = document.getElementById('pnotif-panel');
+    const nonLues = list.filter((n) => !n.lu).length;
+    let html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;'
+      + 'border-bottom:1px solid #EFEBE1;position:sticky;top:0;background:#fff">'
+      + '<strong style="font-size:14px">Notifications</strong>'
+      + (nonLues ? '<a href="#" id="pnotif-tout-lu" style="font-size:12px;color:#1A7A5E;text-decoration:none">Tout marquer lu</a>' : '')
+      + '</div>';
+    if (!list.length) {
+      html += '<div style="padding:26px 18px;text-align:center;color:#999;font-size:13px">Aucune notification</div>';
+    } else {
+      html += list.map((n) => `
+        <div class="pnotif-item" data-id="${esc(n.id)}" style="display:flex;gap:11px;padding:12px 14px;cursor:pointer;
+          border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
+          <span style="font-size:19px;flex-shrink:0">${ICONES[n.type] || '🔔'}</span>
+          <div style="min-width:0;flex:1">
+            <div style="font-size:13.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
+            ${n.corps ? `<div style="font-size:12.5px;color:#6b6b6b;margin-top:2px;line-height:1.4">${esc(n.corps)}</div>` : ''}
+            <div style="font-size:11px;color:#a3a3a3;margin-top:3px">${tempsRelatif(n.created_at)}</div>
+          </div>
+          ${n.lu ? '' : '<span style="width:8px;height:8px;border-radius:50%;background:#1A7A5E;flex-shrink:0;margin-top:5px"></span>'}
+        </div>`).join('');
+    }
+    panel.innerHTML = html;
+
+    const toutLu = document.getElementById('pnotif-tout-lu');
+    if (toutLu) toutLu.onclick = async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      try { await api('/api/portail/notifications/tout-lu', { method: 'POST' }); await ouvrir(); majCompteur(); } catch (err) { toast(err.message, true); }
+    };
+
+    panel.querySelectorAll('.pnotif-item').forEach((el) => {
+      el.onclick = () => activer(el.dataset.id, list.find((n) => String(n.id) === String(el.dataset.id)));
+    });
+  }
+
+  async function activer(id, notif) {
+    try { await api(`/api/portail/notifications/${id}/lu`, { method: 'POST' }); } catch { /* non bloquant */ }
+    fermer(); majCompteur();
+    if (!notif) return;
+    if (notif.type === 'nouveau_message') scrollVers('#fil-messages');
+    else if (notif.type === 'nouvelle_facture' || notif.type === 'paiement_confirme') scrollVers('#liste-factures');
+  }
+
+  // Rafraîchir le compteur après chaque (re)chargement de l'espace.
+  if (typeof chargerEspace === 'function') {
+    const _charger = chargerEspace;
+    // eslint-disable-next-line no-global-assign
+    chargerEspace = async function () { const r = await _charger.apply(this, arguments); build(); majCompteur(); return r; };
+  }
+  [1000, 3000].forEach((t) => setTimeout(() => { build(); majCompteur(); }, t));
+  setInterval(() => { build(); majCompteur(); }, 25000);
+})();
