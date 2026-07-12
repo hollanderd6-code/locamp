@@ -35,6 +35,16 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':
 const eur = (n) => Number(n || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
+/* Libellés lisibles : jamais de code technique à l'écran. */
+const STATUT_LIB = {
+  emise: 'émise', partielle: 'partiellement réglée', reglee: 'réglée', en_retard: 'en retard',
+  avoir: 'avoir', annulee: 'annulée', brouillon: 'brouillon',
+  libre: 'libre', occupe: 'occupé', reserve: 'réservé', indisponible: 'indisponible',
+  actif: 'actif', inactif: 'inactif', signe: 'signé', emis: 'émis',
+  remise: 'remise', encaissee: 'encaissée',
+};
+const lib = (s) => STATUT_LIB[s] || String(s || '').replace(/_/g, ' ');
+
 function toast(msg, err = false) {
   const t = $('#toast');
   t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
@@ -228,29 +238,34 @@ async function vueDashboard() {
   const enRetard = imp ? imp.impayes.filter((f) => f.en_retard) : [];
 
   $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div><span class="muted">${dfr(d.genere_le)}</span></div>
-    <div class="kpis">
-      <div class="kpi"><div class="v">${d.occupation.occupes}/${d.occupation.total}</div><div class="l">Emplacements occupés (${d.occupation.taux} %)</div></div>
-      <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
-      <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div><div class="l">Impayés (${d.impayes.nombre} factures)</div></div>
-      <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div><div class="l">Prestations à facturer</div></div>
-      <div class="kpi ${msgRes.total > 0 ? 'warn' : ''}"><div class="v">${msgRes.total}</div><div class="l"><a href="#/messagerie" style="color:inherit">Messages non lus</a></div></div>
-      <div class="kpi ${d.alertes.documents_expirant > 0 ? 'warn' : ''}"><div class="v">${d.alertes.documents_expirant}</div><div class="l">Documents à renouveler (30 j)</div></div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <h2 style="margin:0">Actions rapides</h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="messageRapide()">Prévenir un client (colis…)</button>
-          <button class="btn btn-ghost btn-sm" onclick="messageGroupe()">Message à tous</button>
-          ${enRetard.length ? `<button class="btn btn-primary btn-sm" onclick="relancerImpayes()">Relancer les ${enRetard.length} retard(s)</button>` : ''}
-        </div>
+    <div class="page-head">
+      <div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div>
+      <div class="toolbar">
+        <button class="btn btn-ghost btn-sm" onclick="messageRapide()">Prévenir un client</button>
+        <button class="btn btn-ghost btn-sm" onclick="messageGroupe()">Message à tous</button>
+        ${enRetard.length ? `<button class="btn btn-primary btn-sm" onclick="relancerImpayes()">Relancer ${enRetard.length} retard${enRetard.length > 1 ? 's' : ''}</button>` : ''}
       </div>
     </div>
 
+    <div class="kpis">
+      <div class="kpi"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
+        <div class="l">Emplacements occupés · ${d.occupation.taux} %</div></div>
+      <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
+      <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div>
+        <div class="l">Impayés · ${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}</div></div>
+      <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div>
+        <div class="l">Prestations à facturer</div></div>
+    </div>
+
+    <div class="alertes">
+      ${msgRes.total ? `<a href="#/messagerie" class="alerte warn"><strong>${msgRes.total}</strong> message${msgRes.total > 1 ? 's' : ''} non lu${msgRes.total > 1 ? 's' : ''}</a>` : ''}
+      ${d.alertes.documents_expirant ? `<span class="alerte warn"><strong>${d.alertes.documents_expirant}</strong> document${d.alertes.documents_expirant > 1 ? 's' : ''} à renouveler sous 30 jours</span>` : ''}
+      ${d.alertes.contrats_a_renouveler.length ? `<span class="alerte"><strong>${d.alertes.contrats_a_renouveler.length}</strong> contrat${d.alertes.contrats_a_renouveler.length > 1 ? 's' : ''} arrivant à échéance</span>` : ''}
+      ${!msgRes.total && !d.alertes.documents_expirant && !d.alertes.contrats_a_renouveler.length ? '<span class="alerte ok">Rien à signaler aujourd\u2019hui</span>' : ''}
+    </div>
+
     ${imp && enRetard.length ? `
-    <div class="card" style="margin-top:16px">
+    <div class="card">
       <h2>Factures en retard</h2>
       <table style="margin-top:8px"><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th><th></th></tr></thead>
       <tbody>${enRetard.slice(0, 8).map((f) => `
@@ -264,13 +279,17 @@ async function vueDashboard() {
       ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
     </div>` : ''}
 
-    <div class="card" style="margin-top:16px">
-      <h2>Factures du mois</h2>
-      <p class="muted">${d.factures_mois.total} factures — ${Object.entries(st).map(([k, v]) => `${v} ${k}`).join(' · ') || 'aucune'}</p>
-      <h2 style="margin-top:18px">Encaissements du mois</h2>
-      <p class="muted">${Object.entries(d.encaissements_mois).map(([k, v]) => `${k} : ${eur(v)}`).join(' · ') || 'aucun'}</p>
-      ${d.alertes.contrats_a_renouveler.length ? `<h2 style="margin-top:18px">Contrats arrivant à échéance</h2>
-        <ul class="list-tight">${d.alertes.contrats_a_renouveler.map((c) => `<li><span>${esc(c.numero || c.id.slice(0, 8))}</span><span class="muted">${dfr(c.date_fin)}</span></li>`).join('')}</ul>` : ''}
+    <div class="card">
+      <h2>Ce mois-ci</h2>
+      <div class="stats">
+        <div class="stat"><span class="k">Factures émises</span><span class="v">${d.factures_mois.total}</span></div>
+        ${Object.entries(st).map(([k, v]) => `<div class="stat"><span class="k">${esc(lib(k))}</span><span class="v">${v}</span></div>`).join('')}
+      </div>
+      ${Object.keys(d.encaissements_mois).length ? `
+        <h2 style="margin-top:20px">Encaissements</h2>
+        <div class="stats">
+          ${Object.entries(d.encaissements_mois).map(([k, v]) => `<div class="stat"><span class="k">${esc(lib(k))}</span><span class="v">${eur(v)}</span></div>`).join('')}
+        </div>` : ''}
     </div>`;
 }
 
@@ -890,11 +909,11 @@ window.ficheEmplacement = async (id) => {
     const { factures } = await api('/api/factures?resident_id=' + r.id);
     const dues = factures.filter((f) => ['emise', 'partielle', 'en_retard'].includes(f.statut));
     facturesHtml = `<h2 style="margin-top:18px">Factures en cours</h2>
-      ${dues.length ? `<ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${f.statut}</span></span><span>${eur(f.total_ttc - f.montant_regle)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture en attente.</p>'}`;
+      ${dues.length ? `<ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${lib(f.statut)}</span></span><span>${eur(f.total_ttc - f.montant_regle)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture en attente.</p>'}`;
   }
   openDrawer(`
     <h2>Emplacement ${esc(e.numero)}</h2>
-    <p class="muted">${esc(e.secteur || '')} ${e.type ? '· ' + esc(e.type) : ''} · <span class="badge ${e.statut}">${e.statut}</span></p>
+    <p class="muted">${esc(e.secteur || '')} ${e.type ? '· ' + esc(e.type) : ''} · <span class="badge ${e.statut}">${lib(e.statut)}</span></p>
     <ul class="list-tight">
       <li><span>Loyer de base</span><span>${eur(e.loyer_base)}</span></li>
     </ul>
@@ -1043,7 +1062,7 @@ async function vueFicheClient(id) {
             <td><strong>${esc(f.numero)}</strong></td>
             <td class="muted">${esc(f.periode || '—')}</td>
             <td class="muted">${dfr(f.date_emission)}</td>
-            <td><span class="badge ${f.statut}">${f.statut}</span></td>
+            <td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
             <td class="right">${eur(f.total_ttc)}</td>
             <td class="right">${eur(f.total_ttc - f.montant_regle)}</td>
             <td class="right">
@@ -1294,7 +1313,7 @@ async function vueEmplacements() {
     <tbody>${emplacements.map((e) => `
       <tr class="row-click" onclick="ficheEmplacement('${e.id}')">
         <td><strong>${esc(e.numero)}</strong></td><td class="muted">${esc(e.secteur || '—')}</td>
-        <td class="muted">${esc(e.type || '—')}</td><td><span class="badge ${e.statut}">${e.statut}</span></td>
+        <td class="muted">${esc(e.type || '—')}</td><td><span class="badge ${e.statut}">${lib(e.statut)}</span></td>
         <td class="right">${eur(e.loyer_base)}</td>
         <td class="muted">${e.coord_x != null ? '✓' : '—'}</td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
@@ -1337,7 +1356,7 @@ async function vueFactures() {
     <tbody>${factures.map((f) => `
       <tr>
         <td><strong>${esc(f.numero)}</strong></td><td class="muted">${esc(f.periode || '—')}</td>
-        <td class="muted">${dfr(f.date_emission)}</td><td><span class="badge ${f.statut}">${f.statut}</span></td>
+        <td class="muted">${dfr(f.date_emission)}</td><td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
         <td class="right">
           <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>

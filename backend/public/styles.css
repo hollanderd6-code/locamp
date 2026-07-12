@@ -178,18 +178,21 @@ a.brand-side:focus-visible{outline:2px solid var(--laiton-vif);outline-offset:2p
 .page-head .muted{padding-bottom:5px}
 
 /* ---------------- KPI ---------------- */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:14px;margin-bottom:22px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:16px}
 .kpi{position:relative;background:var(--carte);border:1px solid var(--hairline);border-radius:var(--r);
   padding:19px 21px 17px;box-shadow:var(--shadow-s);overflow:hidden;transition:box-shadow .2s, transform .2s var(--ease)}
 .kpi:hover{box-shadow:var(--shadow-m);transform:translateY(-2px)}
 .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sapin);opacity:.85}
 .kpi.warn::after{background:var(--laiton)}
 .kpi.bad::after{background:var(--rouge)}
-.kpi .v{font-family:"Fraunces",serif;font-size:29px;font-weight:600;letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums;line-height:1.15}
+/* un montant ne doit JAMAIS se couper : le « € » orphelin sur une 2e ligne, c'est raté */
+.kpi .v{font-family:"Fraunces",serif;font-size:26px;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;line-height:1.2;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.kpi .v .u{font-size:17px;color:var(--brume);font-weight:500}
 .kpi.warn .v{color:var(--laiton)}
 .kpi.bad .v{color:var(--rouge)}
-.kpi .l{font-size:12.5px;color:var(--brume);margin-top:5px;font-weight:500}
+.kpi .l{font-size:12.5px;color:var(--brume);margin-top:5px;font-weight:500;line-height:1.35}
 .kpi .l a{text-decoration:none}
 
 /* ---------------- Cartes & tables ---------------- */
@@ -510,3 +513,26 @@ tr:hover td{background:#FBF9F3}
   .kpi .v{font-size:19px}
   .fiche-actions .btn{min-width:100%}
 }
+
+
+/* ---------------- Bandeau d'alertes (remplace les KPI secondaires) ---------------- */
+.alertes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.alerte{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;
+  font-size:13px;font-weight:500;text-decoration:none;
+  background:var(--carte);border:1px solid var(--hairline);color:var(--encre)}
+.alerte strong{font-weight:700;font-variant-numeric:tabular-nums}
+.alerte::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--brume)}
+.alerte.warn{background:var(--laiton-pale);border-color:#EBDCBB;color:#7A5C1F}
+.alerte.warn::before{background:var(--laiton)}
+.alerte.ok{background:var(--sapin-pale);border-color:#CDE0D7;color:var(--sapin)}
+.alerte.ok::before{background:var(--sapin)}
+a.alerte:hover{transform:translateY(-1px);box-shadow:var(--shadow-s)}
+a.alerte{transition:transform .14s var(--ease),box-shadow .14s}
+
+/* ---------------- Grille de statistiques (compacte, lisible) ---------------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:1px;
+  background:var(--hairline);border:1px solid var(--hairline);border-radius:12px;overflow:hidden;margin-top:10px}
+.stat{background:var(--carte);padding:13px 16px;display:flex;flex-direction:column;gap:3px}
+.stat .k{font-size:11.5px;color:var(--brume);font-weight:500}
+.stat .k::first-letter{text-transform:uppercase}
+.stat .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap}
