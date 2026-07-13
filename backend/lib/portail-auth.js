@@ -1,250 +1,113 @@
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
+// ============================================================
+//  Authentification du portail locataire (mot de passe + activation)
+//  L'accès est réservé aux résidents créés par le camping (table residents,
+//  actif = true) : seul un e-mail déjà enregistré peut recevoir un lien de
+//  création de mot de passe. Aucune auto-inscription possible.
+// ============================================================
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { supabase } = require('./supabase');
 const { sendEmail } = require('./email');
 
-/* ============================================================
-   Authentification du portail locataire.
-
-   Principe : le résident ne crée pas son compte. Le camping le crée ;
-   le résident reçoit un lien d'activation, ce qui PROUVE qu'il possède
-   l'adresse e-mail, puis il choisit son mot de passe.
-
-   Les jetons ne sont jamais stockés en clair : seule leur empreinte SHA-256
-   est en base. Un jeton volé dans la base serait donc inutilisable.
-   ============================================================ */
-
 const JWT_SECRET = process.env.JWT_SECRET;
-const SESSION_DUREE = process.env.PORTAIL_SESSION || '30d';   // app : on reste connecté
-const ACTIVATION_JOURS = 14;
-const RESET_MINUTES = 60;
 
-const MDP_MIN = 8;
-const TENTATIVES_MAX = 8;
-const BLOCAGE_MINUTES = 15;
+const norm = (e) => (e || '').toLowerCase().trim();
+// 8 caractères minimum, au moins une lettre et un chiffre (cohérent avec le front).
+const mdpValide = (m) => typeof m === 'string' && /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(m);
 
-const hache = (t) => crypto.createHash('sha256').update(t).digest('hex');
-const jeton = () => crypto.randomBytes(32).toString('hex');
-const norm = (e) => String(e || '').toLowerCase().trim();
-
-function validerMdp(mdp) {
-  const m = String(mdp || '');
-  if (m.length < MDP_MIN) return `Le mot de passe doit contenir au moins ${MDP_MIN} caractères.`;
-  if (!/[a-zA-Z]/.test(m) || !/[0-9]/.test(m)) return 'Le mot de passe doit contenir au moins une lettre et un chiffre.';
-  return null;
+function sessionToken(r) {
+  return jwt.sign({ typ: 'resident', rid: r.id, cid: r.camping_id, email: r.email }, JWT_SECRET, { expiresIn: '7d' });
+}
+function motDePasseToken(r) {
+  return jwt.sign({ typ: 'resident-pwd', rid: r.id, cid: r.camping_id, email: r.email }, JWT_SECRET, { expiresIn: '2h' });
+}
+function lirePwdJeton(jeton) {
+  try { const p = jwt.verify(jeton, JWT_SECRET); return p.typ === 'resident-pwd' ? p : null; }
+  catch { return null; }
 }
 
-/** Jeton de session du portail. */
-const creerSession = (r) => jwt.sign(
-  { typ: 'resident', rid: r.id, cid: r.camping_id, email: r.email },
-  JWT_SECRET, { expiresIn: SESSION_DUREE },
-);
+const CH = 'id,camping_id,nom,prenom,email,actif,mot_de_passe_hash';
+async function parEmail(email) {
+  const { data } = await supabase.from('residents').select(CH)
+    .eq('email', norm(email)).eq('actif', true).maybeSingle();
+  return data || null;
+}
+async function parId(id) {
+  const { data } = await supabase.from('residents').select(CH).eq('id', id).maybeSingle();
+  return data || null;
+}
 
-/* ------------------------- Activation ------------------------- */
+// Envoi du lien de création/réinitialisation. Réponse TOUJOURS générique
+// (pas d'énumération d'e-mails). N'envoie un mail que si l'e-mail est enregistré.
+async function demanderReset(email) {
+  const generic = {
+    ok: true,
+    message: 'Si votre adresse est enregistrée par le camping, vous allez recevoir un e-mail pour définir votre mot de passe.',
+  };
+  const r = await parEmail(email);
+  if (!r) return generic;
 
-/**
- * Envoie (ou renvoie) l'invitation d'activation. Appelé à la création d'un
- * résident, ou manuellement depuis sa fiche.
- */
-async function envoyerActivation(residentId, { renvoi = false } = {}) {
-  const { data: r } = await supabase.from('residents')
-    .select('id,camping_id,nom,prenom,email,hash_mdp').eq('id', residentId).maybeSingle();
-  if (!r) return { error: 'Résident introuvable' };
-  if (!r.email) return { error: 'Ce résident n\u2019a pas d\u2019adresse e-mail' };
-  if (r.hash_mdp && !renvoi) return { deja_actif: true };
-
-  const t = jeton();
-  const expire = new Date(Date.now() + ACTIVATION_JOURS * 86400000).toISOString();
-  const { error } = await supabase.from('residents')
-    .update({ activation_hash: hache(t), activation_expire: expire })
-    .eq('id', r.id);
-  if (error) throw error;
-
-  const { data: camping } = await supabase.from('campings')
-    .select('nom,raison_sociale').eq('id', r.camping_id).maybeSingle();
-  const nomCamping = camping?.nom || camping?.raison_sociale || 'Votre camping';
-  const base = process.env.PUBLIC_APP_URL || '';
-  const lien = `${base}/portail/?activation=${t}`;
+  const creer = !r.mot_de_passe_hash;
+  const tok = motDePasseToken(r);
+  const base = (process.env.PUBLIC_APP_URL || '').replace(/\/$/, '');
+  const lien = `${base}/portail/?${creer ? 'activation' : 'reset'}=${tok}`;
+  const html = `<p>Bonjour ${r.prenom || ''},</p>`
+    + `<p>Pour ${creer ? 'créer' : 'réinitialiser'} le mot de passe de votre espace locataire, `
+    + `cliquez sur le bouton ci-dessous (lien valable 2 heures) :</p>`
+    + `<p><a href="${lien}" style="display:inline-block;padding:12px 22px;background:#175243;color:#fff;`
+    + `border-radius:8px;text-decoration:none;font-weight:600">Définir mon mot de passe</a></p>`
+    + `<p style="font-size:13px;color:#444">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>`
+    + `<span style="word-break:break-all">${lien}</span></p>`;
 
   const out = await sendEmail({
     to: r.email,
-    subject: `Activez votre espace locataire — ${nomCamping}`,
-    html: `<p>Bonjour ${r.prenom || ''},</p>`
-      + `<p>${nomCamping} vous ouvre un espace personnel : vos factures, vos documents à signer `
-      + `et vos échanges avec l\u2019accueil, au même endroit.</p>`
-      + `<p>Pour l\u2019activer, choisissez votre mot de passe :</p>`
-      + `<p><a href="${lien}" style="display:inline-block;padding:13px 26px;background:#175243;`
-      + `color:#fff;border-radius:9px;text-decoration:none;font-weight:600">Activer mon espace</a></p>`
-      + `<p style="font-size:12px;color:#666">Ce lien vous est personnel et expire dans ${ACTIVATION_JOURS} jours. `
-      + `Si vous n\u2019êtes pas à l\u2019origine de cette demande, ignorez cet e-mail.</p>`,
+    subject: creer ? 'Créez le mot de passe de votre espace locataire' : 'Réinitialisation de votre mot de passe',
+    html,
   });
-
-  return { ok: true, envoye_a: r.email, simule: !!out.skipped, lien_dev: out.skipped ? lien : undefined };
-}
-
-/** Vérifie un jeton d'activation (avant d'afficher le formulaire). */
-async function verifierActivation(t) {
-  if (!t) return { error: 'Lien invalide' };
-  const { data: r } = await supabase.from('residents')
-    .select('id,nom,prenom,email,activation_expire,hash_mdp')
-    .eq('activation_hash', hache(t)).maybeSingle();
-  if (!r) return { error: 'Ce lien d\u2019activation n\u2019est pas valide.' };
-  if (r.activation_expire && new Date(r.activation_expire) < new Date()) {
-    return { error: 'Ce lien a expiré. Demandez-en un nouveau à l\u2019accueil du camping.' };
-  }
-  return {
-    ok: true,
-    email: r.email,
-    prenom: r.prenom,
-    nom: r.nom,
-    deja_actif: !!r.hash_mdp,
-  };
-}
-
-/**
- * Active le compte : enregistre le mot de passe et VÉRIFIE l'adresse e-mail
- * (le résident a cliqué le lien reçu dans sa boîte : la preuve est faite).
- */
-async function activerCompte(t, mdp) {
-  const err = validerMdp(mdp);
-  if (err) return { error: err, code: 400 };
-
-  const { data: r } = await supabase.from('residents')
-    .select('id,camping_id,email,activation_expire')
-    .eq('activation_hash', hache(t)).maybeSingle();
-  if (!r) return { error: 'Lien d\u2019activation invalide', code: 400 };
-  if (r.activation_expire && new Date(r.activation_expire) < new Date()) {
-    return { error: 'Lien expiré', code: 410 };
-  }
-
-  const { error } = await supabase.from('residents').update({
-    hash_mdp: await bcrypt.hash(mdp, 12),
-    email_verifie_at: new Date().toISOString(),
-    activation_hash: null,          // jeton à usage unique
-    activation_expire: null,
-    tentatives_echouees: 0,
-    bloque_jusqu_a: null,
-    derniere_connexion: new Date().toISOString(),
-  }).eq('id', r.id);
-  if (error) throw error;
-
-  return { ok: true, token: creerSession(r) };
-}
-
-/* ------------------------- Connexion ------------------------- */
-
-async function connexion(email, mdp) {
-  const e = norm(email);
-  // message identique dans tous les cas : aucune énumération d'adresses possible
-  const refus = { error: 'Adresse e-mail ou mot de passe incorrect.', code: 401 };
-  if (!e || !mdp) return refus;
-
-  const { data: r } = await supabase.from('residents')
-    .select('id,camping_id,email,hash_mdp,actif,email_verifie_at,tentatives_echouees,bloque_jusqu_a')
-    .ilike('email', e).maybeSingle();
-
-  if (!r || !r.actif) {
-    await bcrypt.compare(mdp, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinva');  // temps constant
-    return refus;
-  }
-  if (r.bloque_jusqu_a && new Date(r.bloque_jusqu_a) > new Date()) {
-    const min = Math.ceil((new Date(r.bloque_jusqu_a) - Date.now()) / 60000);
-    return { error: `Trop de tentatives. Réessayez dans ${min} minute(s).`, code: 429 };
-  }
-  if (!r.hash_mdp) {
-    return { error: 'Votre espace n\u2019est pas encore activé. Utilisez le lien d\u2019activation reçu par e-mail, ou demandez-en un nouveau.', code: 403, non_active: true };
-  }
-
-  const ok = await bcrypt.compare(mdp, r.hash_mdp);
-  if (!ok) {
-    const n = (r.tentatives_echouees || 0) + 1;
-    const patch = { tentatives_echouees: n };
-    if (n >= TENTATIVES_MAX) {
-      patch.bloque_jusqu_a = new Date(Date.now() + BLOCAGE_MINUTES * 60000).toISOString();
-      patch.tentatives_echouees = 0;
-    }
-    await supabase.from('residents').update(patch).eq('id', r.id);
-    return refus;
-  }
-
-  await supabase.from('residents').update({
-    tentatives_echouees: 0, bloque_jusqu_a: null,
-    derniere_connexion: new Date().toISOString(),
-  }).eq('id', r.id);
-
-  return { ok: true, token: creerSession(r) };
-}
-
-/* --------------------- Mot de passe oublié --------------------- */
-
-async function demanderReset(email) {
-  const e = norm(email);
-  // réponse générique quoi qu'il arrive (pas d'énumération)
-  const generic = { ok: true, message: 'Si un compte existe pour cette adresse, un e-mail vient d\u2019être envoyé.' };
-  if (!e) return generic;
-
-  const { data: r } = await supabase.from('residents')
-    .select('id,camping_id,nom,prenom,email,actif,hash_mdp').ilike('email', e).maybeSingle();
-  if (!r || !r.actif) return generic;
-
-  // compte jamais activé : on renvoie plutôt l'activation
-  if (!r.hash_mdp) {
-    await envoyerActivation(r.id, { renvoi: true }).catch(() => {});
-    return generic;
-  }
-
-  const t = jeton();
-  await supabase.from('residents').update({
-    reset_hash: hache(t),
-    reset_expire: new Date(Date.now() + RESET_MINUTES * 60000).toISOString(),
-  }).eq('id', r.id);
-
-  const { data: camping } = await supabase.from('campings')
-    .select('nom,raison_sociale').eq('id', r.camping_id).maybeSingle();
-  const nomCamping = camping?.nom || camping?.raison_sociale || 'Votre camping';
-  const base = process.env.PUBLIC_APP_URL || '';
-  const lien = `${base}/portail/?reset=${t}`;
-
-  await sendEmail({
-    to: r.email,
-    subject: `Réinitialisation de votre mot de passe — ${nomCamping}`,
-    html: `<p>Bonjour ${r.prenom || ''},</p>`
-      + `<p>Vous avez demandé à réinitialiser le mot de passe de votre espace locataire.</p>`
-      + `<p><a href="${lien}" style="display:inline-block;padding:13px 26px;background:#175243;`
-      + `color:#fff;border-radius:9px;text-decoration:none;font-weight:600">Choisir un nouveau mot de passe</a></p>`
-      + `<p style="font-size:12px;color:#666">Ce lien expire dans ${RESET_MINUTES} minutes. `
-      + `Si vous n\u2019êtes pas à l\u2019origine de cette demande, ignorez cet e-mail : votre mot de passe reste inchangé.</p>`,
-  }).catch((err) => console.error('[portail:reset mail]', err.message));
-
+  if (process.env.PORTAIL_DEV === 'true' && out.skipped) return { ...generic, dev_lien: lien };
   return generic;
 }
 
-async function reinitialiser(t, mdp) {
-  const err = validerMdp(mdp);
-  if (err) return { error: err, code: 400 };
-  if (!t) return { error: 'Lien invalide', code: 400 };
+// Vérifie le lien avant d'afficher le formulaire (renvoie l'e-mail + statut).
+async function verifierActivation(jeton) {
+  const p = lirePwdJeton(jeton);
+  if (!p) return { error: 'Lien invalide ou expiré. Redemandez-en un depuis « Mot de passe oublié ».' };
+  const r = await parId(p.rid);
+  if (!r || !r.actif) return { error: 'Compte introuvable.' };
+  return { email: r.email, deja_actif: !!r.mot_de_passe_hash };
+}
 
-  const { data: r } = await supabase.from('residents')
-    .select('id,camping_id,email,reset_expire').eq('reset_hash', hache(t)).maybeSingle();
-  if (!r) return { error: 'Ce lien n\u2019est pas valide.', code: 400 };
-  if (r.reset_expire && new Date(r.reset_expire) < new Date()) {
-    return { error: 'Ce lien a expiré. Refaites une demande.', code: 410 };
+// Définit (ou redéfinit) le mot de passe puis ouvre la session.
+async function definirMotDePasse(jeton, mot_de_passe) {
+  const p = lirePwdJeton(jeton);
+  if (!p) return { error: 'Lien invalide ou expiré. Redemandez-en un.', code: 410 };
+  if (!mdpValide(mot_de_passe)) return { error: '8 caractères minimum, dont au moins une lettre et un chiffre.', code: 400 };
+  const r = await parId(p.rid);
+  if (!r || !r.actif) return { error: 'Compte introuvable.', code: 404 };
+  const hash = await bcrypt.hash(mot_de_passe, 10);
+  const { error } = await supabase.from('residents').update({ mot_de_passe_hash: hash }).eq('id', r.id);
+  if (error) return { error: 'Enregistrement impossible. La migration db/15_portail_mdp.sql a-t-elle été exécutée ?', code: 500 };
+  return { token: sessionToken(r) };
+}
+
+// Connexion e-mail + mot de passe (le mode principal dans l'app).
+async function connexion(email, mot_de_passe) {
+  const r = await parEmail(email);
+  if (!r || !r.mot_de_passe_hash) {
+    if (r && !r.mot_de_passe_hash) {
+      return { error: 'Compte non activé. Cliquez sur « Mot de passe oublié » pour définir votre mot de passe.', code: 403, non_active: true };
+    }
+    return { error: 'E-mail ou mot de passe incorrect.', code: 401 };
   }
-
-  await supabase.from('residents').update({
-    hash_mdp: await bcrypt.hash(mdp, 12),
-    email_verifie_at: new Date().toISOString(),
-    reset_hash: null, reset_expire: null,
-    tentatives_echouees: 0, bloque_jusqu_a: null,
-    derniere_connexion: new Date().toISOString(),
-  }).eq('id', r.id);
-
-  return { ok: true, token: creerSession(r) };
+  const ok = await bcrypt.compare(mot_de_passe || '', r.mot_de_passe_hash);
+  if (!ok) return { error: 'E-mail ou mot de passe incorrect.', code: 401 };
+  return { token: sessionToken(r) };
 }
 
 module.exports = {
-  envoyerActivation, verifierActivation, activerCompte,
-  connexion, demanderReset, reinitialiser,
-  creerSession, validerMdp, MDP_MIN,
+  demanderReset,
+  verifierActivation,
+  activerCompte: definirMotDePasse,
+  reinitialiser: definirMotDePasse,
+  connexion,
 };
