@@ -1,5 +1,6 @@
 /* ============ Portail locataire — logique ============ */
 let RTOKEN = localStorage.getItem('lc_portail') || null;
+const API = window.LOCAMP_API || '';   // '' en web (relatif) ; URL Render absolue en app mobile
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15,7 +16,7 @@ async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   if (!(opts.body instanceof FormData) && opts.body) headers['Content-Type'] = 'application/json';
   if (RTOKEN) headers['Authorization'] = 'Bearer ' + RTOKEN;
-  const r = await fetch(path, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
+  const r = await fetch(API + path, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
   const data = await r.json().catch(() => ({}));
   if (r.status === 401) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
   if (!r.ok) throw new Error(data.error || 'Erreur serveur');
@@ -194,7 +195,8 @@ async function chargerEspace() {
     api('/api/portail/messages').catch(() => ({ messages: [] })),
   ]);
   const { resident, emplacement, camping, paiement_en_ligne } = moi;
-  window._payok = !!paiement_en_ligne;
+  // Paiement en ligne : masqué dans l'app mobile (conformité Apple Guideline 3.1.1), gardé sur le web.
+  window._payok = !!paiement_en_ligne && !window.LOCAMP_NATIVE;
 
   $('#hello').textContent = `Bonjour ${resident.prenom || resident.nom}`;
   $('#sous-titre').textContent = [camping?.nom, emplacement ? `Emplacement ${emplacement.numero}` : null]
@@ -338,7 +340,7 @@ $('#form-msg').addEventListener('submit', async (e) => {
 
 $('#btn-mes-donnees').addEventListener('click', async () => {
   try {
-    const r = await fetch('/api/portail/mes-donnees', { headers: { Authorization: 'Bearer ' + RTOKEN } });
+    const r = await fetch(API + '/api/portail/mes-donnees', { headers: { Authorization: 'Bearer ' + RTOKEN } });
     if (!r.ok) throw new Error('Export indisponible');
     const blob = await r.blob();
     const a = document.createElement('a');
