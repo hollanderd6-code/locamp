@@ -8,9 +8,18 @@ async function sendEmail({ to, subject, html, sender, attachments }) {
     console.log('[email] non configuré — simulation :', to, '/', subject);
     return { skipped: true };
   }
-  // disableClickTracking: empêche Brevo de réécrire les liens (sinon les liens à jeton,
-  // ex. signature ?jeton=..., sont tronqués et renvoient vers une 404 SendinBlue).
-  const payload = { sender: { email: senderEmail, name: senderName }, to: [{ email: to }], subject, htmlContent: html, disableClickTracking: true };
+  // Désactive la réécriture des liens par Brevo (le suivi des clics transforme
+  // les liens à jeton, ex. signature ?jeton=..., en liens sendibt* qui tronquent
+  // le jeton -> 404). On coupe le tracking à plusieurs niveaux car, selon les
+  // comptes, l'API n'honore pas toujours le même champ :
+  const payload = {
+    sender: { email: senderEmail, name: senderName },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+    disableClickTracking: true,
+    headers: { 'X-Mailin-custom': 'click_tracking:false', 'X-Mailin-Track-Clicks': '0' },
+  };
   if (Array.isArray(attachments) && attachments.length) {
     payload.attachment = attachments.map((a) => ({
       name: a.name,
