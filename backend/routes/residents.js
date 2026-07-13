@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
+const { envoyerActivation } = require('../lib/portail-auth');
 const { buildReleve } = require('../lib/releve');
 const { buildRelevePdf } = require('../lib/pdf');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
@@ -106,7 +107,18 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
 
     await reconcileStatut(req.activeCampingId, data.emplacement_id);
     await writeAudit(req, { action: 'create', entite: 'residents', entite_id: data.id, apres: data });
-    res.status(201).json({ resident: data });
+
+    // Invitation à activer l'espace locataire (le clic sur le lien vaut vérification
+    // de l'adresse e-mail). Best-effort : n'empêche jamais la création du résident.
+    let invitation = null;
+    if (data.email) {
+      try {
+        const out = await envoyerActivation(data.id);
+        invitation = out.ok ? { envoyee_a: out.envoye_a } : null;
+      } catch (e) { console.error('[residents:invitation]', e.message); }
+    }
+
+    res.status(201).json({ resident: data, invitation });
   } catch (e) {
     console.error('[residents:create]', e.message);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -185,6 +197,30 @@ router.get('/:id/releve.pdf', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="releve_${d.annee}.pdf"`);
     res.send(pdf);
   } catch (e) { console.error('[residents:releve-pdf]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/residents/:id/invitation  -> (re)envoie l'invitation d'activation
+router.post('/:id/invitation', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: r } = await supabase.from('residents').select('id')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!r) return res.status(404).json({ error: 'Résident introuvable' });
+
+    const out = await envoyerActivation(req.params.id, { renvoi: true });
+    if (out.error) return res.status(400).json({ error: out.error });
+
+    await writeAudit(req, { action: 'email', entite: 'residents', entite_id: req.params.id,
+      apres: { invitation: out.envoye_a } });
+
+    res.json({
+      ok: true,
+      envoye_a: out.envoye_a,
+      message: out.simule
+        ? 'Service e-mail non configuré — invitation non envoyée.'
+        : `Invitation envoyée à ${out.envoye_a}`,
+      lien_dev: out.lien_dev,
+    });
+  } catch (e) { console.error('[residents:invitation]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;

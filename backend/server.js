@@ -101,6 +101,16 @@ app.use('/api/auth/register', limiteur(5, 60, 'Trop de créations de compte. Ré
 app.use('/api/portail/demande-acces', limiteur(6, 15,
   'Trop de demandes. Réessayez dans 15 minutes.'));
 
+// Connexion du portail : protège contre la force brute sur les mots de passe.
+app.use('/api/portail/connexion', limiteur(10, 15,
+  'Trop de tentatives de connexion. Réessayez dans 15 minutes.'));
+app.use('/api/portail/mdp-oublie', limiteur(5, 30,
+  'Trop de demandes. Réessayez plus tard.'));
+app.use('/api/portail/activation', limiteur(12, 15,
+  'Trop de tentatives. Réessayez plus tard.'));
+app.use('/api/portail/mdp-reinit', limiteur(10, 15,
+  'Trop de tentatives. Réessayez plus tard.'));
+
 // Signature électronique (page publique).
 app.use('/api/signatures/signer', limiteur(30, 15, 'Trop de requêtes. Réessayez plus tard.'));
 

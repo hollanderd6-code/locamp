@@ -149,3 +149,9 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px
 .msg-row.me .msg-meta{text-align:right}
 .msg-form{display:flex;flex-direction:row;gap:8px;margin-top:12px}
 .msg-form input{flex:1;min-width:0}
+
+/* ---- liens secondaires des écrans de connexion ---- */
+.liens{display:flex;gap:8px;justify-content:center;align-items:center;margin-top:16px;
+  font-size:13.5px;color:var(--brume);flex-wrap:wrap}
+.liens a{color:var(--sapin);text-decoration:none;font-weight:500}
+.liens a:hover{text-decoration:underline}

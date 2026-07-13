@@ -22,32 +22,152 @@ async function api(path, opts = {}) {
   return data;
 }
 
+const ECRANS = ['#ecran-connexion', '#ecran-activation', '#ecran-oubli', '#ecran-email', '#ecran-envoye', '#espace'];
 function show(id) {
-  ['#ecran-email', '#ecran-envoye', '#espace'].forEach((s) => $(s).classList.add('hidden'));
+  ECRANS.forEach((s) => $(s)?.classList.add('hidden'));
   $(id).classList.remove('hidden');
 }
 function showEmail() { show('#ecran-email'); }
 window.showEmail = showEmail;
 
-function logout() { RTOKEN = null; localStorage.removeItem('lc_portail'); show('#ecran-email'); }
+function logout() { RTOKEN = null; localStorage.removeItem('lc_portail'); show('#ecran-connexion'); }
 
 /* ---------- entrée : lien magique dans l'URL ? ---------- */
+let JETON_EN_COURS = null;   // activation ou réinitialisation
+
 async function boot() {
-  const params = new URLSearchParams(location.search);
-  const magic = params.get('token');
+  const p = new URLSearchParams(location.search);
+  const activation = p.get('activation');
+  const reset = p.get('reset');
+  const magic = p.get('token');
+
+  // 1. Lien d'activation (première connexion) : le clic prouve que l'adresse est bien la sienne
+  if (activation) {
+    history.replaceState({}, '', '/portail/');
+    try {
+      const d = await api(`/api/portail/activation/${activation}`);
+      JETON_EN_COURS = { type: 'activation', jeton: activation };
+      $('#act-email').textContent = d.email || '';
+      if (d.deja_actif) {
+        $('#act-titre').textContent = 'Nouveau mot de passe';
+        $('#act-intro').textContent = 'Choisissez un nouveau mot de passe pour votre espace.';
+      }
+      show('#ecran-activation');
+      return;
+    } catch (e) {
+      show('#ecran-connexion');
+      erreurCx(e.message);
+      return;
+    }
+  }
+
+  // 2. Lien de réinitialisation
+  if (reset) {
+    history.replaceState({}, '', '/portail/');
+    JETON_EN_COURS = { type: 'reset', jeton: reset };
+    $('#act-titre').textContent = 'Nouveau mot de passe';
+    $('#act-intro').textContent = 'Choisissez votre nouveau mot de passe.';
+    $('#act-email').textContent = '';
+    show('#ecran-activation');
+    return;
+  }
+
+  // 3. Lien magique (secours)
   if (magic) {
-    history.replaceState({}, '', '/portail/'); // nettoie l'URL
+    history.replaceState({}, '', '/portail/');
     try {
       const data = await api('/api/portail/session', { method: 'POST', body: { token: magic } });
       RTOKEN = data.token; localStorage.setItem('lc_portail', RTOKEN);
     } catch (e) { toast(e.message, true); }
   }
+
+  // 4. Session déjà ouverte
   if (RTOKEN) {
     try { await chargerEspace(); show('#espace'); return; }
     catch { logout(); }
   }
-  show('#ecran-email');
+  show('#ecran-connexion');
 }
+
+function erreurCx(msg) {
+  const e = $('#cx-err');
+  e.textContent = msg;
+  e.classList.remove('hidden');
+}
+
+async function ouvrirSession(token) {
+  RTOKEN = token;
+  localStorage.setItem('lc_portail', RTOKEN);
+  await chargerEspace();
+  show('#espace');
+}
+
+/* ---------- connexion par mot de passe ---------- */
+$('#form-connexion').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('#btn-connexion');
+  btn.disabled = true; btn.textContent = 'Connexion…';
+  $('#cx-err').classList.add('hidden');
+  try {
+    const d = await api('/api/portail/connexion', {
+      method: 'POST',
+      body: { email: $('#cx-email').value.trim(), mot_de_passe: $('#cx-mdp').value },
+    });
+    await ouvrirSession(d.token);
+  } catch (err) {
+    erreurCx(err.message);
+    btn.disabled = false; btn.textContent = 'Se connecter';
+  }
+});
+
+/* ---------- activation / nouveau mot de passe ---------- */
+$('#form-activation').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mdp = $('#act-mdp').value;
+  const mdp2 = $('#act-mdp2').value;
+  const err = $('#act-err');
+  err.classList.add('hidden');
+
+  if (mdp !== mdp2) {
+    err.textContent = 'Les deux mots de passe ne correspondent pas.';
+    err.classList.remove('hidden');
+    return;
+  }
+  const btn = $('#btn-activation');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try {
+    const route = JETON_EN_COURS.type === 'activation' ? '/api/portail/activation' : '/api/portail/mdp-reinit';
+    const d = await api(route, {
+      method: 'POST',
+      body: { jeton: JETON_EN_COURS.jeton, mot_de_passe: mdp },
+    });
+    toast(d.message || 'Espace activé');
+    await ouvrirSession(d.token);
+  } catch (e2) {
+    err.textContent = e2.message;
+    err.classList.remove('hidden');
+    btn.disabled = false; btn.textContent = 'Activer mon espace';
+  }
+});
+
+/* ---------- mot de passe oublié ---------- */
+$('#lien-oubli').addEventListener('click', (e) => { e.preventDefault(); show('#ecran-oubli'); });
+$('#lien-magique').addEventListener('click', (e) => { e.preventDefault(); show('#ecran-email'); });
+$('#lien-retour-cx').addEventListener('click', (e) => { e.preventDefault(); show('#ecran-connexion'); });
+$('#lien-retour-cx2').addEventListener('click', (e) => { e.preventDefault(); show('#ecran-connexion'); });
+
+$('#form-oubli').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('#btn-oubli');
+  btn.disabled = true; btn.textContent = 'Envoi…';
+  try {
+    const out = await api('/api/portail/mdp-oublie', { method: 'POST', body: { email: $('#ob-email').value.trim() } });
+    const info = $('#ob-info');
+    info.textContent = out.message;
+    info.classList.remove('hidden');
+  } catch (err) { toast(err.message, true); }
+  btn.disabled = false; btn.textContent = 'Envoyer le lien';
+});
 
 /* ---------- écran e-mail ---------- */
 $('#form-email').addEventListener('submit', async (e) => {

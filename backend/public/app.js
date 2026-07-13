@@ -1100,6 +1100,7 @@ async function vueFicheClient(id) {
             <p class="muted" style="margin:4px 0 0">Droit d'accès et à la portabilité (art. 15 et 20) ; droit à l'effacement (art. 17).</p>
           </div>
           <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="renvoyerInvitation('${id}')">${r.hash_mdp ? 'Réinitialiser son accès' : 'Envoyer l\u2019invitation'}</button>
             <button class="btn btn-ghost btn-sm" onclick="exportDonneesResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Exporter ses données</button>
             ${r.anonymise_at ? '<span class="badge indisponible">anonymisé</span>'
               : `<button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Anonymiser</button>`}
@@ -1754,6 +1755,14 @@ window.chargerRgpd = async () => {
 };
 
 window.registreRgpd = () => telechargerExport('/api/rgpd/registre.pdf', 'registre_traitements_rgpd.pdf');
+
+window.renvoyerInvitation = async (id) => {
+  if (!confirm('Envoyer une invitation d\u2019activation à ce résident ?\n\nIl recevra un e-mail pour choisir son mot de passe et accéder à son espace.')) return;
+  try {
+    const r = await api(`/api/residents/${id}/invitation`, { method: 'POST' });
+    toast(r.message || 'Invitation envoyée');
+  } catch (e) { toast(e.message, true); }
+};
 
 window.exportDonneesResident = (id, nom) => {
   telechargerExport(`/api/rgpd/resident/${id}/export`, `donnees_${(nom || 'resident').replace(/[^a-zA-Z0-9]/g, '_')}.json`);

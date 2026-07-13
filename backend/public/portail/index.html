@@ -2,7 +2,14 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0F231D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mon camping">
+<link rel="manifest" href="/portail/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icone-180.png">
 <title>Mon espace locataire — Locamp</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,8 +18,8 @@
 </head>
 <body>
 
-<!-- ======= Écran 1 : demander le lien ======= -->
-<div id="ecran-email" class="stage hidden">
+<!-- ======= Écran : CONNEXION (e-mail + mot de passe) ======= -->
+<div id="ecran-connexion" class="stage hidden">
   <div class="panel">
     <div class="brand">
       <div class="brand-mark">L</div>
@@ -21,14 +28,88 @@
         <div class="brand-sub" id="brand-camping">Locamp</div>
       </div>
     </div>
-    <p class="intro">Saisissez l'adresse e-mail connue de votre camping. Vous recevrez un lien de connexion sécurisé — pas de mot de passe à retenir.</p>
+    <form id="form-connexion" autocomplete="on">
+      <label>Adresse e-mail
+        <input type="email" id="cx-email" required placeholder="prenom.nom@mail.fr" autocomplete="username">
+      </label>
+      <label>Mot de passe
+        <input type="password" id="cx-mdp" required autocomplete="current-password">
+      </label>
+      <button class="btn btn-primary btn-block" id="btn-connexion">Se connecter</button>
+      <p id="cx-err" class="note hidden" style="color:var(--rouge)"></p>
+    </form>
+    <div class="liens">
+      <a href="#" id="lien-oubli">Mot de passe oublié</a>
+      <span>·</span>
+      <a href="#" id="lien-magique">Recevoir un lien de connexion</a>
+    </div>
+    <p class="note" style="margin-top:14px">Première visite ? Votre camping vous a envoyé une invitation par e-mail pour activer votre espace.</p>
+  </div>
+</div>
+
+<!-- ======= Écran : ACTIVATION (choix du mot de passe) ======= -->
+<div id="ecran-activation" class="stage hidden">
+  <div class="panel">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="brand-name" id="act-titre">Activez votre espace</div>
+        <div class="brand-sub" id="act-email"></div>
+      </div>
+    </div>
+    <p class="intro" id="act-intro">Choisissez votre mot de passe. Il vous servira à vous connecter depuis l'application ou le site.</p>
+    <form id="form-activation" autocomplete="on">
+      <label>Mot de passe
+        <input type="password" id="act-mdp" required autocomplete="new-password" minlength="8">
+      </label>
+      <label>Confirmez le mot de passe
+        <input type="password" id="act-mdp2" required autocomplete="new-password" minlength="8">
+      </label>
+      <p class="note" style="margin:-4px 0 6px">8 caractères minimum, dont au moins une lettre et un chiffre.</p>
+      <button class="btn btn-primary btn-block" id="btn-activation">Activer mon espace</button>
+      <p id="act-err" class="note hidden" style="color:var(--rouge)"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ======= Écran : MOT DE PASSE OUBLIÉ ======= -->
+<div id="ecran-oubli" class="stage hidden">
+  <div class="panel">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div><div class="brand-name">Mot de passe oublié</div></div>
+    </div>
+    <p class="intro">Saisissez votre adresse e-mail : nous vous enverrons un lien pour choisir un nouveau mot de passe.</p>
+    <form id="form-oubli">
+      <label>Adresse e-mail
+        <input type="email" id="ob-email" required autocomplete="email">
+      </label>
+      <button class="btn btn-primary btn-block" id="btn-oubli">Envoyer le lien</button>
+    </form>
+    <p id="ob-info" class="note hidden"></p>
+    <div class="liens"><a href="#" id="lien-retour-cx">Retour à la connexion</a></div>
+  </div>
+</div>
+
+<!-- ======= Écran 1 : demander le lien (secours) ======= -->
+<div id="ecran-email" class="stage hidden">
+  <div class="panel">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="brand-name">Lien de connexion</div>
+        <div class="brand-sub">Sans mot de passe</div>
+      </div>
+    </div>
+    <p class="intro">Saisissez l'adresse e-mail connue de votre camping. Vous recevrez un lien de connexion valable 30 minutes.</p>
     <form id="form-email">
       <label>Adresse e-mail
         <input type="email" id="email" required placeholder="prenom.nom@mail.fr" autocomplete="email">
       </label>
-      <button class="btn btn-primary btn-block" id="btn-email">Recevoir mon lien de connexion</button>
+      <button class="btn btn-primary btn-block" id="btn-email">Recevoir mon lien</button>
     </form>
     <p id="email-info" class="note hidden"></p>
+    <div class="liens"><a href="#" id="lien-retour-cx2">Retour à la connexion</a></div>
   </div>
 </div>
 

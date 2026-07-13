@@ -76,6 +76,55 @@ router.post('/session', async (req, res) => {
 });
 
 // ===== À partir d'ici : routes protégées par session résident =====
+/* ============ AUTHENTIFICATION (routes publiques) ============ */
+const pauth = require('../lib/portail-auth');
+
+// GET /api/portail/activation/:jeton  -> vérifie le lien avant d'afficher le formulaire
+router.get('/activation/:jeton', async (req, res) => {
+  try {
+    const out = await pauth.verifierActivation(req.params.jeton);
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json(out);
+  } catch (e) { console.error('[portail:activation]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/portail/activation  { jeton, mot_de_passe }
+// Le clic sur le lien reçu par e-mail VAUT vérification de l'adresse.
+router.post('/activation', async (req, res) => {
+  try {
+    const out = await pauth.activerCompte(req.body?.jeton, req.body?.mot_de_passe);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    res.json({ token: out.token, message: 'Espace activé. Bienvenue !' });
+  } catch (e) { console.error('[portail:activer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/portail/connexion  { email, mot_de_passe }
+router.post('/connexion', async (req, res) => {
+  try {
+    const out = await pauth.connexion(req.body?.email, req.body?.mot_de_passe);
+    if (out.error) return res.status(out.code || 401).json({ error: out.error, non_active: out.non_active });
+    await auditPortail(req, { email: (req.body?.email || '').toLowerCase() }, 'portail_connexion');
+    res.json({ token: out.token });
+  } catch (e) { console.error('[portail:connexion]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/portail/mdp-oublie  { email }
+router.post('/mdp-oublie', async (req, res) => {
+  try {
+    const out = await pauth.demanderReset(req.body?.email);
+    res.json(out);
+  } catch (e) { console.error('[portail:oubli]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/portail/mdp-reinit  { jeton, mot_de_passe }
+router.post('/mdp-reinit', async (req, res) => {
+  try {
+    const out = await pauth.reinitialiser(req.body?.jeton, req.body?.mot_de_passe);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    res.json({ token: out.token, message: 'Mot de passe modifié.' });
+  } catch (e) { console.error('[portail:reinit]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 router.use(authResident);
 
 // GET /api/portail/moi
