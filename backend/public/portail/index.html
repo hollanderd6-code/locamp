@@ -179,7 +179,7 @@
 
       <div id="sig-pdf" style="background:#EFEAE0;border:1px solid var(--hairline);border-radius:12px;
         padding:12px;max-height:56vh;overflow-y:auto;-webkit-overflow-scrolling:touch;margin-top:12px"></div>
-      <p class="note" style="margin-top:8px">Faites défiler pour lire l'intégralité du document avant de signer.</p>
+      <p id="sig-scroll-hint" class="note" style="margin-top:8px">Faites défiler pour lire l'intégralité du document avant de signer.</p>
 
       <div id="sig-champs" style="margin-top:18px"></div>
 
@@ -206,7 +206,7 @@
 
       <p id="sig-err" class="note hidden" style="color:var(--rouge)"></p>
       <button class="btn btn-primary" id="sig-signer" disabled style="width:100%;margin-top:14px">Signer le document</button>
-      <p class="note" style="margin-top:12px;text-align:center;line-height:1.6">
+      <p id="sig-legal-note" class="note" style="margin-top:12px;text-align:center;line-height:1.6">
         Signature conforme au règlement eIDAS (UE) n° 910/2014 et aux articles 1366-1367 du Code civil.
         Votre identité (session authentifiée), votre adresse IP, la date et l'empreinte du document
         sont enregistrées comme preuve.

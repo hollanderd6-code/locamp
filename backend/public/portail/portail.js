@@ -403,7 +403,7 @@ window.ouvrirSignature = async (id) => {
     $('#sig-consent-txt').textContent = SIG.consentement;
 
     const dejaSigne = SIG.statut === 'signe';
-    ['#sig-champs', '#sig-bloc-pad', '#sig-consent-txt', '#sig-signer'].forEach((s) => {
+    ['#sig-scroll-hint', '#sig-legal-note', '#sig-champs', '#sig-bloc-pad', '#sig-consent-txt', '#sig-signer'].forEach((s) => {
       const el = $(s); if (el) el.style.display = dejaSigne ? 'none' : '';
     });
     const cons = $('#sig-consent')?.closest('label');
