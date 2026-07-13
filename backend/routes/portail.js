@@ -7,7 +7,6 @@ const { sendEmail } = require('../lib/email');
 const { checkoutFacture } = require('../lib/stripe');
 const { genererPdfFacture } = require('../lib/facturation');
 const { uploadDocument, signedUrl } = require('../lib/storage');
-const { creerNotifsStaff } = require('../lib/notifications');
 const { authResident } = require('../middleware/auth');
 
 const router = express.Router();
@@ -246,21 +245,6 @@ router.post('/messages', async (req, res) => {
     }).select('id,auteur,corps,created_at').single();
     if (error) throw error;
     await auditPortail(req, req.resident, 'portail_message', { entite: 'messages', entite_id: data.id });
-
-    // Notifier le staff (droit messagerie) — best-effort
-    (async () => {
-      const { data: r } = await supabase.from('residents').select('nom,prenom')
-        .eq('id', req.resident.id).maybeSingle();
-      const nom = `${r?.prenom || ''} ${r?.nom || ''}`.trim() || 'Un résident';
-      await creerNotifsStaff(req.resident.camping_id, {
-        type: 'nouveau_message', perm: 'messagerie',
-        titre: `Nouveau message de ${nom}`,
-        corps: corps.slice(0, 140),
-        entite: 'message', entite_id: data.id,
-        donnees: { resident_id: req.resident.id },
-      });
-    })().catch(() => {});
-
     res.status(201).json({ message: data });
   } catch (e) { console.error('[portail:message]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
@@ -287,70 +271,73 @@ router.get('/mes-donnees', async (req, res) => {
   } catch (e) { console.error('[portail:mes-donnees]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// ---------- Notifications du portail locataire ----------
+/* ==================== SIGNATURE ÉLECTRONIQUE ====================
+   Le résident signe DEPUIS SON ESPACE, déjà authentifié par le portail.
+   Preuve d'identité plus forte qu'un simple lien : la session vaut
+   authentification (lien à usage unique envoyé à son adresse e-mail).
+   ================================================================ */
 
-// GET /api/portail/notifications?statut=non-lus&limit=30
-router.get('/notifications', async (req, res) => {
+// GET /api/portail/signatures  -> documents en attente de sa signature
+router.get('/signatures', async (req, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 30, 100);
-    let q = supabase.from('notifications')
-      .select('id,type,titre,corps,entite,entite_id,lien,donnees,lu,lu_at,created_at')
+    const { data, error } = await supabase.from('documents_signature')
+      .select('id,titre,message,nb_pages,champs,statut,date_envoi,date_signature,storage_signe')
       .eq('camping_id', req.resident.camping_id)
-      .eq('destinataire_resident_id', req.resident.id)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    if (req.query.statut === 'non-lus') q = q.eq('lu', false);
-    const { data, error } = await q;
+      .eq('resident_id', req.resident.id)
+      .in('statut', ['envoye', 'signe'])
+      .order('created_at', { ascending: false });
     if (error) throw error;
-    res.json({ notifications: data || [] });
+    const docs = data || [];
+    res.json({
+      a_signer: docs.filter((d) => d.statut === 'envoye'),
+      signes: docs.filter((d) => d.statut === 'signe'),
+    });
   } catch (e) {
-    console.error('[portail:notifications]', e.message);
-    res.json({ notifications: [] });   // table absente : ne pas casser le portail
+    console.error('[portail:signatures]', e.message);
+    res.json({ a_signer: [], signes: [] });   // table absente : ne casse pas le portail
   }
 });
 
-// GET /api/portail/notifications/compteur
-router.get('/notifications/compteur', async (req, res) => {
+// GET /api/portail/signatures/:id  -> le document à lire et signer
+router.get('/signatures/:id', async (req, res) => {
   try {
-    const { count, error } = await supabase.from('notifications')
-      .select('id', { count: 'exact', head: true })
+    const { data: doc } = await supabase.from('documents_signature').select('*')
       .eq('camping_id', req.resident.camping_id)
-      .eq('destinataire_resident_id', req.resident.id)
-      .eq('lu', false);
-    if (error) throw error;
-    res.json({ non_lues: count || 0 });
-  } catch (e) {
-    console.error('[portail:notif-compteur]', e.message);
-    res.json({ non_lues: 0 });
-  }
+      .eq('resident_id', req.resident.id)
+      .eq('id', req.params.id).maybeSingle();
+    if (!doc) return res.status(404).json({ error: 'Document introuvable' });
+
+    const { CONSENTEMENT } = require('../lib/signature');
+    const chemin = doc.statut === 'signe' && doc.storage_signe ? doc.storage_signe : doc.storage_path;
+    res.json({
+      id: doc.id, titre: doc.titre, message: doc.message,
+      champs: doc.champs || [], nb_pages: doc.nb_pages, statut: doc.statut,
+      url: await signedUrl(chemin, 1800),
+      consentement: CONSENTEMENT,
+    });
+  } catch (e) { console.error('[portail:signature]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// POST /api/portail/notifications/:id/lu
-router.post('/notifications/:id/lu', async (req, res) => {
+// POST /api/portail/signatures/:id/signer  { valeurs, signature_png, consentement }
+router.post('/signatures/:id/signer', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('notifications')
-      .update({ lu: true, lu_at: new Date().toISOString() })
-      .eq('camping_id', req.resident.camping_id)
-      .eq('destinataire_resident_id', req.resident.id)
-      .eq('id', req.params.id)
-      .select('id').maybeSingle();
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Notification introuvable' });
-    res.json({ ok: true });
-  } catch (e) { console.error('[portail:notif-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
-});
+    const { signerDocument } = require('../lib/signature');
+    const out = await signerDocument({
+      campingId: req.resident.camping_id,
+      documentId: req.params.id,
+      residentId: req.resident.id,
+      corps: req.body || {},
+      ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'inconnue',
+      userAgent: req.headers['user-agent'] || null,
+      canal: 'portail',              // authentifié : preuve d'identité renforcée
+    });
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
 
-// POST /api/portail/notifications/tout-lu
-router.post('/notifications/tout-lu', async (req, res) => {
-  try {
-    const { error } = await supabase.from('notifications')
-      .update({ lu: true, lu_at: new Date().toISOString() })
-      .eq('camping_id', req.resident.camping_id)
-      .eq('destinataire_resident_id', req.resident.id)
-      .eq('lu', false);
-    if (error) throw error;
-    res.json({ ok: true });
-  } catch (e) { console.error('[portail:notif-tout-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+    await auditPortail(req, req.resident, 'portail_signature',
+      { entite: 'documents_signature', entite_id: req.params.id });
+
+    res.json({ ok: true, message: out.message });
+  } catch (e) { console.error('[portail:signer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;
