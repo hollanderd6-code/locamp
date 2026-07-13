@@ -1100,7 +1100,6 @@ async function vueFicheClient(id) {
             <p class="muted" style="margin:4px 0 0">Droit d'accès et à la portabilité (art. 15 et 20) ; droit à l'effacement (art. 17).</p>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-ghost btn-sm" onclick="renvoyerInvitation('${id}')">${r.hash_mdp ? 'Réinitialiser son accès' : 'Envoyer l\u2019invitation'}</button>
             <button class="btn btn-ghost btn-sm" onclick="exportDonneesResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Exporter ses données</button>
             ${r.anonymise_at ? '<span class="badge indisponible">anonymisé</span>'
               : `<button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Anonymiser</button>`}
@@ -1756,14 +1755,6 @@ window.chargerRgpd = async () => {
 
 window.registreRgpd = () => telechargerExport('/api/rgpd/registre.pdf', 'registre_traitements_rgpd.pdf');
 
-window.renvoyerInvitation = async (id) => {
-  if (!confirm('Envoyer une invitation d\u2019activation à ce résident ?\n\nIl recevra un e-mail pour choisir son mot de passe et accéder à son espace.')) return;
-  try {
-    const r = await api(`/api/residents/${id}/invitation`, { method: 'POST' });
-    toast(r.message || 'Invitation envoyée');
-  } catch (e) { toast(e.message, true); }
-};
-
 window.exportDonneesResident = (id, nom) => {
   telechargerExport(`/api/rgpd/resident/${id}/export`, `donnees_${(nom || 'resident').replace(/[^a-zA-Z0-9]/g, '_')}.json`);
   toast('Export des données généré (droit d\u2019accès)');
@@ -2055,18 +2046,7 @@ async function vueSignatures() {
       <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
       <button class="btn btn-primary" onclick="formDocSignature()">Déposer un document</button>
     </div>
-    <p class="muted" style="margin:-14px 0 14px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son espace locataire. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
-
-    ${(() => {
-      const recents = documents.filter((d) => d.statut === 'signe' && d.date_signature
-        && (Date.now() - new Date(d.date_signature)) < 7 * 86400000);
-      const attente = documents.filter((d) => d.statut === 'envoye').length;
-      return `<div class="alertes">
-        ${recents.length ? `<span class="alerte ok"><strong>${recents.length}</strong> document${recents.length > 1 ? 's' : ''} signé${recents.length > 1 ? 's' : ''} cette semaine</span>` : ''}
-        ${attente ? `<span class="alerte warn"><strong>${attente}</strong> en attente de signature</span>` : ''}
-        ${!recents.length && !attente ? '<span class="alerte">Aucun document en attente</span>' : ''}
-      </div>`;
-    })()}
+    <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
 
     <div class="card">
       ${documents.length ? `<table><thead><tr><th>Document</th><th>Signataire</th><th>Zones</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>
@@ -2080,7 +2060,9 @@ async function vueSignatures() {
           <td class="right">
             ${d.statut === 'signe'
               ? `<button class="btn btn-ghost btn-sm" onclick="voirSignature('${d.id}')">Preuve</button>`
-              : `<button class="btn btn-ghost btn-sm" onclick="editeurZones('${d.id}')">Zones</button>
+              : d.statut === 'annule'
+                ? '<span class="muted">—</span>'
+                : `<button class="btn btn-ghost btn-sm" onclick="editeurZones('${d.id}')">Zones</button>
                  ${(d.champs || []).length && d.resident_id ? `<button class="btn btn-primary btn-sm" onclick="envoyerSignature('${d.id}')">Envoyer</button>` : ''}
                  <button class="btn btn-ghost btn-sm" onclick="annulerDocSignature('${d.id}')">Annuler</button>`}
           </td>
@@ -2133,7 +2115,7 @@ window.editeurZones = async (id) => {
       <div><div class="eyebrow"><a href="#/signatures" style="color:inherit;text-decoration:none">← Signatures</a></div>
         <h1>${esc(doc.titre)}</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" onclick="retourSignatures()">Fermer</button>
+        <button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'">Fermer</button>
         <button class="btn btn-primary btn-sm" onclick="enregistrerZones()">Enregistrer les zones</button>
       </div>
     </div>
@@ -2252,19 +2234,11 @@ function dessinerZones() {
     : '<p class="muted" style="margin:0;font-size:12.5px">Aucune zone. Clique sur le document.</p>';
 }
 
-// Retour à la liste. On appelle route() explicitement : l'éditeur s'affiche sans
-// changer le hash, donc réaffecter '#/signatures' ne déclencherait aucun hashchange.
-window.retourSignatures = () => {
-  if (location.hash !== '#/signatures') location.hash = '#/signatures';
-  else route();
-};
-
 window.enregistrerZones = async () => {
-  if (!zonesState.champs.length && !confirm('Aucune zone posée. Enregistrer quand même ?')) return;
   try {
     await api(`/api/signatures/${zonesState.id}/champs`, { method: 'PUT', body: { champs: zonesState.champs } });
-    toast(`${zonesState.champs.length} zone(s) enregistrée(s) — tu peux maintenant envoyer le document`);
-    retourSignatures();
+    toast('Zones enregistrées');
+    location.hash = '#/signatures';
   } catch (e) { toast(e.message, true); }
 };
 

@@ -173,6 +173,7 @@ router.post('/:id/envoyer', requirePerm('gerer_residents'), async (req, res) => 
       .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
     if (!doc) return res.status(404).json({ error: 'Document introuvable' });
     if (doc.statut === 'signe') return res.status(409).json({ error: 'Document déjà signé' });
+    if (doc.statut === 'annule') return res.status(409).json({ error: 'Document annulé — il ne peut plus être envoyé' });
     if (!doc.resident_id) return res.status(400).json({ error: 'Aucun signataire désigné' });
     if (!(doc.champs || []).length) return res.status(400).json({ error: 'Place au moins une zone de signature' });
 
