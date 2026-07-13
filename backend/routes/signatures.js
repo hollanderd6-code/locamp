@@ -190,7 +190,10 @@ router.post('/:id/envoyer', requirePerm('gerer_residents'), async (req, res) => 
     const { data: camping } = await supabase.from('campings').select('nom,raison_sociale')
       .eq('id', req.activeCampingId).maybeSingle();
     const nomCamping = camping?.nom || camping?.raison_sociale || 'Votre camping';
-    const base = process.env.PUBLIC_APP_URL || '';
+    // URL de base : sans slash final. Fallback sur l'hôte de la requête si la
+    // variable n'est pas définie (un lien RELATIF forcerait Brevo à le réécrire).
+    const base = (process.env.PUBLIC_APP_URL
+      || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const lien = `${base}/signature/?jeton=${jeton}`;
 
     await sendEmail({
@@ -202,6 +205,8 @@ router.post('/:id/envoyer', requirePerm('gerer_residents'), async (req, res) => 
         + (doc.message ? `<p>${String(doc.message).replace(/</g, '&lt;')}</p>` : '')
         + `<p><a href="${lien}" style="display:inline-block;padding:12px 22px;background:#175243;color:#fff;`
         + `border-radius:8px;text-decoration:none;font-weight:600">Lire et signer le document</a></p>`
+        + `<p style="font-size:13px;color:#444;margin-top:14px">Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur :<br>`
+        + `<span style="font-size:12px;color:#175243;word-break:break-all">${lien}</span></p>`
         + `<p style="font-size:12px;color:#666">Ce lien vous est personnel et expire dans 30 jours. `
         + `La signature électronique a la même valeur qu\u2019une signature manuscrite (règlement eIDAS).</p>`,
     });
