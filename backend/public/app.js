@@ -2046,7 +2046,18 @@ async function vueSignatures() {
       <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
       <button class="btn btn-primary" onclick="formDocSignature()">Déposer un document</button>
     </div>
-    <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
+    <p class="muted" style="margin:-14px 0 14px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son espace locataire. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
+
+    ${(() => {
+      const recents = documents.filter((d) => d.statut === 'signe' && d.date_signature
+        && (Date.now() - new Date(d.date_signature)) < 7 * 86400000);
+      const attente = documents.filter((d) => d.statut === 'envoye').length;
+      return `<div class="alertes">
+        ${recents.length ? `<span class="alerte ok"><strong>${recents.length}</strong> document${recents.length > 1 ? 's' : ''} signé${recents.length > 1 ? 's' : ''} cette semaine</span>` : ''}
+        ${attente ? `<span class="alerte warn"><strong>${attente}</strong> en attente de signature</span>` : ''}
+        ${!recents.length && !attente ? '<span class="alerte">Aucun document en attente</span>' : ''}
+      </div>`;
+    })()}
 
     <div class="card">
       ${documents.length ? `<table><thead><tr><th>Document</th><th>Signataire</th><th>Zones</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>

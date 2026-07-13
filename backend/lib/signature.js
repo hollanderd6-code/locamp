@@ -312,6 +312,50 @@ async function signerDocument({ campingId, documentId, jeton, residentId, corps,
     }).catch((e) => console.error('[sign:mail]', e.message));
   }
 
+  // 8. Notification au camping : la personne qui a envoyé le document,
+  //    à défaut l'adresse du camping. Sans cela, personne côté camping
+  //    n'est prévenu et il faut consulter la liste à la main.
+  try {
+    const { signedUrl } = require('./storage');
+    const [{ data: auteur }, { data: camping }] = await Promise.all([
+      doc.auteur_id
+        ? supabase.from('utilisateurs').select('email,prenom,nom').eq('id', doc.auteur_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from('campings').select('nom,raison_sociale,email,parametres')
+        .eq('id', doc.camping_id).maybeSingle(),
+    ]);
+
+    const destinataire = auteur?.email
+      || camping?.email
+      || camping?.parametres?.facturation?.email
+      || null;
+
+    if (destinataire) {
+      const nomCamping = camping?.nom || camping?.raison_sociale || 'votre camping';
+      const url = await signedUrl(cheminSigne, 604800);
+      const base = process.env.PUBLIC_APP_URL || '';
+
+      await sendEmail({
+        to: destinataire,
+        subject: `Document signé — ${doc.titre}`,
+        html: `<p>Bonjour ${auteur?.prenom || ''},</p>`
+          + `<p><b>${nom}</b> vient de signer le document <b>${doc.titre}</b>.</p>`
+          + `<table style="border-collapse:collapse;font-size:14px;margin:14px 0">`
+          + `<tr><td style="padding:4px 14px 4px 0;color:#666">Signé le</td>`
+          + `<td style="padding:4px 0"><b>${new Date(horodatage).toLocaleString('fr-FR')}</b></td></tr>`
+          + `<tr><td style="padding:4px 14px 4px 0;color:#666">Adresse IP</td>`
+          + `<td style="padding:4px 0"><code>${ip}</code></td></tr>`
+          + `<tr><td style="padding:4px 14px 4px 0;color:#666">Signature depuis</td>`
+          + `<td style="padding:4px 0">${canal === 'portail' ? 'son espace locataire (session authentifiée)' : 'le lien reçu par e-mail'}</td></tr>`
+          + `</table>`
+          + `<p><a href="${url}" style="display:inline-block;padding:11px 20px;background:#175243;`
+          + `color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Ouvrir le document signé</a></p>`
+          + (base ? `<p style="font-size:12px;color:#666">Le certificat de preuve est annexé au document. `
+              + `Retrouvez-le à tout moment dans <a href="${base}/#/signatures">Locamp → Signatures</a>.</p>` : ''),
+      });
+    }
+  } catch (e) { console.error('[sign:notif camping]', e.message); }
+
   return { ok: true, message: 'Document signé. Une copie vous a été envoyée par e-mail.' };
 }
 
