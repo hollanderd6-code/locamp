@@ -2113,7 +2113,7 @@ window.editeurZones = async (id) => {
       <div><div class="eyebrow"><a href="#/signatures" style="color:inherit;text-decoration:none">← Signatures</a></div>
         <h1>${esc(doc.titre)}</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'">Fermer</button>
+        <button class="btn btn-ghost btn-sm" onclick="retourSignatures()">Fermer</button>
         <button class="btn btn-primary btn-sm" onclick="enregistrerZones()">Enregistrer les zones</button>
       </div>
     </div>
@@ -2232,11 +2232,19 @@ function dessinerZones() {
     : '<p class="muted" style="margin:0;font-size:12.5px">Aucune zone. Clique sur le document.</p>';
 }
 
+// Retour à la liste. On appelle route() explicitement : l'éditeur s'affiche sans
+// changer le hash, donc réaffecter '#/signatures' ne déclencherait aucun hashchange.
+window.retourSignatures = () => {
+  if (location.hash !== '#/signatures') location.hash = '#/signatures';
+  else route();
+};
+
 window.enregistrerZones = async () => {
+  if (!zonesState.champs.length && !confirm('Aucune zone posée. Enregistrer quand même ?')) return;
   try {
     await api(`/api/signatures/${zonesState.id}/champs`, { method: 'PUT', body: { champs: zonesState.champs } });
-    toast('Zones enregistrées');
-    location.hash = '#/signatures';
+    toast(`${zonesState.champs.length} zone(s) enregistrée(s) — tu peux maintenant envoyer le document`);
+    retourSignatures();
   } catch (e) { toast(e.message, true); }
 };
 

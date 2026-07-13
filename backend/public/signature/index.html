@@ -2,166 +2,122 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mon espace locataire — Locamp</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portail/portail.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Signature électronique</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{--ivoire:#F6F3EC;--carte:#fff;--encre:#1B2E28;--sapin:#175243;--sapin-h:#1C614F;
+ --brume:#75837C;--hair:#E7E1D4;--laiton:#B98A3C;--rouge:#A8402A;
+ --sh:0 1px 2px rgba(15,35,29,.05),0 2px 8px rgba(15,35,29,.04);
+ --shl:0 8px 24px rgba(15,35,29,.10),0 24px 64px rgba(15,35,29,.12)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ivoire);color:var(--encre);font:15px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:860px;margin:0 auto;padding:22px 16px 60px}
+h1{font-family:Fraunces,serif;font-size:24px;margin:0 0 4px}
+h2{font-family:Fraunces,serif;font-size:17px;margin:0 0 10px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--laiton)}
+.card{background:var(--carte);border:1px solid var(--hair);border-radius:16px;padding:22px;margin-bottom:16px;box-shadow:var(--sh)}
+.hidden{display:none!important}
+.muted{color:var(--brume);font-size:13.5px}
+.btn{font:600 15px Inter,sans-serif;border:none;border-radius:11px;padding:14px 24px;cursor:pointer;transition:transform .12s,box-shadow .15s}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:linear-gradient(160deg,var(--sapin-h),var(--sapin));color:#F4EFE4;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 2px 6px rgba(23,82,67,.3)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid var(--hair);color:var(--encre);padding:9px 16px;font-size:13.5px;border-radius:9px}
+.btn-block{width:100%}
+#pdf-zone{background:#EFEAE0;border:1px solid var(--hair);border-radius:12px;padding:14px;
+ max-height:64vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#pdf-zone canvas{display:block;width:100%;height:auto;margin:0 auto 12px;box-shadow:var(--sh);border-radius:4px;background:#fff}
+.champ{margin-bottom:16px}
+label.lb{display:block;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:6px}
+input[type=text]{width:100%;padding:13px 14px;border:1px solid var(--hair);border-radius:11px;font:15px Inter,sans-serif;background:#fff}
+input[type=text]:focus{outline:none;border-color:var(--sapin);box-shadow:0 0 0 3px rgba(23,82,67,.13)}
+.case{display:flex;gap:11px;align-items:flex-start;background:#FDFBF7;border:1px solid var(--hair);border-radius:11px;padding:13px}
+.case input{width:20px;height:20px;accent-color:var(--sapin);margin-top:1px;flex-shrink:0}
+.case span{font-size:14px;line-height:1.5}
+#pad-wrap{border:2px dashed var(--hair);border-radius:12px;background:#fff;position:relative;touch-action:none}
+#pad{width:100%;height:190px;display:block;border-radius:10px;touch-action:none;cursor:crosshair}
+#pad-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+ color:#BFC7C2;font-size:14px;pointer-events:none}
+.consent{background:#FDFBF7;border:1px solid var(--hair);border-left:3px solid var(--laiton);
+ border-radius:10px;padding:14px;font-size:13px;line-height:1.6;color:#3E4A45;margin:14px 0}
+.err{color:var(--rouge);font-size:13.5px;margin-top:10px}
+.ok-screen{text-align:center;padding:46px 20px}
+.ok-mark{width:64px;height:64px;border-radius:50%;background:#E8F0EC;color:var(--sapin);
+ display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px}
+.legal{font-size:11.5px;color:var(--brume);text-align:center;margin-top:22px;line-height:1.6}
+.bar{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(246,243,236,0),var(--ivoire) 30%);
+ padding:16px 0 4px;margin-top:4px}
+</style>
 </head>
 <body>
+<div class="wrap">
 
-<!-- ======= Écran 1 : demander le lien ======= -->
-<div id="ecran-email" class="stage hidden">
-  <div class="panel">
-    <div class="brand">
-      <div class="brand-mark">L</div>
-      <div>
-        <div class="brand-name">Mon espace locataire</div>
-        <div class="brand-sub" id="brand-camping">Locamp</div>
-      </div>
-    </div>
-    <p class="intro">Saisissez l'adresse e-mail connue de votre camping. Vous recevrez un lien de connexion sécurisé — pas de mot de passe à retenir.</p>
-    <form id="form-email">
-      <label>Adresse e-mail
-        <input type="email" id="email" required placeholder="prenom.nom@mail.fr" autocomplete="email">
-      </label>
-      <button class="btn btn-primary btn-block" id="btn-email">Recevoir mon lien de connexion</button>
-    </form>
-    <p id="email-info" class="note hidden"></p>
+  <div id="chargement" class="card"><p class="muted" style="margin:0">Chargement du document…</p></div>
+
+  <div id="erreur" class="card hidden">
+    <h1>Lien indisponible</h1>
+    <p class="muted" id="erreur-txt"></p>
   </div>
-</div>
 
-<!-- ======= Écran 2 : lien envoyé ======= -->
-<div id="ecran-envoye" class="stage hidden">
-  <div class="panel center">
-    <div class="pictogram">✉️</div>
-    <h1>Vérifiez votre boîte mail</h1>
-    <p class="intro">Si un compte existe pour cette adresse, un lien de connexion vient de vous être envoyé. Il est valable 30 minutes.</p>
-    <button class="btn btn-ghost" onclick="showEmail()">Utiliser une autre adresse</button>
-  </div>
-</div>
-
-<!-- ======= Espace locataire ======= -->
-<div id="espace" class="hidden">
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark">L</div>
-      <div>
-        <div class="brand-name" id="hello">Bonjour</div>
-        <div class="brand-sub" id="sous-titre"></div>
-      </div>
+  <div id="app" class="hidden">
+    <div style="margin-bottom:16px">
+      <div class="eyebrow" id="camping"></div>
+      <h1 id="titre"></h1>
+      <p class="muted" id="message" style="margin:6px 0 0"></p>
     </div>
-    <button class="btn btn-ghost btn-sm" id="btn-logout">Se déconnecter</button>
-  </header>
 
-  <main class="content">
-    <!-- Solde -->
-    <section class="hero-solde card" id="hero-solde"></section>
+    <div class="card">
+      <h2>Le document</h2>
+      <p class="muted" style="margin:-4px 0 12px">Faites défiler pour lire l'intégralité du document avant de signer.</p>
+      <div id="pdf-zone"></div>
+    </div>
 
-    <!-- Séjours & prestations en préparation -->
-    <section class="card hidden" id="sec-sejours">
-      <div class="card-head"><div class="eyebrow">À venir</div><h2>Mes séjours &amp; prestations</h2></div>
-      <div id="liste-sejours"></div>
-      <p class="note">Ces éléments sont préparés par votre camping et ne sont pas encore facturés.</p>
-    </section>
+    <div class="card">
+      <h2>Votre signature</h2>
+      <div id="champs"></div>
 
-    <!-- Factures -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Mes paiements</div><h2>Factures</h2></div>
-      <div id="liste-factures"></div>
-    </section>
-
-    <!-- Messages -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Échanger avec le camping</div><h2>Messages</h2></div>
-      <div id="fil-messages" class="msg-fil"></div>
-      <form id="form-msg" class="msg-form">
-        <input id="msg-corps" placeholder="Écrire un message…" required>
-        <button class="btn btn-primary" id="btn-msg">Envoyer</button>
-      </form>
-    </section>
-
-    <!-- Documents à signer -->
-    <section class="card hidden" id="sec-signer">
-      <div class="card-head"><div class="eyebrow">Action requise</div><h2>Documents à signer</h2></div>
-      <div id="liste-signer"></div>
-    </section>
-
-    <!-- Écran de signature -->
-    <section class="card hidden" id="sec-signature">
-      <div class="card-head">
-        <div class="eyebrow"><a href="#" id="sig-retour" style="color:inherit">← Retour</a></div>
-        <h2 id="sig-titre"></h2>
-      </div>
-      <p class="note" id="sig-message"></p>
-
-      <div id="sig-pdf" style="background:#EFEAE0;border:1px solid var(--hairline);border-radius:12px;
-        padding:12px;max-height:56vh;overflow-y:auto;-webkit-overflow-scrolling:touch;margin-top:12px"></div>
-      <p class="note" style="margin-top:8px">Faites défiler pour lire l'intégralité du document avant de signer.</p>
-
-      <div id="sig-champs" style="margin-top:18px"></div>
-
-      <div id="sig-bloc-pad" class="hidden" style="margin-top:16px">
-        <label style="display:block;font-size:11.5px;font-weight:700;letter-spacing:.07em;
-          text-transform:uppercase;color:var(--brume);margin-bottom:6px">Signez avec le doigt</label>
-        <div style="border:2px dashed var(--hairline);border-radius:12px;background:#fff;position:relative;touch-action:none">
-          <canvas id="sig-pad" style="width:100%;height:180px;display:block;border-radius:10px;touch-action:none"></canvas>
-          <div id="sig-hint" style="position:absolute;inset:0;display:flex;align-items:center;
-            justify-content:center;color:#BFC7C2;font-size:14px;pointer-events:none">Signez ici</div>
+      <div id="bloc-signature" class="champ hidden">
+        <label class="lb">Signez avec le doigt ou la souris</label>
+        <div id="pad-wrap">
+          <canvas id="pad"></canvas>
+          <div id="pad-hint">Signez ici</div>
         </div>
-        <button class="btn btn-ghost btn-sm" id="sig-effacer" style="margin-top:9px">Effacer</button>
+        <button class="btn btn-ghost" id="effacer" style="margin-top:9px">Effacer</button>
       </div>
 
-      <div id="sig-consent-txt" style="background:#FDFBF7;border:1px solid var(--hairline);
-        border-left:3px solid var(--laiton);border-radius:10px;padding:14px;font-size:13px;
-        line-height:1.6;color:#3E4A45;margin:16px 0"></div>
+      <div class="consent" id="consent-txt"></div>
 
-      <label style="display:flex;gap:11px;align-items:flex-start;background:#FDFBF7;
-        border:1px solid var(--hairline);border-radius:11px;padding:13px">
-        <input type="checkbox" id="sig-consent" style="width:20px;height:20px;accent-color:var(--sapin);margin-top:1px;flex-shrink:0">
-        <span style="font-size:14px;line-height:1.5">J'ai lu et j'accepte ce qui précède, et je consens à signer ce document électroniquement.</span>
+      <label class="case">
+        <input type="checkbox" id="consent">
+        <span>J'ai lu et j'accepte ce qui précède, et je consens à signer ce document électroniquement.</span>
       </label>
 
-      <p id="sig-err" class="note hidden" style="color:var(--rouge)"></p>
-      <button class="btn btn-primary" id="sig-signer" disabled style="width:100%;margin-top:14px">Signer le document</button>
-      <p class="note" style="margin-top:12px;text-align:center;line-height:1.6">
-        Signature conforme au règlement eIDAS (UE) n° 910/2014 et aux articles 1366-1367 du Code civil.
-        Votre identité (session authentifiée), votre adresse IP, la date et l'empreinte du document
-        sont enregistrées comme preuve.
+      <div id="err" class="err hidden"></div>
+
+      <div class="bar">
+        <button class="btn btn-primary btn-block" id="signer" disabled>Signer le document</button>
+      </div>
+
+      <p class="legal">
+        Signature électronique conforme au règlement eIDAS (UE) n° 910/2014 et aux articles 1366 et 1367
+        du Code civil. Votre adresse IP, la date et l'heure, ainsi que l'empreinte numérique du document
+        sont enregistrées et annexées au document signé à titre de preuve.
       </p>
-    </section>
+    </div>
+  </div>
 
-    <!-- Mes données personnelles (RGPD) -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Vos droits</div><h2>Mes données personnelles</h2></div>
-      <p class="note">Vous pouvez à tout moment obtenir une copie de l'ensemble des données que le camping détient sur vous (articles 15 et 20 du RGPD).</p>
-      <button class="btn btn-ghost btn-sm" id="btn-mes-donnees" style="margin-top:10px">Télécharger mes données</button>
-      <p class="note" style="margin-top:10px">Pour rectifier une information ou demander l'effacement de vos données, contactez l'accueil du camping. Les factures et encaissements sont conservés au titre des obligations légales de comptabilité.</p>
-    </section>
+  <div id="fini" class="card hidden">
+    <div class="ok-screen">
+      <div class="ok-mark">✓</div>
+      <h1>Document signé</h1>
+      <p class="muted" id="fini-txt" style="max-width:440px;margin:8px auto 0"></p>
+    </div>
+  </div>
 
-    <!-- Documents -->
-    <section class="card">
-      <div class="card-head"><div class="eyebrow">Mon dossier</div><h2>Documents</h2></div>
-      <div id="liste-docs"></div>
-      <form id="form-doc" class="upload-row">
-        <select id="doc-type">
-          <option value="attestation_assurance">Attestation d'assurance</option>
-          <option value="justificatif_domicile">Justificatif de domicile</option>
-          <option value="piece_identite">Pièce d'identité</option>
-          <option value="autre">Autre document</option>
-        </select>
-        <label class="btn btn-ghost file-btn">Choisir un fichier<input type="file" id="doc-file" hidden></label>
-        <button class="btn btn-primary" id="btn-doc" disabled>Envoyer</button>
-      </form>
-      <p class="note" id="doc-note"></p>
-    </section>
-  </main>
-  <footer class="footy">Espace sécurisé — vos documents et paiements sont chiffrés.</footer>
 </div>
-
-<div id="toast" class="toast hidden"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="/portail/portail.js"></script>
+<script src="signature.js"></script>
 </body>
 </html>
