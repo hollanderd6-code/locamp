@@ -72,10 +72,13 @@ app.use(helmet({
 // CORS restreint : seul le domaine de l'application peut appeler l'API.
 const ORIGINES = [process.env.PUBLIC_APP_URL, process.env.PUBLIC_APP_URL_2]
   .filter(Boolean).map((u) => u.replace(/\/$/, ''));
+// Origines des apps mobiles Capacitor (fichiers embarqués : iOS/Android).
+const ORIGINES_APP = ['capacitor://localhost', 'ionic://localhost', 'http://localhost', 'https://localhost'];
 app.use(cors({
   origin(origin, cb) {
     // requêtes de même origine (front servi par ce serveur) : pas d'en-tête Origin
     if (!origin) return cb(null, true);
+    if (ORIGINES_APP.includes(origin)) return cb(null, true);   // apps mobiles
     if (!ORIGINES.length) return cb(null, true);   // non configuré : on ne casse rien
     return cb(null, ORIGINES.includes(origin.replace(/\/$/, '')));
   },
