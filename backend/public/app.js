@@ -1,5 +1,5 @@
 /* ============ Locamp — front admin (vanilla JS, hash routing) ============ */
-const API = '';
+const API = window.LOCAMP_API || '';   // '' en web (relatif) ; URL Render absolue en app mobile
 let TOKEN = localStorage.getItem('lc_token') || null;
 let CAMPINGS = [];
 let ACTIVE_CAMPING = localStorage.getItem('lc_camping') || null;
@@ -1945,7 +1945,7 @@ window.exportJournal = () => {
   const d = $('#j-debut')?.value || '2000-01-01';
   const f = $('#j-fin')?.value || new Date().toISOString().slice(0, 10);
   const url = `/api/admin/journal/export?debut=${d}&fin=${f}`;
-  fetch(url, { headers: { Authorization: 'Bearer ' + TOKEN, 'x-camping-id': ACTIVE_CAMPING } })
+  fetch(API + url, { headers: { Authorization: 'Bearer ' + TOKEN, 'x-camping-id': ACTIVE_CAMPING } })
     .then((r) => { if (!r.ok) throw new Error('Export refusé'); return r.blob(); })
     .then((blob) => {
       const a = document.createElement('a');
@@ -2770,7 +2770,7 @@ async function telechargerExport(url, filename) {
   try {
     const headers = { Authorization: 'Bearer ' + TOKEN };
     if (ACTIVE_CAMPING) headers['x-camping-id'] = ACTIVE_CAMPING;
-    const r = await fetch(url, { headers });
+    const r = await fetch(API + url, { headers });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Erreur export'); }
     const blob = await r.blob();
     const a = document.createElement('a');
