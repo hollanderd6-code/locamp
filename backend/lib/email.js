@@ -8,7 +8,9 @@ async function sendEmail({ to, subject, html, sender, attachments }) {
     console.log('[email] non configuré — simulation :', to, '/', subject);
     return { skipped: true };
   }
-  const payload = { sender: { email: senderEmail, name: senderName }, to: [{ email: to }], subject, htmlContent: html };
+  // disableClickTracking: empêche Brevo de réécrire les liens (sinon les liens à jeton,
+  // ex. signature ?jeton=..., sont tronqués et renvoient vers une 404 SendinBlue).
+  const payload = { sender: { email: senderEmail, name: senderName }, to: [{ email: to }], subject, htmlContent: html, disableClickTracking: true };
   if (Array.isArray(attachments) && attachments.length) {
     payload.attachment = attachments.map((a) => ({
       name: a.name,
