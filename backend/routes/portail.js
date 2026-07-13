@@ -69,7 +69,7 @@ router.post('/session', async (req, res) => {
     if (!resident) return res.status(401).json({ error: 'Compte introuvable' });
 
     const session = jwt.sign({ typ: 'resident', rid: resident.id, cid: resident.camping_id, email: resident.email },
-      JWT_SECRET, { expiresIn: '7d' });
+      JWT_SECRET, { expiresIn: '90d' });
     await auditPortail(req, resident, 'portail_connexion');
     res.json({ token: session, resident: { id: resident.id, nom: resident.nom, prenom: resident.prenom, email: resident.email } });
   } catch (e) { console.error('[portail:session]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
