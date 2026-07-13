@@ -556,10 +556,10 @@ $('#sig-signer').addEventListener('click', async () => {
 });
 
 /* ==================== CLOCHE DE NOTIFICATIONS (portail locataire) ==================== */
+/* Cloche dans la barre du haut ; au clic, panneau plein écran centré (overlay). */
 (function () {
-  let built = false, panelOpen = false;
+  let built = false;
   const ICONES = { paiement_confirme: '✅', nouvelle_facture: '🧾', nouveau_message: '💬' };
-
   function tempsRelatif(iso) {
     const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
     if (diff < 60) return "à l'instant";
@@ -576,29 +576,26 @@ $('#sig-signer').addEventListener('click', async () => {
     if (!anchor) return;
     built = true;
 
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative;display:inline-flex;align-items:center;margin-right:8px';
-
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.title = 'Notifications';
-    btn.style.cssText = 'position:relative;background:none;border:none;cursor:pointer;padding:4px;line-height:1;font-size:20px';
+    btn.style.cssText = 'position:relative;background:none;border:none;cursor:pointer;padding:4px;line-height:1;font-size:20px;margin-right:8px';
     btn.innerHTML = '🔔<span id="pnotif-badge" class="hidden" style="position:absolute;top:-2px;right:-2px;min-width:16px;'
       + 'height:16px;padding:0 4px;border-radius:9px;background:#E5484D;color:#fff;font-size:10px;font-weight:700;'
       + 'display:flex;align-items:center;justify-content:center">0</span>';
+    anchor.parentNode.insertBefore(btn, anchor);
 
-    const panel = document.createElement('div');
-    panel.id = 'pnotif-panel';
-    panel.className = 'hidden';
-    panel.style.cssText = 'position:absolute;top:calc(100% + 8px);right:0;width:340px;max-width:88vw;max-height:70vh;'
-      + 'overflow:auto;background:#fff;border:1px solid #E3E0D6;border-radius:14px;'
-      + 'box-shadow:0 12px 32px rgba(0,0,0,.16);z-index:2000';
+    const ov = document.createElement('div');
+    ov.id = 'pnotif-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,25,20,.45);'
+      + 'display:none;align-items:flex-start;justify-content:center;padding:64px 14px 14px';
+    ov.innerHTML = '<div id="pnotif-card" style="width:100%;max-width:440px;max-height:80vh;background:#fff;'
+      + 'border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden"></div>';
+    document.body.appendChild(ov);
 
-    wrap.appendChild(btn); wrap.appendChild(panel);
-    anchor.parentNode.insertBefore(wrap, anchor);
-
-    btn.onclick = (e) => { e.stopPropagation(); panelOpen ? fermer() : ouvrir(); };
-    document.addEventListener('click', (e) => { if (panelOpen && !wrap.contains(e.target)) fermer(); });
+    btn.onclick = (e) => { e.stopPropagation(); ouvrir(); };
+    ov.addEventListener('click', (e) => { if (e.target === ov) fermer(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
 
     setInterval(majCompteur, 30000);
     majCompteur();
@@ -615,54 +612,57 @@ $('#sig-signer').addEventListener('click', async () => {
     } catch { /* silencieux */ }
   }
 
-  function fermer() { const p = document.getElementById('pnotif-panel'); if (p) p.classList.add('hidden'); panelOpen = false; }
+  function fermer() { const o = document.getElementById('pnotif-overlay'); if (o) o.style.display = 'none'; }
 
   async function ouvrir() {
-    const panel = document.getElementById('pnotif-panel');
-    if (!panel) return;
-    panelOpen = true;
-    panel.classList.remove('hidden');
-    panel.innerHTML = '<div style="padding:18px;color:#999;font-size:13px">Chargement…</div>';
+    const o = document.getElementById('pnotif-overlay'); const card = document.getElementById('pnotif-card');
+    if (!o || !card) return;
+    o.style.display = 'flex';
+    card.innerHTML = '<div style="padding:26px;color:#999;font-size:14px">Chargement…</div>';
     try {
-      const { notifications } = await api('/api/portail/notifications?limit=30');
+      const { notifications } = await api('/api/portail/notifications?limit=40');
       rendre(notifications || []);
     } catch (e) {
-      panel.innerHTML = `<div style="padding:18px;color:#B3492F;font-size:13px">${esc(e.message)}</div>`;
+      card.innerHTML = `<div style="padding:26px;color:#B3492F;font-size:14px">${esc(e.message)}</div>`;
     }
   }
 
   function rendre(list) {
-    const panel = document.getElementById('pnotif-panel');
+    const card = document.getElementById('pnotif-card');
     const nonLues = list.filter((n) => !n.lu).length;
-    let html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;'
-      + 'border-bottom:1px solid #EFEBE1;position:sticky;top:0;background:#fff">'
-      + '<strong style="font-size:14px">Notifications</strong>'
-      + (nonLues ? '<a href="#" id="pnotif-tout-lu" style="font-size:12px;color:#1A7A5E;text-decoration:none">Tout marquer lu</a>' : '')
-      + '</div>';
+    let html = '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
+      + 'padding:16px 18px;border-bottom:1px solid #EFEBE1;flex-shrink:0">'
+      + '<strong style="font-size:16px">Notifications</strong>'
+      + '<div style="display:flex;gap:14px;align-items:center">'
+      + (nonLues ? '<a href="#" id="pnotif-tout-lu" style="font-size:13px;color:#1A7A5E;text-decoration:none">Tout marquer lu</a>' : '')
+      + '<button id="pnotif-close" aria-label="Fermer" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:#999;padding:0 2px">×</button>'
+      + '</div></div><div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
+
     if (!list.length) {
-      html += '<div style="padding:26px 18px;text-align:center;color:#999;font-size:13px">Aucune notification</div>';
+      html += '<div style="padding:44px 20px;text-align:center;color:#999;font-size:14px">Aucune notification</div>';
     } else {
       html += list.map((n) => `
-        <div class="pnotif-item" data-id="${esc(n.id)}" style="display:flex;gap:11px;padding:12px 14px;cursor:pointer;
+        <div class="pnotif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;
           border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
-          <span style="font-size:19px;flex-shrink:0">${ICONES[n.type] || '🔔'}</span>
+          <span style="font-size:21px;flex-shrink:0">${ICONES[n.type] || '🔔'}</span>
           <div style="min-width:0;flex:1">
-            <div style="font-size:13.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
-            ${n.corps ? `<div style="font-size:12.5px;color:#6b6b6b;margin-top:2px;line-height:1.4">${esc(n.corps)}</div>` : ''}
-            <div style="font-size:11px;color:#a3a3a3;margin-top:3px">${tempsRelatif(n.created_at)}</div>
+            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
+            ${n.corps ? `<div style="font-size:13px;color:#6b6b6b;margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
+            <div style="font-size:11.5px;color:#a3a3a3;margin-top:4px">${tempsRelatif(n.created_at)}</div>
           </div>
-          ${n.lu ? '' : '<span style="width:8px;height:8px;border-radius:50%;background:#1A7A5E;flex-shrink:0;margin-top:5px"></span>'}
+          ${n.lu ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:#1A7A5E;flex-shrink:0;margin-top:6px"></span>'}
         </div>`).join('');
     }
-    panel.innerHTML = html;
+    html += '</div>';
+    card.innerHTML = html;
 
+    document.getElementById('pnotif-close').onclick = fermer;
     const toutLu = document.getElementById('pnotif-tout-lu');
     if (toutLu) toutLu.onclick = async (e) => {
       e.preventDefault(); e.stopPropagation();
       try { await api('/api/portail/notifications/tout-lu', { method: 'POST' }); await ouvrir(); majCompteur(); } catch (err) { toast(err.message, true); }
     };
-
-    panel.querySelectorAll('.pnotif-item').forEach((el) => {
+    card.querySelectorAll('.pnotif-item').forEach((el) => {
       el.onclick = () => activer(el.dataset.id, list.find((n) => String(n.id) === String(el.dataset.id)));
     });
   }
@@ -675,7 +675,6 @@ $('#sig-signer').addEventListener('click', async () => {
     else if (notif.type === 'nouvelle_facture' || notif.type === 'paiement_confirme') scrollVers('#liste-factures');
   }
 
-  // Rafraîchir le compteur après chaque (re)chargement de l'espace.
   if (typeof chargerEspace === 'function') {
     const _charger = chargerEspace;
     // eslint-disable-next-line no-global-assign
