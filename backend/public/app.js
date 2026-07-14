@@ -1029,6 +1029,7 @@ async function vueFicheClient(id) {
 
     <div class="fiche-tabs">
       ${tabBtn('prestations', `Prestations${nbEnCours ? ` (${nbEnCours})` : ''}`, true)}
+      ${tabBtn('factures', `Factures${factures.length ? ` (${factures.length})` : ''}`, false)}
       ${tabBtn('compte', 'Compte', false)}
       ${tabBtn('messages', `Messages${nbNonLus ? ` (${nbNonLus})` : ''}`, false)}
       ${tabBtn('documents', 'Documents', false)}
@@ -1066,6 +1067,32 @@ async function vueFicheClient(id) {
             <button class="btn btn-primary btn-sm" onclick="facturerSelection('${id}')">Facturer la sélection</button>
           </div>
         </div>`}
+      </div>
+    </section>
+
+    <section data-panel="factures" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2 style="margin:0">Factures</h2>
+          <span class="muted" style="font-size:12.5px">Pour créer une facture : onglet Prestations → « Facturer la sélection ».</span>
+        </div>
+        <table style="margin-top:12px"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
+        <tbody>${(factures || []).map((f) => {
+          const reste = Math.round((Number(f.total_ttc) - Number(f.montant_regle || 0)) * 100) / 100;
+          const payable = !['avoir', 'annulee'].includes(f.statut) && reste > 0.004;
+          return `<tr>
+            <td data-l="N°"><strong>${esc(f.numero)}</strong></td>
+            <td class="muted" data-l="Date">${dfr(f.date_emission)}</td>
+            <td data-l="Statut"><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
+            <td class="right" data-l="TTC">${eur(f.total_ttc)}</td>
+            <td class="right" data-l="Réglé">${eur(f.montant_regle)}</td>
+            <td class="right" data-l="Reste">${reste > 0.004 ? eur(reste) : '<span class="badge reglee">soldée</span>'}</td>
+            <td class="right">
+              <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
+              ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="muted">Aucune facture pour ce résident.</td></tr>'}</tbody></table>
       </div>
     </section>
 
@@ -1352,6 +1379,46 @@ window.encaisserClient = async (id) => {
     body.montant = Number(body.montant); body.resident_id = id;
     try { await api('/api/reglements', { method: 'POST', body }); closeDrawer(); toast('Paiement encaissé et lettré'); route(); }
     catch (err) { toast(err.message, true); }
+  });
+};
+window.encaisserFacture = async (factureId, residentId, reste) => {
+  const { moyens } = await api('/api/moyens-paiement').catch(() => ({ moyens: [] }));
+  const opts = moyens.length
+    ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
+    : '<option value="espece">Espèces</option><option value="cheque">Chèque</option><option value="virement">Virement</option><option value="tpe">Carte bancaire</option>';
+  const ligne = (montant = '') => `
+    <div class="enc-ligne" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+      <select name="mode" style="flex:1">${opts}</select>
+      <input name="montant" type="number" step="0.01" placeholder="Montant" value="${montant}" style="width:120px">
+      <input name="reference" placeholder="Réf." style="width:100px">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+    </div>`;
+  openDrawer(`
+    <h2>Encaisser sur la facture</h2>
+    <p class="muted" style="margin-top:4px">Reste dû : <strong>${eur(reste)}</strong></p>
+    <form id="f-encf" style="margin-top:12px">
+      <div id="enc-lignes">${ligne(reste != null ? Number(reste).toFixed(2) : '')}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="enc-add">+ Ajouter un règlement (paiement mixte)</button>
+      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Encaisser sur cette facture</button></div>
+    </form>`);
+  $('#enc-add').addEventListener('click', () => $('#enc-lignes').insertAdjacentHTML('beforeend', ligne()));
+  $('#f-encf').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const lignes = [...document.querySelectorAll('#enc-lignes .enc-ligne')].map((el) => ({
+      mode: el.querySelector('[name=mode]').value,
+      montant: Number(el.querySelector('[name=montant]').value),
+      reference: el.querySelector('[name=reference]').value || null,
+    })).filter((l) => l.montant > 0);
+    if (!lignes.length) return toast('Indiquez au moins un montant', true);
+    try {
+      for (const l of lignes) {
+        await api('/api/reglements', { method: 'POST', body: {
+          resident_id: residentId, mode: l.mode, montant: l.montant, reference: l.reference,
+          affectations: [{ facture_id: factureId, montant: l.montant }],
+        } });
+      }
+      closeDrawer(); toast('Encaissement enregistré'); route();
+    } catch (err) { toast(err.message, true); }
   });
 };
 window.voirDoc = async (id) => {
