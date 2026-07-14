@@ -323,6 +323,29 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
 
       y = Math.max(ty + 34, blockY + (tauxList.length ? 30 + tauxList.length * 13 : 0)) + 28;
 
+      // ===== Mention de paiement / acquit =====
+      const pay = facture.paiement;
+      if (pay && !isProforma && !isAvoir && pay.lignes && pay.lignes.length) {
+        const detail = pay.lignes
+          .map((l) => `${l.label} ${fmtEur(l.montant)}${l.date ? ' (' + fmtDateShort(l.date) + ')' : ''}`)
+          .join('   \u00b7   ');
+        if (pay.acquittee) {
+          const bh = 40;
+          doc.roundedRect(L, y, W, bh, 8).fill('#EAF3EC');
+          doc.roundedRect(L, y, W, bh, 8).lineWidth(1).stroke('#BFDBC7');
+          doc.rect(L, y + 10, 3, bh - 20).fill(accent);
+          doc.fillColor(accent).font('Helvetica-Bold').fontSize(11)
+            .text('FACTURE ACQUITT\u00c9E', L + 16, y + 9, { characterSpacing: 1 });
+          doc.fillColor(GRIS).font('Helvetica').fontSize(8.5)
+            .text(`R\u00e9gl\u00e9e par : ${detail}`, L + 16, y + 24, { width: W - 32 });
+          y = y + bh + 14;
+        } else {
+          doc.fillColor(GRIS).font('Helvetica').fontSize(8.5)
+            .text(`R\u00e8glement(s) re\u00e7u(s) : ${detail}   \u2014   Reste d\u00fb : ${fmtEur(pay.reste)}`, L, y, { width: W });
+          y = doc.y + 8;
+        }
+      }
+
       // ===== Mentions =====
       doc.fillColor(GRIS).font('Helvetica').fontSize(8);
       if (isProforma) { doc.text('Proforma établie à titre indicatif — ne vaut pas facture et n\u2019ouvre aucun droit à déduction de TVA.', L, y, { width: W }); y = doc.y + 2; }

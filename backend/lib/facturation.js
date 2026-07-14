@@ -126,6 +126,40 @@ async function genererProformaPdf(campingId, residentId, lignes) {
   return path;
 }
 
+// Libellés par défaut des modes de règlement (surchargés par moyens_paiement si défini).
+const LIB_MODE = { espece: 'Espèces', cheque: 'Chèque', virement: 'Virement', tpe: 'Carte bancaire', stripe: 'Paiement en ligne', ancv: 'ANCV' };
+
+// Récupère le détail de paiement d'une facture (pour la mention d'acquit sur le PDF).
+// Renvoie { regle, reste, acquittee, lignes:[{date,label,montant}] } ou null.
+async function construirePaiement(campingId, facture) {
+  try {
+    if (!facture || !facture.id || facture.proforma) return null;
+    if (['avoir', 'annulee'].includes(facture.statut)) return null;
+    const ttc = Number(facture.total_ttc || 0);
+    if (ttc <= 0) return null;
+    const { data: regs } = await supabase.from('reglements')
+      .select('mode,montant,date_reglement,affectations')
+      .eq('camping_id', campingId)
+      .contains('affectations', [{ facture_id: facture.id }]);
+    if (!regs || !regs.length) return null;
+    const { data: moyens } = await supabase.from('moyens_paiement').select('code,libelle').eq('camping_id', campingId);
+    const lib = { ...LIB_MODE };
+    (moyens || []).forEach((m) => { if (m.libelle) lib[m.code] = m.libelle; });
+    let regle = 0; const lignes = [];
+    for (const r of regs) {
+      const aff = (r.affectations || []).find((a) => a.facture_id === facture.id);
+      const m = Math.round(Number((aff && aff.montant) || 0) * 100) / 100;
+      if (m <= 0) continue;
+      regle += m;
+      lignes.push({ date: r.date_reglement, label: lib[r.mode] || r.mode, montant: m });
+    }
+    regle = Math.round(regle * 100) / 100;
+    lignes.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const reste = Math.round((ttc - regle) * 100) / 100;
+    return { regle, reste, acquittee: reste <= 0.004 && regle > 0, lignes };
+  } catch (e) { console.error('[paiement pdf]', e.message); return null; }
+}
+
 async function genererPdfFacture(campingId, facture) {
   const [camping, resident] = await Promise.all([
     supabase.from('campings').select('nom,raison_sociale,adresse,email,telephone,siret,tva,parametres,logo_path').eq('id', campingId).maybeSingle(),
@@ -138,7 +172,8 @@ async function genererPdfFacture(campingId, facture) {
     try { campData.logo = await downloadDocument(campData.logo_path); }
     catch (e) { console.error('[pdf logo]', e.message); }
   }
-  const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture });
+  const paiement = await construirePaiement(campingId, facture);
+  const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture: { ...facture, paiement } });
   const path = `factures/${campingId}/${facture.id}.pdf`;
   const { error: upErr } = await supabase.storage.from(BUCKET)
     .upload(path, pdf, { contentType: 'application/pdf', upsert: true });
