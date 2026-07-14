@@ -1317,7 +1317,16 @@ window.formPrestation = async (residentId, type) => {
           <select id="presta-article"><option value="">— saisie libre —</option>
             ${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))} TTC</option>`).join('')}
           </select></label>` : ''}
-      <label class="full" style="${lbl}">Désignation *<input name="designation" required placeholder="${type === 'sejour' ? 'Séjour MH 1 chambre' : type === 'charge' ? 'Charges' : type === 'caution' ? 'Caution location' : 'Bouteille de gaz'}"></label>
+      ${type === 'charge' ? `
+        <label class="full" style="${lbl}">Nature de la charge *
+          <select name="nature_charge" id="nature-charge" required>
+            <option value="">— choisir —</option>
+            ${['Électricité', 'Eau', 'Ordures ménagères'].map((n) => `<option value="${n}">${n}</option>`).join('')}
+            <option value="__autre">Autre…</option>
+          </select></label>
+        <label class="full hidden" id="nature-autre-wrap" style="${lbl}">Préciser la nature *
+          <input name="nature_autre" id="nature-autre" placeholder="Ex : Gaz, Internet, Assainissement…"></label>`
+      : `<label class="full" style="${lbl}">Désignation *<input name="designation" required placeholder="${type === 'sejour' ? 'Séjour MH 1 chambre' : type === 'caution' ? 'Caution location' : 'Bouteille de gaz'}"></label>`}
       ${type === 'sejour' ? `
         <label>Emplacement
           <select name="emplacement_id"><option value="">—</option>
@@ -1334,6 +1343,14 @@ window.formPrestation = async (residentId, type) => {
       <div class="full"><button class="btn btn-primary btn-block">Ajouter la prestation</button></div>
     </form>`);
 
+  const natSel = $('#nature-charge');
+  if (natSel) natSel.addEventListener('change', () => {
+    const autre = natSel.value === '__autre';
+    const wrap = $('#nature-autre-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !autre);
+    const inp = $('#nature-autre'); if (inp) inp.required = autre;
+  });
+
   const sel = $('#presta-article');
   if (sel) sel.addEventListener('change', () => {
     const a = artMap[sel.value];
@@ -1348,6 +1365,12 @@ window.formPrestation = async (residentId, type) => {
     e.preventDefault();
     const b = Object.fromEntries(new FormData(e.target).entries());
     b.resident_id = residentId; b.type = type;
+    if (type === 'charge') {
+      const nat = b.nature_charge === '__autre' ? (b.nature_autre || '').trim() : (b.nature_charge || '').trim();
+      if (!nat) { toast('Choisis la nature de la charge', true); return; }
+      b.designation = `Charges — ${nat}`;
+      delete b.nature_charge; delete b.nature_autre;
+    }
     b.quantite = Number(b.quantite || 1); b.pu_ttc = Number(b.pu_ttc || 0); b.taux_tva = Number(b.taux_tva || 0);
     for (const k in b) if (b[k] === '') delete b[k];
     try {
