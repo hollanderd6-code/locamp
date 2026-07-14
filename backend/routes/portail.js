@@ -69,7 +69,7 @@ router.post('/session', async (req, res) => {
     if (!resident) return res.status(401).json({ error: 'Compte introuvable' });
 
     const session = jwt.sign({ typ: 'resident', rid: resident.id, cid: resident.camping_id, email: resident.email },
-      JWT_SECRET, { expiresIn: '90d' });
+      JWT_SECRET, { expiresIn: '7d' });
     await auditPortail(req, resident, 'portail_connexion');
     res.json({ token: session, resident: { id: resident.id, nom: resident.nom, prenom: resident.prenom, email: resident.email } });
   } catch (e) { console.error('[portail:session]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
@@ -387,6 +387,72 @@ router.post('/signatures/:id/signer', async (req, res) => {
 
     res.json({ ok: true, message: out.message });
   } catch (e) { console.error('[portail:signer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// ---------- Notifications du portail locataire ----------
+
+// GET /api/portail/notifications?statut=non-lus&limit=30
+router.get('/notifications', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 30, 100);
+    let q = supabase.from('notifications')
+      .select('id,type,titre,corps,entite,entite_id,lien,donnees,lu,lu_at,created_at')
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (req.query.statut === 'non-lus') q = q.eq('lu', false);
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json({ notifications: data || [] });
+  } catch (e) {
+    console.error('[portail:notifications]', e.message);
+    res.json({ notifications: [] });   // table absente : ne pas casser le portail
+  }
+});
+
+// GET /api/portail/notifications/compteur
+router.get('/notifications/compteur', async (req, res) => {
+  try {
+    const { count, error } = await supabase.from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .eq('lu', false);
+    if (error) throw error;
+    res.json({ non_lues: count || 0 });
+  } catch (e) {
+    console.error('[portail:notif-compteur]', e.message);
+    res.json({ non_lues: 0 });
+  }
+});
+
+// POST /api/portail/notifications/:id/lu
+router.post('/notifications/:id/lu', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('notifications')
+      .update({ lu: true, lu_at: new Date().toISOString() })
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .eq('id', req.params.id)
+      .select('id').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Notification introuvable' });
+    res.json({ ok: true });
+  } catch (e) { console.error('[portail:notif-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/portail/notifications/tout-lu
+router.post('/notifications/tout-lu', async (req, res) => {
+  try {
+    const { error } = await supabase.from('notifications')
+      .update({ lu: true, lu_at: new Date().toISOString() })
+      .eq('camping_id', req.resident.camping_id)
+      .eq('destinataire_resident_id', req.resident.id)
+      .eq('lu', false);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { console.error('[portail:notif-tout-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;
