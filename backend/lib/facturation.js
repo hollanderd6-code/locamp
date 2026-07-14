@@ -241,6 +241,13 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
   // Inaltérabilité (art. 286-I-3° bis du CGI) : la facture entre dans la chaîne fiscale.
   await inscrireFacture(campingId, facture, req);
 
+  // Auto-lettrage : consomme le crédit d'avance du résident sur ses factures impayées
+  // (dont celle-ci). Sans effet sur la chaîne fiscale. Avant le PDF pour qu'il reflète l'acquit.
+  if (facture.statut === 'emise' && !avoir_de && resident_id) {
+    try { await require('./lettrage').appliquerCredit(campingId, resident_id); }
+    catch (e) { console.error('[auto-lettrage]', e.message); }
+  }
+
   await genererPdfFacture(campingId, facture).catch((e) => console.error('[pdf facture]', e.message));
 
   // Notification in-app portail : nouvelle facture (pas les avoirs) — best-effort.

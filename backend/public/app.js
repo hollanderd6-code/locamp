@@ -1074,7 +1074,10 @@ async function vueFicheClient(id) {
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <h2 style="margin:0">Factures</h2>
-          <span class="muted" style="font-size:12.5px">Pour créer une facture : onglet Prestations → « Facturer la sélection ».</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="muted hide-sm" style="font-size:12px">Créer : onglet Prestations</span>
+            <button class="btn btn-ghost btn-sm" onclick="lettrerCredit('${id}')" title="Appliquer le crédit d'avance (trop-perçu) aux factures impayées">Lettrer le crédit</button>
+          </div>
         </div>
         <table style="margin-top:12px"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
         <tbody>${(factures || []).map((f) => {
@@ -1380,6 +1383,13 @@ window.encaisserClient = async (id) => {
     try { await api('/api/reglements', { method: 'POST', body }); closeDrawer(); toast('Paiement encaissé et lettré'); route(); }
     catch (err) { toast(err.message, true); }
   });
+};
+window.lettrerCredit = async (residentId) => {
+  try {
+    const r = await api('/api/reglements/lettrer', { method: 'POST', body: { resident_id: residentId } });
+    toast(r.factures ? `${r.factures} facture(s) soldée(s) par le crédit — ${eur(r.affecte)}` : 'Aucun crédit d\'avance à appliquer');
+    route();
+  } catch (e) { toast(e.message, true); }
 };
 window.encaisserFacture = async (factureId, residentId, reste) => {
   const { moyens } = await api('/api/moyens-paiement').catch(() => ({ moyens: [] }));

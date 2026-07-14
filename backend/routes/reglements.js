@@ -22,6 +22,19 @@ router.get('/', async (req, res) => {
 
 // POST /api/reglements  { resident_id?, mode, montant, date_reglement?, reference?, statut_cheque?, affectations?[] }
 // Si affectations absentes et resident_id fourni -> lettrage auto (plus anciennes factures d'abord).
+// POST /api/reglements/lettrer  { resident_id } — applique le crédit d'avance aux factures impayées
+router.post('/lettrer', requirePerm('encaisser'), async (req, res) => {
+  try {
+    const residentId = req.body && req.body.resident_id;
+    if (!residentId) return res.status(400).json({ error: 'resident_id requis' });
+    const { appliquerCredit } = require('../lib/lettrage');
+    const r = await appliquerCredit(req.activeCampingId, residentId);
+    await writeAudit(req, { action: 'update', entite: 'residents', entite_id: residentId,
+      apres: { lettrage: 'credit', factures: r.factures, montant: r.affecte } });
+    res.json(r);
+  } catch (e) { console.error('[reglements:lettrer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 router.post('/', requirePerm('encaisser'), async (req, res) => {
   try {
     const { resident_id, mode, montant, date_reglement, reference, statut_cheque } = req.body || {};
