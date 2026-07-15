@@ -82,15 +82,18 @@ router.post('/releve', requireRole('admin', 'gestionnaire'), async (req, res) =>
       else if (!Number.isFinite(prixTtc) || prixTtc <= 0) info = 'Relevé enregistré — prix du kWh non configuré (Paramètres → Énergie), pas de charge créée.';
       else {
         const taux = Number(energie.taux_tva ?? 10);
-        const prix = r2(prixTtc / (1 + taux / 100));   // PU HT dérivé du TTC
-        const ht = r2(conso * prix);
+        // Total TTC d'abord (conso × prix TTC/kWh), HT dérivé du total.
+        // Ne pas arrondir le PU HT avant de multiplier : 100 kWh × 0,39 € = 39,00 € (et non 38,50 €).
+        const ttc = r2(conso * prixTtc);
+        const ht = r2(ttc / (1 + taux / 100));
+        const prix = r2(prixTtc / (1 + taux / 100));   // PU HT indicatif (affichage)
         const ins = await supabase.from('prestations').insert({
           camping_id: req.activeCampingId, resident_id: resident.id, emplacement_id: b.emplacement_id,
           type: 'charge',
           designation: `Charges [${Number(prec.index_kwh)}\u203a${index_kwh}|${conso} kWh]`,
           date_debut: prec.date_releve, date_fin: date_releve,
           quantite: conso, pu_ht: prix, taux_tva: taux,
-          montant_ht: ht, montant_ttc: r2(ht * (1 + taux / 100)),
+          montant_ht: ht, montant_ttc: ttc,
         }).select().single();
         if (ins.error) throw ins.error;
         prestation = ins.data;

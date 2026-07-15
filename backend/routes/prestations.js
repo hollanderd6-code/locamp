@@ -17,9 +17,15 @@ const htDepuisTtc = (ttc, taux) => r2(Number(ttc || 0) / (1 + Number(taux || 0) 
 function computeMontants(p) {
   const q = Number(p.quantite || 1);
   const taux = Number(p.taux_tva || 0);
-  const pu = (p.pu_ttc !== undefined && p.pu_ttc !== null && p.pu_ttc !== '')
-    ? htDepuisTtc(p.pu_ttc, taux)
-    : Number(p.pu_ht || 0);
+  const hasTtc = p.pu_ttc !== undefined && p.pu_ttc !== null && p.pu_ttc !== '';
+  if (hasTtc) {
+    // TTC saisi : total TTC (quantité × PU TTC) d'abord, HT dérivé du total.
+    // Interdit d'arrondir le PU HT avant de multiplier (0,39 €/kWh × 100 = 39,00 € et non 38,50 €).
+    const ttc = r2(q * Number(p.pu_ttc));
+    const ht = htDepuisTtc(ttc, taux);
+    return { pu_ht: htDepuisTtc(p.pu_ttc, taux), montant_ht: ht, montant_ttc: ttc };
+  }
+  const pu = Number(p.pu_ht || 0);
   const ht = r2(q * pu);
   return { pu_ht: pu, montant_ht: ht, montant_ttc: r2(ht * (1 + taux / 100)) };
 }
@@ -168,11 +174,20 @@ async function chargerSelection(req, res) {
   return prestas;
 }
 
-const prestaToLigne = (p) => ({
-  designation: p.designation + (p.type === 'caution' ? '' : ''),
-  date_debut: p.date_debut, date_fin: p.date_fin,
-  quantite: Number(p.quantite), pu_ht: Number(p.pu_ht), taux_tva: Number(p.taux_tva),
-});
+const prestaToLigne = (p) => {
+  const q = Number(p.quantite) || 1;
+  const ttc = Number(p.montant_ttc);
+  const base = {
+    designation: p.designation,
+    date_debut: p.date_debut, date_fin: p.date_fin,
+    quantite: q, taux_tva: Number(p.taux_tva),
+  };
+  // Le montant TTC stocké est la source de vérité (déjà calculé sans dérive d'arrondi).
+  // On le repasse en PU TTC pour que computeTotals redérive le HT depuis le total,
+  // et non depuis un PU HT arrondi (évite le 38,50 € au lieu de 39,00 €).
+  if (Number.isFinite(ttc) && ttc > 0) return { ...base, pu_ttc: r2(ttc / q) };
+  return { ...base, pu_ht: Number(p.pu_ht) };
+};
 
 // POST /api/prestations/facturer  { resident_id, prestation_ids[] }
 // Transforme les prestations en_cours sélectionnées en facture ; elles passent à "facturee".

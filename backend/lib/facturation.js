@@ -30,13 +30,24 @@ function computeTotals(lignes) {
   const out = (lignes || []).map((l) => {
     const q = Number(l.quantite || 1);
     const taux = Number(l.taux_tva || 0);
-    // saisie TTC prioritaire : on en déduit le PU HT (stocké et utilisé partout ensuite)
-    const pu = (l.pu_ttc !== undefined && l.pu_ttc !== null && l.pu_ttc !== '')
-      ? htDepuisTtc(l.pu_ttc, taux)
-      : Number(l.pu_ht || 0);
-    const mHt = Math.round(q * pu * 100) / 100;
+    // Saisie TTC prioritaire. On calcule d'abord le TOTAL TTC de la ligne
+    // (quantité × PU TTC), PUIS on en déduit le HT. Ne JAMAIS arrondir le PU HT
+    // avant de multiplier : sur un petit PU (0,39 €/kWh -> 0,35 arrondi) on perdrait
+    // 0,005 €/unité × quantité (100 kWh -> 39,00 € et non 38,50 €).
+    const hasTtc = l.pu_ttc !== undefined && l.pu_ttc !== null && l.pu_ttc !== '';
+    let pu, mHt, mTva;
+    if (hasTtc) {
+      const mTtc = Math.round(q * Number(l.pu_ttc) * 100) / 100;
+      mHt = htDepuisTtc(mTtc, taux);
+      mTva = Math.round((mTtc - mHt) * 100) / 100;   // TVA = TTC - HT : la ligne retombe pile sur le TTC saisi
+      pu = q ? Math.round((mHt / q) * 100) / 100 : mHt; // PU HT indicatif (affichage)
+    } else {
+      pu = Number(l.pu_ht || 0);
+      mHt = Math.round(q * pu * 100) / 100;
+      mTva = Math.round(mHt * taux) / 100;
+    }
     ht += mHt;
-    tva += Math.round(mHt * taux) / 100;
+    tva += mTva;
     let nuits = l.nuits != null && l.nuits !== '' ? Number(l.nuits) : null;
     if (nuits == null && l.date_debut && l.date_fin) {
       const d = Math.round((new Date(l.date_fin) - new Date(l.date_debut)) / 86400000);
@@ -44,6 +55,9 @@ function computeTotals(lignes) {
     }
     return {
       designation: l.designation, quantite: q, pu_ht: pu, taux_tva: taux, montant_ht: mHt,
+      // On conserve le PU TTC source sur les lignes saisies en TTC : un ré-enregistrement
+      // du brouillon repart du TTC exact (et non du PU HT arrondi) -> pas de dérive.
+      ...(hasTtc ? { pu_ttc: Math.round(Number(l.pu_ttc) * 10000) / 10000 } : {}),
       date_debut: l.date_debut || null, date_fin: l.date_fin || null, nuits,
     };
   });
@@ -423,18 +437,23 @@ async function runFacturationResident(campingId, residentId, periode) {
 
   // Prestations non facturées (charges eau/élec, ventes...) : reprises dans le
   // même brouillon. Les cautions ne sont pas facturables.
+  // NB : la colonne pu_ttc n'existe pas — la source de vérité est montant_ttc,
+  // dont on redéduit le PU TTC (évite les lignes à 0 € et la dérive d'arrondi).
   const { data: prestas } = await supabase.from('prestations')
-    .select('id,type,designation,quantite,pu_ttc,taux_tva,date_debut,date_fin')
+    .select('id,type,designation,quantite,pu_ht,taux_tva,montant_ttc,date_debut,date_fin')
     .eq('camping_id', campingId).eq('resident_id', residentId)
     .neq('type', 'caution').neq('statut', 'facturee').neq('statut', 'annulee');
   for (const p of (prestas || [])) {
-    lignes.push({
+    const q = Number(p.quantite || 1);
+    const ttc = Number(p.montant_ttc);
+    const ligne = {
       designation: p.designation,
-      quantite: Number(p.quantite || 1),
-      pu_ttc: Number(p.pu_ttc || 0),
-      taux_tva: Number(p.taux_tva || 0),
+      quantite: q, taux_tva: Number(p.taux_tva || 0),
       date_debut: p.date_debut || null, date_fin: p.date_fin || null,
-    });
+    };
+    if (Number.isFinite(ttc) && ttc > 0) ligne.pu_ttc = Math.round((ttc / q) * 10000) / 10000;
+    else ligne.pu_ht = Number(p.pu_ht || 0);
+    lignes.push(ligne);
   }
 
   if (!lignes.length) return { error: 'Rien à facturer pour cette période.', code: 400 };

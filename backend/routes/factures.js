@@ -152,6 +152,66 @@ router.put('/:id/lignes', requireRole('admin', 'gestionnaire'), async (req, res)
   } catch (e) { console.error('[factures:lignes]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// POST /api/factures/:id/prestations  { prestation_ids[] }  -> ajoute des prestations EN COURS
+// à un BROUILLON existant. Additif : les lignes déjà présentes ne sont pas recalculées
+// (leurs montants stockés sont préservés), on ne fait qu'ajouter celles des prestations.
+router.post('/:id/prestations', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: f } = await supabase.from('factures').select('id,statut,resident_id,lignes,total_ht,total_tva,total_ttc')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    if (f.statut !== 'brouillon') {
+      return res.status(409).json({ error: 'Seul un brouillon peut être complété (une facture émise se corrige par un avoir).' });
+    }
+    const ids = Array.isArray(req.body?.prestation_ids) ? req.body.prestation_ids : [];
+    if (!ids.length) return res.status(400).json({ error: 'Aucune prestation sélectionnée' });
+
+    const { data: prestas, error: pErr } = await supabase.from('prestations')
+      .select('id,type,designation,quantite,pu_ht,taux_tva,montant_ttc,date_debut,date_fin,statut,resident_id')
+      .eq('camping_id', req.activeCampingId).in('id', ids);
+    if (pErr) throw pErr;
+    if (!prestas || prestas.length !== ids.length) return res.status(400).json({ error: 'Sélection invalide (prestation introuvable)' });
+    if (prestas.some((p) => p.resident_id !== f.resident_id)) return res.status(400).json({ error: 'Une prestation appartient à un autre résident' });
+    if (prestas.some((p) => p.type === 'caution')) return res.status(400).json({ error: 'Les cautions ne se facturent pas — retire-les de la sélection' });
+    if (prestas.some((p) => p.statut !== 'en_cours')) return res.status(409).json({ error: 'Certaines prestations sont déjà facturées ou annulées' });
+
+    // Chaque prestation -> ligne. Le montant TTC stocké est la source de vérité :
+    // on en redéduit le PU TTC pour que computeTotals redérive le HT sans dérive d'arrondi.
+    const nouvelles = prestas.map((p) => {
+      const q = Number(p.quantite || 1);
+      const ttc = Number(p.montant_ttc);
+      const l = {
+        designation: p.designation, quantite: q, taux_tva: Number(p.taux_tva || 0),
+        date_debut: p.date_debut || null, date_fin: p.date_fin || null,
+      };
+      if (Number.isFinite(ttc) && ttc > 0) l.pu_ttc = Math.round((ttc / q) * 10000) / 10000;
+      else l.pu_ht = Number(p.pu_ht || 0);
+      return l;
+    });
+
+    const { computeTotals } = require('../lib/facturation');
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    const tNew = computeTotals(nouvelles);   // ne recalcule QUE les lignes ajoutées
+    const lignes = [...(f.lignes || []), ...tNew.lignes];
+    const total_ht = r2(Number(f.total_ht) + tNew.total_ht);
+    const total_tva = r2(Number(f.total_tva) + tNew.total_tva);
+    const total_ttc = r2(Number(f.total_ttc) + tNew.total_ttc);
+
+    const { data, error } = await supabase.from('factures').update({ lignes, total_ht, total_tva, total_ttc })
+      .eq('camping_id', req.activeCampingId).eq('id', f.id).select().single();
+    if (error) throw error;
+
+    // rattache les prestations au brouillon (libérées s'il est supprimé)
+    await supabase.from('prestations').update({ statut: 'facturee', facture_id: f.id, updated_at: new Date().toISOString() })
+      .eq('camping_id', req.activeCampingId).in('id', ids);
+
+    await genererPdfFacture(req.activeCampingId, data).catch(() => {});
+    await writeAudit(req, { action: 'update', entite: 'factures', entite_id: data.id,
+      apres: { total_ttc: data.total_ttc, prestations_ajoutees: ids } });
+    res.json({ facture: data, prestations_ajoutees: ids.length });
+  } catch (e) { console.error('[factures:add-prestations]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // DELETE /api/factures/:id  -> BROUILLON uniquement (libère les prestations reprises)
 router.delete('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {
@@ -161,8 +221,8 @@ router.delete('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => 
     if (f.statut !== 'brouillon') {
       return res.status(409).json({ error: 'Seul un brouillon peut être supprimé. Une facture émise s\'annule par un avoir.' });
     }
-    // libère les prestations rattachées au brouillon
-    await supabase.from('prestations').update({ statut: 'prevue', facture_id: null })
+    // libère les prestations rattachées au brouillon -> redeviennent facturables (en_cours)
+    await supabase.from('prestations').update({ statut: 'en_cours', facture_id: null })
       .eq('camping_id', req.activeCampingId).eq('facture_id', f.id);
     await supabase.from('factures').delete()
       .eq('camping_id', req.activeCampingId).eq('id', f.id);

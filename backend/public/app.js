@@ -1112,6 +1112,7 @@ async function vueFicheClient(id) {
 
   const migrationManquante = prestations === null;
   const nbEnCours = (prestations || []).filter((p) => p.statut === 'en_cours').length;
+  const nbFacturables = (prestations || []).filter((p) => p.statut === 'en_cours' && p.type !== 'caution').length;
 
   $('#main').innerHTML = `
     <div class="page-head">
@@ -1209,6 +1210,7 @@ async function vueFicheClient(id) {
             <td class="right">
               <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
               ${brouillon ? `
+                ${nbFacturables ? `<button class="btn btn-ghost btn-sm" onclick="ajouterPrestationsBrouillon('${f.id}','${id}')" title="Ajouter des prestations en cours à ce brouillon">+ Prestations</button>` : ''}
                 <button class="btn btn-ghost btn-sm" onclick="editerLignesFacture('${f.id}')">Modifier</button>
                 <button class="btn btn-ghost btn-sm" onclick="supprimerBrouillon('${f.id}')">Supprimer</button>
                 <button class="btn btn-primary btn-sm" onclick="emettreFacture('${f.id}')">Émettre</button>` : ''}
@@ -1651,6 +1653,48 @@ window.editerLignesFacture = async (factureId) => {
     try {
       await api(`/api/factures/${factureId}/lignes`, { method: 'PUT', body: { lignes } });
       closeDrawer(); toast('Brouillon enregistré'); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+/* --- Ajouter des prestations « en cours » à un brouillon existant --- */
+window.ajouterPrestationsBrouillon = async (factureId, residentId) => {
+  const { prestations } = await api('/api/prestations?resident_id=' + residentId + '&statut=en_cours')
+    .catch(() => ({ prestations: [] }));
+  const dispo = (prestations || []).filter((p) => p.type !== 'caution');
+  if (!dispo.length) { toast('Aucune prestation en cours à ajouter', true); return; }
+  const PTYPE = { sejour: 'Séjour', vente: 'Vente', charge: 'Charge' };
+  openDrawer(`
+    <h2>Ajouter des prestations</h2>
+    <p class="muted" style="margin-top:4px">Elles seront ajoutées à ce brouillon et rattachées à la facture.</p>
+    <form id="f-addpresta" style="margin-top:14px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${dispo.map((p) => `
+          <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border,#e7e2d6);border-radius:8px;cursor:pointer">
+            <input type="checkbox" class="addp-check" data-pid="${p.id}" data-ttc="${p.montant_ttc}" checked>
+            <span style="flex:1"><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''} <span class="muted">— ${PTYPE[p.type] || p.type}</span></span>
+            <strong>${eur(p.montant_ttc)}</strong>
+          </label>`).join('')}
+      </div>
+      <div id="addp-total" class="muted" style="margin-top:10px;font-weight:600"></div>
+      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Ajouter au brouillon</button></div>
+    </form>`);
+  const maj = () => {
+    const checks = [...document.querySelectorAll('.addp-check:checked')];
+    const total = checks.reduce((s, c) => s + Number(c.dataset.ttc), 0);
+    $('#addp-total').innerHTML = `${checks.length} prestation(s) — <strong>${eur(total)}</strong>`;
+  };
+  document.querySelectorAll('.addp-check').forEach((c) => c.addEventListener('change', maj));
+  maj();
+  $('#f-addpresta').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ids = [...document.querySelectorAll('.addp-check:checked')].map((c) => c.dataset.pid);
+    if (!ids.length) return toast('Sélectionne au moins une prestation', true);
+    try {
+      const r = await api(`/api/factures/${factureId}/prestations`, { method: 'POST', body: { prestation_ids: ids } });
+      closeDrawer();
+      toast(`${r.prestations_ajoutees} prestation(s) ajoutée(s) — ${eur(r.facture.total_ttc)}`);
+      route();
     } catch (err) { toast(err.message, true); }
   });
 };
