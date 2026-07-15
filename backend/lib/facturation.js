@@ -46,28 +46,38 @@ function computeTotals(lignes) {
   return { lignes: out, total_ht: ht, total_tva: tva, total_ttc: Math.round((ht + tva) * 100) / 100 };
 }
 
-// Construit les lignes d'un contrat pour une période (prorata entrée/sortie + taxe de séjour).
+// Construit les lignes de facture d'un résident pour une période.
+//
+// Les MONTANTS (loyer + lignes récurrentes) viennent de resident.facturation :
+// c'est la configuration vivante, modifiable à tout moment (révision de tarif).
+// Le CONTRAT (optionnel) ne sert qu'aux DATES de présence, pour le prorata d'un
+// mois partiel (entrée/sortie). Sans contrat -> mois entier, résident facturable.
 function buildLignes(contrat, resident, periode, parametres) {
   const [y, m] = periode.split('-').map(Number);
   const dim = daysInMonth(y, m);
   const start = `${periode}-01`;
   const end = `${periode}-${String(dim).padStart(2, '0')}`;
+  const c = contrat || {};
+  const fact = (resident && resident.facturation) || {};
 
   let first = 1, last = dim;
-  if (contrat.date_debut && contrat.date_debut > start && contrat.date_debut <= end) first = Number(contrat.date_debut.slice(8, 10));
-  if (contrat.date_fin && contrat.date_fin >= start && contrat.date_fin < end) last = Number(contrat.date_fin.slice(8, 10));
+  if (c.date_debut && c.date_debut > start && c.date_debut <= end) first = Number(c.date_debut.slice(8, 10));
+  if (c.date_fin && c.date_fin >= start && c.date_fin < end) last = Number(c.date_fin.slice(8, 10));
   const activeDays = last - first + 1;
   const factor = (activeDays > 0 && activeDays < dim) ? activeDays / dim : 1;
 
   const lignes = [];
   const dDebut = `${periode}-${String(first).padStart(2, '0')}`;
   const dFin = `${periode}-${String(last).padStart(2, '0')}`;
-  const loyer = Number(contrat.montant_mensuel || 0);
-  const tvaLoyer = Number(parametres?.facturation?.tva_taux_loyer || 0);
+  // Loyer : configuré sur le résident ; repli sur le contrat pour les fiches pas encore migrées.
+  const loyer = Number(fact.loyer_mensuel != null ? fact.loyer_mensuel : (c.montant_mensuel || 0));
+  const tvaLoyer = Number(fact.loyer_tva != null ? fact.loyer_tva : (parametres?.facturation?.tva_taux_loyer || 0));
+  const loyerProrata = fact.loyer_prorata !== false;   // prorata par défaut
   if (loyer > 0) {
-    const montant = Math.round(loyer * factor * 100) / 100;
+    const proratise = loyerProrata && factor < 1;
+    const montant = proratise ? Math.round(loyer * factor * 100) / 100 : Math.round(loyer * 100) / 100;
     lignes.push({
-      designation: factor < 1
+      designation: proratise
         ? `Loyer emplacement — ${periodeLabel(periode)} (prorata ${activeDays}/${dim} j)`
         : `Loyer emplacement — ${periodeLabel(periode)}`,
       date_debut: dDebut, date_fin: dFin, nuits: activeDays,
@@ -78,7 +88,7 @@ function buildLignes(contrat, resident, periode, parametres) {
   // --- Lignes récurrentes du contrat ("montant type" du résident) ---
   // Saisies une fois sur le contrat, reprises à chaque facturation mensuelle.
   // prorata:true -> ajustées au nombre de jours de présence, comme le loyer.
-  for (const r of (contrat.lignes_recurrentes || [])) {
+  for (const r of (fact.lignes || c.lignes_recurrentes || [])) {
     const pu = Number(r.pu_ttc || 0);
     if (!r.designation || pu === 0) continue;
     const auProrata = r.prorata === true && factor < 1;
@@ -310,25 +320,29 @@ async function runFacturationResident(campingId, residentId, periode) {
   const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
   const parametres = camp?.parametres || {};
 
+  const { data: resident } = await supabase.from('residents')
+    .select('id,foyer,facturation').eq('camping_id', campingId).eq('id', residentId).maybeSingle();
+  if (!resident) return { error: 'Résident introuvable', code: 404 };
+
+  // Le contrat est FACULTATIF : il ne sert qu'aux dates de présence (prorata).
   const { data: contrats } = await supabase.from('contrats').select('*')
     .eq('camping_id', campingId).eq('resident_id', residentId)
     .in('statut', ['signe', 'actif']).order('created_at', { ascending: false });
   const c = (contrats || []).find((x) =>
-    !(x.date_debut && x.date_debut > end) && !(x.date_fin && x.date_fin < start));
-  if (!c) return { error: 'Aucun contrat actif pour ce résident sur cette période', code: 400 };
+    !(x.date_debut && x.date_debut > end) && !(x.date_fin && x.date_fin < start)) || null;
 
+  // Anti-doublon : une seule facture de période par résident (avec ou sans contrat).
   const { data: existing } = await supabase.from('factures').select('id,numero')
-    .eq('camping_id', campingId).eq('contrat_id', c.id).eq('periode', periode)
-    .neq('statut', 'avoir').maybeSingle();
+    .eq('camping_id', campingId).eq('resident_id', residentId).eq('periode', periode)
+    .neq('statut', 'avoir').neq('statut', 'annulee').maybeSingle();
   if (existing) return { error: `Facture déjà émise pour cette période (${existing.numero})`, code: 409 };
 
-  const { data: resident } = await supabase.from('residents')
-    .select('foyer').eq('id', residentId).maybeSingle();
+  const lignes = buildLignes(c, resident, periode, parametres);
+  if (!lignes.length) {
+    return { error: 'Rien à facturer : configurez le loyer ou des lignes récurrentes sur la fiche du résident.', code: 400 };
+  }
 
-  const lignes = buildLignes(c, resident || {}, periode, parametres);
-  if (!lignes.length) return { error: 'Rien à facturer pour cette période (ni loyer, ni ligne récurrente)', code: 400 };
-
-  const facture = await creerFacture({ campingId, resident_id: residentId, contrat_id: c.id, periode, lignes });
+  const facture = await creerFacture({ campingId, resident_id: residentId, contrat_id: c ? c.id : null, periode, lignes });
   return { facture };
 }
 
@@ -343,32 +357,38 @@ async function runFacturationMensuelle(campingId, periode) {
   const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
   const parametres = camp?.parametres || {};
 
-  const { data: contrats, error } = await supabase.from('contrats').select('*')
-    .eq('camping_id', campingId).in('statut', ['signe', 'actif']).not('resident_id', 'is', null);
+  // On parcourt les RÉSIDENTS actifs (la facturation vit sur le résident) ;
+  // le contrat, s'il existe, ne fournit que les dates de présence (prorata).
+  const { data: residents, error } = await supabase.from('residents')
+    .select('id,foyer,facturation').eq('camping_id', campingId).eq('actif', true);
   if (error) throw error;
 
+  const { data: contrats } = await supabase.from('contrats').select('*')
+    .eq('camping_id', campingId).in('statut', ['signe', 'actif']).not('resident_id', 'is', null);
+  const parRes = {};
+  for (const c of (contrats || [])) if (!parRes[c.resident_id]) parRes[c.resident_id] = c;
+
   const res = { periode, crees: 0, ignores: 0, erreurs: 0, factures: [] };
-  for (const c of (contrats || [])) {
-    if (c.date_debut && c.date_debut > end) { res.ignores++; continue; }
-    if (c.date_fin && c.date_fin < start) { res.ignores++; continue; }
+  for (const r of (residents || [])) {
+    const c = parRes[r.id] || null;
+    // hors période (entrée postérieure / départ antérieur) : rien à facturer
+    if (c && c.date_debut && c.date_debut > end) { res.ignores++; continue; }
+    if (c && c.date_fin && c.date_fin < start) { res.ignores++; continue; }
 
     const { data: existing } = await supabase.from('factures').select('id')
-      .eq('camping_id', campingId).eq('contrat_id', c.id).eq('periode', periode)
-      .neq('statut', 'avoir').maybeSingle();
+      .eq('camping_id', campingId).eq('resident_id', r.id).eq('periode', periode)
+      .neq('statut', 'avoir').neq('statut', 'annulee').maybeSingle();
     if (existing) { res.ignores++; continue; }
 
-    const { data: resident } = await supabase.from('residents')
-      .select('foyer').eq('id', c.resident_id).maybeSingle();
-
-    const lignes = buildLignes(c, resident || {}, periode, parametres);
+    const lignes = buildLignes(c, r, periode, parametres);
     if (!lignes.length) { res.ignores++; continue; }
 
     try {
-      const f = await creerFacture({ campingId, resident_id: c.resident_id, contrat_id: c.id, periode, lignes });
+      const f = await creerFacture({ campingId, resident_id: r.id, contrat_id: c ? c.id : null, periode, lignes });
       res.crees++;
-      res.factures.push({ id: f.id, numero: f.numero, total_ttc: f.total_ttc, resident_id: c.resident_id });
+      res.factures.push({ id: f.id, numero: f.numero, total_ttc: f.total_ttc, resident_id: r.id });
     } catch (e) {
-      console.error('[facturation]', c.id, e.message);
+      console.error('[facturation]', r.id, e.message);
       res.erreurs++;
     }
   }

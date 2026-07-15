@@ -33,6 +33,113 @@ function shiftMoisTexte(txt, n) {
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur = (n) => Number(n || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+
+/* ==================== Boîtes de dialogue (remplacent confirm/prompt natifs) ==================== */
+/* askConfirm / askPrompt / askMois renvoient une Promise. Usage : if (!await askConfirm('…')) return; */
+function _modalBase(innerHtml, { onMount, onSubmit } = {}) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.className = 'ask-overlay';
+    ov.innerHTML = `<div class="ask-box" role="dialog" aria-modal="true">${innerHtml}</div>`;
+    document.body.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add('in'));
+
+    const close = (val) => {
+      ov.classList.remove('in');
+      setTimeout(() => ov.remove(), 160);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') close(null);
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+        const ok = ov.querySelector('[data-ask-ok]');
+        if (ok) { e.preventDefault(); ok.click(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    ov.addEventListener('click', (e) => { if (e.target === ov) close(null); });
+    ov.querySelector('[data-ask-cancel]')?.addEventListener('click', () => close(null));
+    ov.querySelector('[data-ask-ok]')?.addEventListener('click', () => close(onSubmit ? onSubmit(ov) : true));
+    if (onMount) onMount(ov, close);
+  });
+}
+
+window.askConfirm = (message, { titre = 'Confirmation', ok = 'Confirmer', danger = false } = {}) =>
+  _modalBase(`
+    <h3 class="ask-titre">${esc(titre)}</h3>
+    <p class="ask-msg">${esc(message).replace(/\n/g, '<br>')}</p>
+    <div class="ask-actions">
+      <button class="btn btn-ghost" data-ask-cancel>Annuler</button>
+      <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-ask-ok>${esc(ok)}</button>
+    </div>`, { onSubmit: () => true, onMount: (ov) => ov.querySelector('[data-ask-ok]')?.focus() })
+    .then((v) => v === true);
+
+window.askPrompt = (message, valeur = '', { titre = '', ok = 'Valider', placeholder = '' } = {}) =>
+  _modalBase(`
+    ${titre ? `<h3 class="ask-titre">${esc(titre)}</h3>` : ''}
+    <p class="ask-msg">${esc(message).replace(/\n/g, '<br>')}</p>
+    <input class="ask-input" data-ask-input value="${esc(valeur)}" placeholder="${esc(placeholder)}">
+    <div class="ask-actions">
+      <button class="btn btn-ghost" data-ask-cancel>Annuler</button>
+      <button class="btn btn-primary" data-ask-ok>${esc(ok)}</button>
+    </div>`, {
+    onSubmit: (ov) => ov.querySelector('[data-ask-input]').value,
+    onMount: (ov) => { const i = ov.querySelector('[data-ask-input]'); i.focus(); i.select(); },
+  });
+
+/* Sélecteur de mois — affiche « juillet 2026 », renvoie « 2026-07 ». */
+window.askMois = (defaut = new Date().toISOString().slice(0, 7),
+  { titre = 'Période à facturer', ok = 'Générer' } = {}) => {
+  const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const [dy, dm] = defaut.split('-').map(Number);
+  const annees = [];
+  for (let a = dy - 2; a <= dy + 1; a++) annees.push(a);
+  return _modalBase(`
+    <h3 class="ask-titre">${esc(titre)}</h3>
+    <div class="ask-mois">
+      <select data-ask-m>${MOIS.map((n, i) =>
+    `<option value="${i + 1}" ${i + 1 === dm ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <select data-ask-y>${annees.map((a) =>
+    `<option value="${a}" ${a === dy ? 'selected' : ''}>${a}</option>`).join('')}</select>
+    </div>
+    <div class="ask-actions">
+      <button class="btn btn-ghost" data-ask-cancel>Annuler</button>
+      <button class="btn btn-primary" data-ask-ok>${esc(ok)}</button>
+    </div>`, {
+    onSubmit: (ov) => `${ov.querySelector('[data-ask-y]').value}-`
+      + String(ov.querySelector('[data-ask-m]').value).padStart(2, '0'),
+    onMount: (ov) => ov.querySelector('[data-ask-m]')?.focus(),
+  });
+};
+
+(function injecterStylesAsk() {
+  const css = `
+  .ask-overlay{position:fixed;inset:0;z-index:10000;background:rgba(15,35,29,.42);
+    display:flex;align-items:center;justify-content:center;padding:18px;
+    opacity:0;transition:opacity .16s ease}
+  .ask-overlay.in{opacity:1}
+  .ask-box{background:#fff;border-radius:16px;max-width:420px;width:100%;
+    padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.28);
+    transform:translateY(8px) scale(.98);transition:transform .16s cubic-bezier(.3,.9,.3,1)}
+  .ask-overlay.in .ask-box{transform:none}
+  .ask-titre{font-family:"Fraunces",serif;font-size:18px;font-weight:600;margin:0 0 8px;color:#14283F}
+  .ask-msg{font-size:14.5px;line-height:1.55;color:#4A5A54;margin:0 0 18px;white-space:normal}
+  .ask-input{width:100%;font:15px/1.4 "Inter",sans-serif;padding:11px 13px;margin-bottom:18px;
+    border:1px solid #E7E1D4;border-radius:10px;background:#fff}
+  .ask-input:focus{outline:none;border-color:#175243;box-shadow:0 0 0 3px rgba(23,82,67,.13)}
+  .ask-mois{display:flex;gap:10px;margin-bottom:18px}
+  .ask-mois select{flex:1;font:15px/1.4 "Inter",sans-serif;padding:11px 13px;
+    border:1px solid #E7E1D4;border-radius:10px;background:#fff;cursor:pointer}
+  .ask-actions{display:flex;gap:10px;justify-content:flex-end}
+  .ask-actions .btn{min-width:104px}
+  .btn-danger{background:#A8402A;color:#F7EDE9}
+  .btn-danger:hover{background:#B94A32}
+  @media (max-width:520px){.ask-actions{flex-direction:column-reverse}.ask-actions .btn{width:100%}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+})();
+
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
 /* Libellés lisibles : jamais de code technique à l'écran. */
@@ -212,6 +319,7 @@ function route() {
   // on quitte la carte alors que des modifications ne sont pas enregistrées ?
   if (name !== 'carte' && carteState && carteState.mode === 'edit'
       && (carteState.dirty.size + carteState.dirtyElems.size) > 0) {
+    // eslint-disable-next-line no-alert -- garde de navigation : doit rester synchrone
     if (!confirm('Le plan comporte des modifications non enregistrées. Quitter sans enregistrer ?')) {
       location.hash = '#/carte';
       return;
@@ -310,7 +418,7 @@ async function vueDashboard() {
 }
 
 window.relancerImpayes = async () => {
-  if (!confirm('Envoyer un rappel par e-mail à tous les clients en retard de paiement ?')) return;
+  if (!await askConfirm('Envoyer un rappel par e-mail à tous les clients en retard de paiement ?')) return;
   try {
     const r = await api('/api/relances/run', { method: 'POST' });
     toast(`Relances : ${r.envoyees} envoyée(s), ${r.ignorees} ignorée(s) (à échoir ou déjà relancées récemment)`);
@@ -331,7 +439,7 @@ window.messageGroupe = () => {
     e.preventDefault();
     const corps = e.target.corps.value.trim();
     if (!corps) return;
-    if (!confirm('Envoyer ce message à TOUS les résidents actifs ?')) return;
+    if (!await askConfirm('Envoyer ce message à TOUS les résidents actifs ?')) return;
     try {
       const r = await api('/api/messages/groupe', { method: 'POST', body: { corps } });
       closeDrawer(); toast(`Message envoyé à ${r.destinataires} résident(s)`);
@@ -819,8 +927,8 @@ window.toggleCarteEdit = () => {
   renderCarte();
 };
 
-window.cancelCarteEdit = () => {
-  if (nbModifs() && !confirm('Abandonner les modifications non enregistrées ?')) return;
+window.cancelCarteEdit = async () => {
+  if (nbModifs() && !await askConfirm('Abandonner les modifications non enregistrées ?')) return;
   vueCarte();
 };
 
@@ -879,7 +987,7 @@ window.supprimerElement = async () => {
   if (st.selected?.kind !== 'elem') return;
   const el = st.elements.find((x) => x.id === st.selected.id);
   const nom = elemVals(el).libelle || ELEM_DEFS[el.type]?.lib || 'cet élément';
-  if (!confirm(`Supprimer « ${nom} » du plan ?`)) return;
+  if (!await askConfirm(`Supprimer « ${nom} » du plan ?`)) return;
   try {
     await api(`/api/carte-elements/${el.id}`, { method: 'DELETE' });
     st.elements = st.elements.filter((x) => x.id !== el.id);
@@ -972,17 +1080,18 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, ctrRes] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id),
     api('/api/reglements?resident_id=' + id),
     api('/api/prestations?resident_id=' + id).catch(() => ({ prestations: null })),
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
-    api('/api/contrats?resident_id=' + id).catch(() => ({ contrats: [] })),
+    api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
   ]);
-  const contratActif = (ctrRes.contrats || []).find((c) => ['signe', 'actif'].includes(c.statut))
-    || (ctrRes.contrats || [])[0] || null;
+  const fact = cfgRes.facturation || {};
+  const factLignes = fact.lignes || [];
+  const aConfig = Number(fact.loyer_mensuel || 0) > 0 || factLignes.length > 0;
   const messages = msgRes.messages;
   const nbNonLus = (messages || []).filter((m) => m.auteur === 'resident' && !m.lu).length;
   const prestations = presRes.prestations;
@@ -1105,23 +1214,30 @@ async function vueFicheClient(id) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <h2 style="margin:0">Facturation récurrente</h2>
-            <p class="muted" style="margin:2px 0 0;font-size:12.5px">Le « montant type » du résident : lignes reprises chaque mois, en plus du loyer.</p>
+            <p class="muted" style="margin:2px 0 0;font-size:12.5px">Le « montant type » facturé chaque mois. Modifiable à tout moment (révision de tarif).</p>
           </div>
-          ${contratActif
-            ? `<button class="btn btn-ghost btn-sm" onclick="formLignesRecurrentes('${contratActif.id}')">Configurer</button>`
-            : '<span class="muted" style="font-size:12.5px">Aucun contrat</span>'}
+          <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">Configurer</button>
         </div>
-        ${contratActif ? `
+        ${aConfig ? `
           <table style="margin-top:12px"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
-          <tbody>${(contratActif.lignes_recurrentes || []).map((l) => `
+          <tbody>
+            ${Number(fact.loyer_mensuel || 0) > 0 ? `<tr>
+              <td data-l="Désignation"><strong>Loyer emplacement</strong></td>
+              <td class="right" data-l="Qté">1</td>
+              <td class="right" data-l="PU TTC"><strong>${eur(fact.loyer_mensuel)}</strong></td>
+              <td class="right" data-l="TVA">${Number(fact.loyer_tva || 0)} %</td>
+              <td data-l="Prorata">${fact.loyer_prorata === false ? '<span class="muted">fixe</span>' : '<span class="badge emise">au prorata</span>'}</td>
+            </tr>` : ''}
+            ${factLignes.map((l) => `
             <tr>
               <td data-l="Désignation">${esc(l.designation)}</td>
               <td class="right" data-l="Qté">${l.quantite || 1}</td>
               <td class="right" data-l="PU TTC">${eur(l.pu_ttc)}</td>
               <td class="right" data-l="TVA">${Number(l.taux_tva || 0)} %</td>
               <td data-l="Prorata">${l.prorata ? '<span class="badge emise">au prorata</span>' : '<span class="muted">fixe</span>'}</td>
-            </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucune ligne récurrente. Cliquez sur « Configurer » pour ajouter le forfait, la redevance OM, etc.</td></tr>'}</tbody></table>`
-          : '<p class="muted" style="margin-top:10px">Créez un contrat pour ce résident afin de configurer sa facturation récurrente.</p>'}
+            </tr>`).join('')}
+          </tbody></table>`
+          : '<p class="muted" style="margin-top:10px">Aucun montant configuré. Cliquez sur « Configurer » pour saisir le loyer et les lignes qui reviennent chaque mois (forfait, redevance OM…).</p>'}
       </div>
     </section>
 
@@ -1299,7 +1415,7 @@ window.facturerSelection = async (residentId) => {
   const sel = selectionPresta();
   const facturables = sel.filter((s) => s.type !== 'caution');
   if (!facturables.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
-  if (!confirm(`Créer une facture avec ${facturables.length} prestation(s) ?`)) return;
+  if (!await askConfirm(`Créer une facture avec ${facturables.length} prestation(s) ?`)) return;
   try {
     const r = await api('/api/prestations/facturer', {
       method: 'POST',
@@ -1407,7 +1523,7 @@ window.formPrestation = async (residentId, type) => {
 };
 
 window.supprimerPrestation = async (pid, residentId) => {
-  if (!confirm('Annuler cette prestation ?')) return;
+  if (!await askConfirm('Annuler cette prestation ?')) return;
   try { await api(`/api/prestations/${pid}`, { method: 'DELETE' }); toast('Prestation annulée'); route(); }
   catch (err) { toast(err.message, true); }
 };
@@ -1433,31 +1549,45 @@ window.encaisserClient = async (id) => {
     catch (err) { toast(err.message, true); }
   });
 };
-/* --- Facturation récurrente : configuration des lignes du "montant type" --- */
-window.formLignesRecurrentes = async (contratId) => {
-  const { contrat } = await api('/api/contrats/' + contratId);
+/* --- Facturation récurrente : loyer + lignes du "montant type" (sur le RÉSIDENT) --- */
+window.formFacturation = async (residentId) => {
+  const { facturation } = await api('/api/factures/config/' + residentId).catch(() => ({ facturation: {} }));
+  const f = facturation || {};
   const ligne = (l = {}) => `
     <div class="rec-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
-      <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:170px">
-      <input name="quantite" type="number" step="0.01" placeholder="Qté" value="${l.quantite != null ? l.quantite : 1}" style="width:70px" title="Quantité">
-      <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:100px" title="Prix unitaire TTC">
-      <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : ''}" style="width:80px" title="Taux de TVA">
-      <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500" title="Ajuster le montant au nombre de jours de présence (mois partiel)">
+      <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:160px">
+      <input name="quantite" type="number" step="0.01" placeholder="Qté" value="${l.quantite != null ? l.quantite : 1}" style="width:66px" title="Quantité">
+      <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:96px" title="Prix unitaire TTC">
+      <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : ''}" style="width:76px" title="Taux de TVA">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500" title="Ajuster au nombre de jours de présence (mois partiel)">
         <input name="prorata" type="checkbox" ${l.prorata ? 'checked' : ''} style="width:16px;height:16px"> prorata</label>
       <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
     </div>`;
   openDrawer(`
     <h2>Facturation récurrente</h2>
-    <p class="muted" style="margin-top:4px">Ces lignes s'ajoutent automatiquement au loyer à chaque facture mensuelle.
-      Cochez « prorata » pour les lignes à ajuster sur un mois partiel (entrée/sortie).</p>
-    <form id="f-rec" style="margin-top:14px">
-      <div id="rec-lignes">${(contrat.lignes_recurrentes || []).map(ligne).join('') || ligne()}</div>
+    <p class="muted" style="margin-top:4px">Ce qui est facturé chaque mois à ce résident. Indépendant du contrat :
+      vous pouvez réviser les tarifs ici sans refaire le contrat signé.</p>
+
+    <form id="f-fact" style="margin-top:16px">
+      <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:14px;margin-bottom:16px">
+        <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:10px">Loyer emplacement</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input name="loyer_mensuel" type="number" step="0.01" placeholder="Montant TTC / mois" value="${f.loyer_mensuel != null ? f.loyer_mensuel : ''}" style="flex:1;min-width:140px">
+          <input name="loyer_tva" type="number" step="0.1" placeholder="TVA %" value="${f.loyer_tva != null ? f.loyer_tva : ''}" style="width:86px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500">
+            <input name="loyer_prorata" type="checkbox" ${f.loyer_prorata === false ? '' : 'checked'} style="width:16px;height:16px"> prorata</label>
+        </div>
+      </div>
+
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:8px">Lignes récurrentes</div>
+      <div id="rec-lignes">${(f.lignes || []).map(ligne).join('') || ligne()}</div>
       <button type="button" class="btn btn-ghost btn-sm" id="rec-add">+ Ajouter une ligne</button>
       <div style="margin-top:16px"><button class="btn btn-primary btn-block">Enregistrer</button></div>
     </form>`);
   $('#rec-add').addEventListener('click', () => $('#rec-lignes').insertAdjacentHTML('beforeend', ligne()));
-  $('#f-rec').addEventListener('submit', async (e) => {
+  $('#f-fact').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const fd = new FormData(e.target);
     const lignes = [...document.querySelectorAll('#rec-lignes .rec-ligne')].map((el) => ({
       designation: el.querySelector('[name=designation]').value.trim(),
       quantite: Number(el.querySelector('[name=quantite]').value || 1),
@@ -1466,19 +1596,22 @@ window.formLignesRecurrentes = async (contratId) => {
       prorata: el.querySelector('[name=prorata]').checked,
     })).filter((l) => l.designation && l.pu_ttc !== 0);
     try {
-      await api(`/api/contrats/${contratId}/lignes-recurrentes`, { method: 'PUT', body: { lignes } });
-      closeDrawer(); toast(`${lignes.length} ligne(s) récurrente(s) enregistrée(s)`); route();
+      await api('/api/factures/config/' + residentId, { method: 'PUT', body: {
+        loyer_mensuel: Number(fd.get('loyer_mensuel') || 0),
+        loyer_tva: Number(fd.get('loyer_tva') || 0),
+        loyer_prorata: !!e.target.querySelector('[name=loyer_prorata]').checked,
+        lignes,
+      } });
+      closeDrawer(); toast('Facturation enregistrée'); route();
     } catch (err) { toast(err.message, true); }
   });
 };
 
 /* --- Facture du mois en un clic (loyer + lignes récurrentes + taxe de séjour) --- */
 window.genererFactureMois = async (residentId) => {
-  const now = new Date();
-  const defaut = now.toISOString().slice(0, 7);
-  const periode = prompt('Période à facturer (AAAA-MM) :', defaut);
+  const periode = await askMois(new Date().toISOString().slice(0, 7),
+    { titre: 'Générer la facture du mois', ok: 'Générer la facture' });
   if (!periode) return;
-  if (!/^\d{4}-\d{2}$/.test(periode)) return toast('Format attendu : AAAA-MM', true);
   try {
     const r = await api('/api/factures/run-resident', { method: 'POST', body: { resident_id: residentId, periode } });
     toast(`Facture ${r.facture.numero} créée — ${eur(r.facture.total_ttc)}`);
@@ -1859,7 +1992,7 @@ window.formMoyen = async (id) => {
 };
 
 window.retirerMoyen = async (id, libelle) => {
-  if (!confirm(`Désactiver « ${libelle} » ? Il ne sera plus proposé à l'encaissement. L'historique est conservé.`)) return;
+  if (!await askConfirm(`Désactiver « ${libelle} » ? Il ne sera plus proposé à l'encaissement. L'historique est conservé.`)) return;
   try {
     const r = await api(`/api/moyens-paiement/${id}`, { method: 'DELETE' });
     toast(r.message || (r.supprime ? 'Moyen supprimé' : 'Moyen désactivé'));
@@ -1940,7 +2073,7 @@ window.exportDonneesResident = (id, nom) => {
 };
 
 window.anonymiserResident = async (id, nom) => {
-  const ok = prompt(
+  const ok = await askPrompt(
     `ANONYMISER « ${nom} » ?\n\n`
     + `Seront DÉFINITIVEMENT effacés : identité, coordonnées, documents (pièces d'identité…), messages.\n\n`
     + `Seront CONSERVÉS : factures et encaissements — obligation légale de conservation `
@@ -2067,7 +2200,7 @@ window.lancerCloture = async () => {
   const type = $('#clot-type').value;
   const periode = $('#clot-periode').value.trim();
   if (!periode) { toast('Indique la période', true); return; }
-  if (!confirm(`Clôturer la période ${periode} ?\n\nUne clôture est DÉFINITIVE : les totaux sont figés et scellés, elle ne pourra pas être annulée.`)) return;
+  if (!await askConfirm(`Clôturer la période ${periode} ?\n\nUne clôture est DÉFINITIVE : les totaux sont figés et scellés, elle ne pourra pas être annulée.`)) return;
   try {
     const r = await api('/api/fiscal/cloturer', { method: 'POST', body: { type, periode } });
     toast(`Période ${periode} clôturée — ${eur(r.cloture.total_ttc)} scellés`);
@@ -2205,7 +2338,7 @@ window.formUtilisateur = async (userId) => {
 };
 
 window.retirerAcces = async (id, nom) => {
-  if (!confirm(`Retirer l\u2019accès de ${nom} à ce camping ? Son compte et ses autres accès sont conservés.`)) return;
+  if (!await askConfirm(`Retirer l\u2019accès de ${nom} à ce camping ? Son compte et ses autres accès sont conservés.`)) return;
   try { await api(`/api/admin/utilisateurs/${id}`, { method: 'DELETE' }); toast('Accès retiré'); route(); }
   catch (e) { toast(e.message, true); }
 };
@@ -2360,15 +2493,15 @@ window.choisirOutil = (t) => {
   document.querySelectorAll('#outils .map-chip').forEach((b) => b.classList.toggle('actif', b.dataset.t === t));
 };
 
-function poserZone(page, x, y) {
+async function poserZone(page, x, y) {
   const t = zonesState.outil;
   const def = t === 'signature' ? { w: 30, h: 9 } : t === 'case' ? { w: 55, h: 2.4 } : { w: 34, h: 4 };
   let label = null;
   if (t === 'case') {
-    label = prompt('Texte de la case à cocher', 'Je certifie avoir lu et approuvé le document');
+    label = await askPrompt('Texte de la case à cocher', 'Je certifie avoir lu et approuvé le document');
     if (label === null) return;
   } else if (t === 'texte') {
-    label = prompt('Intitulé du champ', 'Nom et prénom');
+    label = await askPrompt('Intitulé du champ', 'Nom et prénom');
     if (label === null) return;
   }
   zonesState.champs.push({
@@ -2396,9 +2529,9 @@ function dessinerZones() {
       color:${COUL[c.type]};cursor:pointer`;
     d.title = c.label || LIB[c.type];
     d.textContent = LIB[c.type];
-    d.addEventListener('click', (e) => {
+    d.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (confirm(`Retirer la zone « ${c.label || LIB[c.type]} » ?`)) {
+      if (await askConfirm(`Retirer la zone « ${c.label || LIB[c.type]} » ?`)) {
         zonesState.champs = zonesState.champs.filter((x) => x.id !== c.id);
         dessinerZones();
       }
@@ -2422,7 +2555,7 @@ window.enregistrerZones = async () => {
 };
 
 window.envoyerSignature = async (id) => {
-  if (!confirm('Envoyer le document au signataire par e-mail ?')) return;
+  if (!await askConfirm('Envoyer le document au signataire par e-mail ?')) return;
   try {
     const r = await api(`/api/signatures/${id}/envoyer`, { method: 'POST' });
     toast(`Document envoyé à ${r.envoye_a}`);
@@ -2431,7 +2564,7 @@ window.envoyerSignature = async (id) => {
 };
 
 window.annulerDocSignature = async (id) => {
-  if (!confirm('Annuler ce document ?')) return;
+  if (!await askConfirm('Annuler ce document ?')) return;
   try { await api(`/api/signatures/${id}`, { method: 'DELETE' }); toast('Document annulé'); route(); }
   catch (e) { toast(e.message, true); }
 };
@@ -2640,7 +2773,7 @@ window.uploadLogo = async () => {
 };
 
 window.supprimerArticle = async (id) => {
-  if (!confirm('Retirer cet article du catalogue ?')) return;
+  if (!await askConfirm('Retirer cet article du catalogue ?')) return;
   try { await api(`/api/articles/${id}`, { method: 'DELETE' }); toast('Article retiré'); route(); }
   catch (err) { toast(err.message, true); }
 };
@@ -2760,7 +2893,7 @@ window.emailFacture = async (id) => {
   } catch (e) { toast(e.message, true); }
 };
 window.faireAvoir = async (id) => {
-  if (!confirm('Émettre un avoir et annuler cette facture ?')) return;
+  if (!await askConfirm('Émettre un avoir et annuler cette facture ?')) return;
   try { await api(`/api/factures/${id}/avoir`, { method: 'POST' }); toast('Avoir émis'); route(); }
   catch (e) { toast(e.message, true); }
 };
@@ -2874,7 +3007,7 @@ async function chargerRemises() {
 window.creerRemise = async (code, libelle) => {
   const ids = [...document.querySelectorAll(`.chk-remise[data-moyen="${code}"]:checked`)].map((x) => x.value);
   if (!ids.length) { toast('Sélectionne au moins un titre', true); return; }
-  const banque = prompt(`Banque pour ce bordereau ${libelle} (optionnel) :`) || undefined;
+  const banque = await askPrompt(`Banque pour ce bordereau ${libelle} (optionnel) :`) || undefined;
   try {
     const { remise } = await api('/api/remises', { method: 'POST', body: { reglement_ids: ids, banque } });
     toast(`Bordereau ${remise.numero} créé — ${ids.length} ${libelle.toLowerCase()}(s)`);
@@ -2887,7 +3020,7 @@ window.pdfRemise = async (id, numero) => {
 };
 
 window.encaisserRemise = async (id) => {
-  if (!confirm('Marquer cette remise comme encaissée en banque ?')) return;
+  if (!await askConfirm('Marquer cette remise comme encaissée en banque ?')) return;
   try { await api(`/api/remises/${id}/encaisser`, { method: 'PUT' }); toast('Remise encaissée'); chargerRemises(); }
   catch (e) { toast(e.message, true); }
 };
@@ -2897,7 +3030,7 @@ window.annulerRemise = async (id, numero, etaitEncaissee) => {
   const avert = etaitEncaissee
     ? `\n\nATTENTION : cette remise est DÉJÀ ENCAISSÉE. L'annulation ne supprime pas l'encaissement bancaire — pense à passer la contre-écriture en comptabilité.`
     : '';
-  const motif = prompt(`Annuler la remise ${numero} ?${avert}\n\nMotif d'annulation (obligatoire, conservé au journal) :`);
+  const motif = await askPrompt(`Annuler la remise ${numero} ?${avert}\n\nMotif d'annulation (obligatoire, conservé au journal) :`);
   if (motif === null) return;
   if (motif.trim().length < 3) { toast('Motif obligatoire (3 caractères minimum)', true); return; }
   try {
@@ -3021,7 +3154,7 @@ window.enregistrerRacine = async () => {
   } catch (e) { toast(e.message, true); }
 };
 window.attribuerComptes = async () => {
-  if (!confirm('Attribuer un numéro de compte à tous les clients qui n\u2019en ont pas ?')) return;
+  if (!await askConfirm('Attribuer un numéro de compte à tous les clients qui n\u2019en ont pas ?')) return;
   try {
     const r = await api('/api/residents/attribuer-comptes', { method: 'POST' });
     toast(`${r.attribues} compte(s) attribué(s)`);

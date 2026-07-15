@@ -34,6 +34,57 @@ router.post('/run-mensuel', requireRole('admin', 'gestionnaire'), async (req, re
   } catch (e) { console.error('[factures:run]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// --- Configuration de facturation d'un résident (loyer + lignes récurrentes) ---
+// Vit sur le RÉSIDENT (et non le contrat) : les tarifs évoluent, le contrat signé est figé.
+
+// GET /api/factures/config/:resident_id
+router.get('/config/:resident_id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('residents').select('id,facturation')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.resident_id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Résident introuvable' });
+    res.json({ facturation: data.facturation || {} });
+  } catch (e) {
+    console.error('[factures:config-get]', e.message);
+    res.status(500).json({ error: 'Erreur serveur — la migration db/18_facturation_resident.sql a-t-elle été exécutée ?' });
+  }
+});
+
+// PUT /api/factures/config/:resident_id  { loyer_mensuel, loyer_tva, loyer_prorata, lignes[] }
+router.put('/config/:resident_id', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: avant } = await supabase.from('residents').select('id,facturation')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.resident_id).maybeSingle();
+    if (!avant) return res.status(404).json({ error: 'Résident introuvable' });
+
+    const b = req.body || {};
+    const lignes = (Array.isArray(b.lignes) ? b.lignes : []).slice(0, 50).map((l) => ({
+      designation: String(l.designation || '').slice(0, 200).trim(),
+      quantite: Number(l.quantite) > 0 ? Number(l.quantite) : 1,
+      pu_ttc: Math.round(Number(l.pu_ttc || 0) * 100) / 100,
+      taux_tva: Number(l.taux_tva || 0),
+      prorata: l.prorata === true,
+    })).filter((l) => l.designation && l.pu_ttc !== 0);
+
+    const facturation = {
+      loyer_mensuel: Math.round(Number(b.loyer_mensuel || 0) * 100) / 100,
+      loyer_tva: Number(b.loyer_tva || 0),
+      loyer_prorata: b.loyer_prorata !== false,
+      lignes,
+    };
+
+    const { data, error } = await supabase.from('residents').update({ facturation })
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.resident_id)
+      .select('id,facturation').single();
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'update', entite: 'residents', entite_id: req.params.resident_id,
+      avant: { facturation: avant.facturation }, apres: { facturation } });
+    res.json({ facturation: data.facturation });
+  } catch (e) { console.error('[factures:config-put]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // POST /api/factures/run-resident  { resident_id, periode? }  -> facture du mois d'un résident
 router.post('/run-resident', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {
