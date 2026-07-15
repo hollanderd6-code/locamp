@@ -2041,7 +2041,9 @@ async function vueCompteurs() {
         <td class="muted">${e.dernier_releve ? dfr(e.dernier_releve.date_releve) + (e.dernier_releve.conso_kwh != null ? ` <span class="badge occupe">${Number(e.dernier_releve.conso_kwh)} kWh</span>` : '') : '<span class="badge emise">jamais relevé</span>'}</td>
         <td class="right">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
         <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
-        <td class="right"><button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
+        <td class="right" style="white-space:nowrap">
+          ${e.dernier_releve ? `<button class="btn btn-ghost btn-sm" onclick="histoCompteur('${e.id}','${esc(e.numero)}')">Historique</button>` : ''}
+          <button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>
     <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix kWh) — à facturer depuis sa fiche.</p>`;
 }
@@ -2055,6 +2057,143 @@ window.releverCompteur = async (empId) => {
     if (r.prestation) toast(`Relevé enregistré — charge de ${eur(r.prestation.montant_ttc)} créée (${Number(r.releve.conso_kwh)} kWh)`);
     else toast(r.info || 'Relevé enregistré');
     route();
+  } catch (err) { toast(err.message, true); }
+};
+
+// Historique des relevés d'un emplacement (+ courbe, cumul, notes, correction, suppression).
+window.histoCompteur = async (empId, numero) => {
+  const { releves } = await api('/api/compteurs/' + empId + '/historique').catch(() => ({ releves: [] }));
+  const liste = releves || [];
+  const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  // Échappe un objet JSON pour un attribut onclick en guillemets simples (notes = texte libre).
+  const jarg = (o) => JSON.stringify(o).replace(/&/g, '&amp;').replace(/'/g, '&#39;');
+  const ownOK = (r) => !r.charge || r.charge.statut === 'en_cours';   // charge modifiable (non facturée)
+
+  // --- Cumul kWh + coût (sur l'historique affiché, 24 derniers relevés) + ventilation par an ---
+  const avecConso = liste.filter((r) => r.conso_kwh != null && Number(r.conso_kwh) > 0);
+  const cumulKwh = round2(avecConso.reduce((s, r) => s + Number(r.conso_kwh), 0));
+  const cumulCout = round2(avecConso.reduce((s, r) => s + (r.charge ? Number(r.charge.montant_ttc) : 0), 0));
+  const parAn = {};
+  avecConso.forEach((r) => {
+    const y = String(r.date_releve || '').slice(0, 4) || '—';
+    if (!parAn[y]) parAn[y] = { kwh: 0, eur: 0 };
+    parAn[y].kwh += Number(r.conso_kwh);
+    parAn[y].eur += r.charge ? Number(r.charge.montant_ttc) : 0;
+  });
+  const annees = Object.keys(parAn).sort().reverse();
+  const resumeHtml = avecConso.length ? `
+    <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:12px 14px;margin:12px 0 4px">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline">
+        <span class="muted" style="font-size:12.5px">Cumul (${avecConso.length} relevé${avecConso.length > 1 ? 's' : ''})</span>
+        <strong>${round2(cumulKwh)} kWh · ${eur(cumulCout)} TTC</strong>
+      </div>
+      ${annees.length > 1 ? `<div style="margin-top:8px;border-top:1px solid var(--hairline);padding-top:8px;display:flex;flex-direction:column;gap:3px">
+        ${annees.map((y) => `<div style="display:flex;justify-content:space-between;font-size:12.5px"><span class="muted">${y}</span><span>${round2(parAn[y].kwh)} kWh · ${eur(round2(parAn[y].eur))}</span></div>`).join('')}
+      </div>` : ''}
+    </div>` : '';
+
+  // --- Courbe de consommation (barres kWh par relevé, chronologique) ---
+  const chrono = avecConso.slice().reverse();   // du plus ancien au plus récent
+  let courbeHtml = '';
+  if (chrono.length >= 2) {
+    const max = Math.max(...chrono.map((r) => Number(r.conso_kwh)));
+    const pad = 26, bw = 24, slotMin = 40;
+    const W = Math.max(300, pad * 2 + chrono.length * slotMin), H = 152;
+    const slot = (W - pad * 2) / chrono.length;
+    const bars = chrono.map((r, i) => {
+      const x = pad + i * slot + (slot - bw) / 2;
+      const h = max > 0 ? (Number(r.conso_kwh) / max) * (H - 50) : 0;
+      const y = H - 28 - h;
+      const d = new Date(r.date_releve);
+      const lbl = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+      return `<g>
+        <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${Math.max(1, h).toFixed(1)}" rx="4" fill="#1A7A5E"><title>${lbl} — ${Number(r.conso_kwh)} kWh${r.charge ? ' · ' + eur(r.charge.montant_ttc) : ''}</title></rect>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="10" fill="#6b6b6b">${Number(r.conso_kwh)}</text>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${H - 9}" text-anchor="middle" font-size="9.5" fill="#9a9a9a">${lbl}</text>
+      </g>`;
+    }).join('');
+    courbeHtml = `<div style="overflow-x:auto;margin:4px 0 8px">
+      <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;font-family:inherit">
+        <line x1="${pad}" y1="${H - 28}" x2="${W - 4}" y2="${H - 28}" stroke="var(--hairline,#e7e2d6)"/>${bars}
+      </svg></div>`;
+  }
+
+  const rows = liste.map((r, i) => {
+    // Corrigeable si sa charge ET celle du relevé suivant (plus récent = ligne au-dessus) sont modifiables.
+    const succOK = i === 0 ? true : ownOK(liste[i - 1]);
+    const editable = ownOK(r) && succOK;
+    const chargeCell = r.charge
+      ? `${eur(r.charge.montant_ttc)} <span class="badge ${r.charge.statut}">${lib(r.charge.statut)}</span>`
+      : (r.conso_kwh != null ? '<span class="muted">—</span>' : '<span class="muted">index initial</span>');
+    const noteBtn = `<button class="btn btn-ghost btn-sm" onclick='noterReleve(${jarg({ id: r.id, empId, numero, date_releve: r.date_releve, note: r.note || '' })})' title="Note">${r.note ? '✎' : '+ note'}</button>`;
+    const actions = (editable
+      ? `<button class="btn btn-ghost btn-sm" onclick='modifierReleve(${jarg({ id: r.id, empId, numero, index_kwh: r.index_kwh, date_releve: r.date_releve })})'>Modifier</button>
+         <button class="btn btn-ghost btn-sm" onclick="supprimerReleve('${r.id}','${empId}','${esc(numero)}')">Supprimer</button>`
+      : '<span class="muted" title="La charge liée est facturée : fais un avoir avant de corriger" style="font-size:12px">🔒 facturé</span>') + ' ' + noteBtn;
+    return `<tr>
+      <td>${dfr(r.date_releve)}${r.note ? `<div class="muted" style="font-size:11.5px;font-style:italic;margin-top:2px;max-width:180px">${esc(r.note)}</div>` : ''}</td>
+      <td class="right">${Number(r.index_kwh)}</td>
+      <td class="right">${r.conso_kwh != null ? Number(r.conso_kwh) + ' kWh' : '—'}</td>
+      <td class="right">${chargeCell}</td>
+      <td class="right" style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" class="muted">Aucun relevé.</td></tr>';
+  openDrawer(`
+    <h2>Historique — emplacement ${esc(numero)}</h2>
+    <p class="muted" style="margin-top:4px">Corriger ou supprimer un relevé recalcule sa consommation, celle du relevé suivant, et les charges « en cours » associées. Une charge déjà facturée est verrouillée (la note, elle, reste éditable).</p>
+    ${resumeHtml}
+    ${courbeHtml}
+    <table style="margin-top:6px"><thead><tr><th>Date</th><th class="right">Index</th><th class="right">Conso</th><th class="right">Charge</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>`);
+};
+
+// Édite la note documentaire d'un relevé (toujours autorisé, même si la charge est facturée).
+window.noterReleve = (r) => {
+  openDrawer(`
+    <h2>Note du relevé</h2>
+    <p class="muted" style="margin-top:4px">Emplacement ${esc(r.numero)} · relevé du ${dfr(r.date_releve)}. Documentaire — n'affecte ni la conso ni la charge.</p>
+    <form id="f-note" style="margin-top:14px">
+      <textarea name="note" rows="4" placeholder="Ex : compteur changé, index estimé, sous-compteur atelier…" style="width:100%;padding:10px;border:1px solid var(--hairline);border-radius:9px;font:inherit;resize:vertical">${esc(r.note || '')}</textarea>
+      <div style="margin-top:14px"><button class="btn btn-primary btn-block">Enregistrer la note</button></div>
+    </form>`);
+  $('#f-note').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const note = e.target.querySelector('[name=note]').value.trim();
+    try {
+      await api('/api/compteurs/releve/' + r.id + '/note', { method: 'PUT', body: { note } });
+      toast('Note enregistrée');
+      histoCompteur(r.empId, r.numero);
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.modifierReleve = (r) => {
+  openDrawer(`
+    <h2>Corriger le relevé</h2>
+    <p class="muted" style="margin-top:4px">Emplacement ${esc(r.numero)} · relevé du ${dfr(r.date_releve)}.</p>
+    <form id="f-releve" class="form-grid" style="margin-top:14px">
+      <label>Index (kWh)<input name="index_kwh" type="number" step="0.01" min="0" value="${Number(r.index_kwh)}"></label>
+      <label>Date du relevé<input name="date_releve" type="date" value="${r.date_releve}"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Enregistrer la correction</button></div>
+    </form>`);
+  $('#f-releve').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      const res = await api('/api/compteurs/releve/' + r.id, { method: 'PUT', body: { index_kwh: Number(f.index_kwh), date_releve: f.date_releve } });
+      toast(`Relevé corrigé${res.suivant_recalcule ? ' (relevé suivant recalculé)' : ''}`);
+      histoCompteur(r.empId, r.numero);   // rouvre l'historique à jour
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.supprimerReleve = async (releveId, empId, numero) => {
+  if (!await askConfirm('Supprimer ce relevé ? Sa charge « en cours » sera retirée et le relevé suivant sera recalculé sur le relevé précédent.',
+    { titre: 'Supprimer le relevé', ok: 'Supprimer', danger: true })) return;
+  try {
+    const res = await api('/api/compteurs/releve/' + releveId, { method: 'DELETE' });
+    toast(`Relevé supprimé${res.suivant_recalcule ? ' (relevé suivant recalculé)' : ''}`);
+    histoCompteur(empId, numero);
   } catch (err) { toast(err.message, true); }
 };
 
