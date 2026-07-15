@@ -1200,7 +1200,7 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes, moyRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id),
     api('/api/reglements?resident_id=' + id),
@@ -1208,6 +1208,7 @@ async function vueFicheClient(id) {
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
     api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
+    api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
   ]);
   const fact = cfgRes.effective || cfgRes.facturation || {};
   const factSource = cfgRes.source || 'aucun';
@@ -1219,6 +1220,17 @@ async function vueFicheClient(id) {
   const prestations = presRes.prestations;
   const syn = synRes.synthese;
   const facNum = {}; factures.forEach((f) => { facNum[f.id] = f.numero; });
+  // Paiements lettrés par facture (pour les afficher sous chaque facture).
+  const mlib = {}; (moyRes.moyens || []).forEach((m) => { mlib[m.code] = m.libelle; });
+  const payParFacture = {};
+  (reglements || []).forEach((g) => {
+    (g.affectations || []).forEach((a) => {
+      if (!a || !a.facture_id) return;
+      (payParFacture[a.facture_id] ||= []).push({
+        mode: mlib[g.mode] || g.mode, montant: Number(a.montant || 0), date: g.date_reglement, reference: g.reference || null,
+      });
+    });
+  });
 
   const PTYPE = { sejour: 'Séjour', vente: 'Vente', charge: 'Charge', caution: 'Caution' };
   const etatBadge = (p) => {
@@ -1248,7 +1260,7 @@ async function vueFicheClient(id) {
         </div>
       </div>
       <div class="toolbar">
-        ${syn && syn.avoir_faveur > 0 ? `<button class="btn btn-ghost" onclick="affecterCredit('${id}', ${syn.avoir_faveur})">Affecter le crédit</button>` : ''}
+        ${syn && syn.credit_a_affecter > 0 ? `<button class="btn btn-ghost" onclick="affecterCredit('${id}', ${syn.credit_a_affecter})">Affecter les paiements (${eur(syn.credit_a_affecter)})</button>` : ''}
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
       </div>
     </div>
@@ -1341,7 +1353,14 @@ async function vueFicheClient(id) {
                 <button class="btn btn-primary btn-sm" onclick="emettreFacture('${f.id}')">Émettre</button>` : ''}
               ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
             </td>
-          </tr>`;
+          </tr>
+          ${!brouillon && (payParFacture[f.id] || []).length ? `<tr class="pay-detail">
+            <td colspan="7" style="padding:2px 12px 10px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                ${payParFacture[f.id].map((p) => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--brume,#8a8778)"><span>↳ Paiement · ${esc(p.mode)}${p.reference ? ' · ' + esc(p.reference) : ''} · ${dfr(p.date)}</span><span>${eur(p.montant)}</span></div>`).join('')}
+              </div>
+            </td>
+          </tr>` : ''}`;
         }).join('') || '<tr><td colspan="7" class="muted">Aucune facture pour ce résident.</td></tr>'}</tbody></table>
       </div>
 
@@ -1672,8 +1691,8 @@ window.supprimerPrestation = async (pid, residentId) => {
 // Affecte (lettrer) le crédit d'avance non affecté du client sur ses factures ouvertes,
 // des plus anciennes aux plus récentes. Le back (appliquerCredit) recalcule les soldes.
 window.affecterCredit = async (residentId, credit) => {
-  if (!await askConfirm(`Affecter le crédit disponible (${eur(credit)}) sur les factures ouvertes de ce client, des plus anciennes aux plus récentes ?`,
-    { titre: 'Affecter le crédit', ok: 'Affecter' })) return;
+  if (!await askConfirm(`Affecter les paiements non lettrés (${eur(credit)}) sur les factures ouvertes de ce client, des plus anciennes aux plus récentes ?`,
+    { titre: 'Affecter les paiements', ok: 'Affecter' })) return;
   try {
     const r = await api('/api/reglements/lettrer', { method: 'POST', body: { resident_id: residentId } });
     if (r.affecte > 0) toast(`${eur(r.affecte)} affecté sur ${r.factures} facture${r.factures > 1 ? 's' : ''}`);

@@ -49,10 +49,12 @@ router.get('/', async (req, res) => {
 router.get('/synthese/:residentId', async (req, res) => {
   try {
     const rid = req.params.residentId;
-    const [pRes, releve] = await Promise.all([
+    const [pRes, releve, gRes, ofRes] = await Promise.all([
       supabase.from('prestations').select('type,designation,date_debut,date_fin,montant_ttc,statut')
         .eq('camping_id', req.activeCampingId).eq('resident_id', rid).neq('statut', 'annulee'),
       buildReleve(req.activeCampingId, rid).catch(() => null),
+      supabase.from('reglements').select('montant,affectations').eq('camping_id', req.activeCampingId).eq('resident_id', rid),
+      supabase.from('factures').select('total_ttc,montant_regle').eq('camping_id', req.activeCampingId).eq('resident_id', rid).in('statut', ['emise', 'partielle', 'en_retard']),
     ]);
     const prestations = pRes.data || [];
 
@@ -67,6 +69,14 @@ router.get('/synthese/:residentId', async (req, res) => {
     const totalRegle = releve ? r2(Object.values(releve.par_annee || {}).reduce((s, y) => s + Number(y.regle || 0), 0)) : 0;
     const aRegler = r2(Math.max(0, solde));
     const avoirFaveur = r2(Math.max(0, -solde));
+
+    // Crédit à affecter = paiements encaissés mais NON lettrés, applicables à des factures
+    // ouvertes. Indépendant du solde net : un client peut devoir de l'argent net ET avoir
+    // des paiements non affectés à distribuer sur ses factures (d'où la divergence relevé/factures).
+    const nonLettre = r2((gRes.data || []).reduce((s, g) =>
+      s + Math.max(0, Number(g.montant || 0) - (g.affectations || []).reduce((x, a) => x + Number((a && a.montant) || 0), 0)), 0));
+    const resteOuvert = r2((ofRes.data || []).reduce((s, f) => s + Math.max(0, Number(f.total_ttc) - Number(f.montant_regle || 0)), 0));
+    const creditAAffecter = r2(Math.min(nonLettre, resteOuvert));
 
     const sejours = prestations.filter((p) => p.type === 'sejour' && p.date_debut)
       .sort((a, b) => (b.date_debut || '').localeCompare(a.date_debut || ''));
@@ -86,6 +96,7 @@ router.get('/synthese/:residentId', async (req, res) => {
         a_regler: aRegler,
         solde,
         avoir_faveur: avoirFaveur,
+        credit_a_affecter: creditAAffecter,
         nb_sejours: sejours.length,
         nb_nuits: nuits,
         dernier_sejour: sejours[0] ? { du: sejours[0].date_debut, au: sejours[0].date_fin } : null,
