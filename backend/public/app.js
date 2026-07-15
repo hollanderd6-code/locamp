@@ -2119,32 +2119,36 @@ window.histoCompteur = async (empId, numero) => {
   }
 
   const rows = liste.map((r, i) => {
-    // Corrigeable si sa charge ET celle du relevé suivant (plus récent = ligne au-dessus) sont modifiables.
+    // Corrigeable si sa charge ET celle du relevé suivant (plus récent = au-dessus) sont modifiables.
     const succOK = i === 0 ? true : ownOK(liste[i - 1]);
     const editable = ownOK(r) && succOK;
     const chargeCell = r.charge
-      ? `${eur(r.charge.montant_ttc)} <span class="badge ${r.charge.statut}">${lib(r.charge.statut)}</span>`
+      ? `<strong>${eur(r.charge.montant_ttc)}</strong> <span class="badge ${r.charge.statut}">${lib(r.charge.statut)}</span>`
       : (r.conso_kwh != null ? '<span class="muted">—</span>' : '<span class="muted">index initial</span>');
-    const noteBtn = `<button class="btn btn-ghost btn-sm" onclick='noterReleve(${jarg({ id: r.id, empId, numero, date_releve: r.date_releve, note: r.note || '' })})' title="Note">${r.note ? '✎' : '+ note'}</button>`;
-    const actions = (editable
+    const noteBtn = `<button class="btn btn-ghost btn-sm" onclick='noterReleve(${jarg({ id: r.id, empId, numero, date_releve: r.date_releve, note: r.note || '' })})'>${r.note ? 'Modifier la note' : '+ note'}</button>`;
+    const editBtns = editable
       ? `<button class="btn btn-ghost btn-sm" onclick='modifierReleve(${jarg({ id: r.id, empId, numero, index_kwh: r.index_kwh, date_releve: r.date_releve })})'>Modifier</button>
          <button class="btn btn-ghost btn-sm" onclick="supprimerReleve('${r.id}','${empId}','${esc(numero)}')">Supprimer</button>`
-      : '<span class="muted" title="La charge liée est facturée : fais un avoir avant de corriger" style="font-size:12px">🔒 facturé</span>') + ' ' + noteBtn;
-    return `<tr>
-      <td>${dfr(r.date_releve)}${r.note ? `<div class="muted" style="font-size:11.5px;font-style:italic;margin-top:2px;max-width:180px">${esc(r.note)}</div>` : ''}</td>
-      <td class="right">${Number(r.index_kwh)}</td>
-      <td class="right">${r.conso_kwh != null ? Number(r.conso_kwh) + ' kWh' : '—'}</td>
-      <td class="right">${chargeCell}</td>
-      <td class="right" style="white-space:nowrap">${actions}</td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="5" class="muted">Aucun relevé.</td></tr>';
+      : '<span class="muted" title="Charge engagée sur une facture : fais un avoir avant de corriger" style="font-size:12px;align-self:center">🔒 verrouillé</span>';
+    return `<div style="border:1px solid var(--hairline);border-radius:11px;padding:11px 13px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <strong>${dfr(r.date_releve)}</strong>
+        <span class="muted" style="font-size:12.5px">index ${Number(r.index_kwh)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap">
+        <span>${r.conso_kwh != null ? '<strong>' + Number(r.conso_kwh) + '</strong> kWh' : '<span class="muted">—</span>'}</span>
+        <span style="text-align:right">${chargeCell}</span>
+      </div>
+      ${r.note ? `<div class="muted" style="font-style:italic;font-size:12px;margin-top:7px;padding-top:7px;border-top:1px dashed var(--hairline)">${esc(r.note)}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${editBtns} ${noteBtn}</div>
+    </div>`;
+  }).join('') || '<p class="muted">Aucun relevé.</p>';
   openDrawer(`
     <h2>Historique — emplacement ${esc(numero)}</h2>
     <p class="muted" style="margin-top:4px">Corriger ou supprimer un relevé recalcule sa consommation, celle du relevé suivant, et les charges « en cours » associées. Une charge déjà facturée est verrouillée (la note, elle, reste éditable).</p>
     ${resumeHtml}
     ${courbeHtml}
-    <table style="margin-top:6px"><thead><tr><th>Date</th><th class="right">Index</th><th class="right">Conso</th><th class="right">Charge</th><th></th></tr></thead>
-      <tbody>${rows}</tbody></table>`);
+    <div style="margin-top:8px">${rows}</div>`);
 };
 
 // Édite la note documentaire d'un relevé (toujours autorisé, même si la charge est facturée).
