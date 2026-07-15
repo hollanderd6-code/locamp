@@ -1248,6 +1248,7 @@ async function vueFicheClient(id) {
         </div>
       </div>
       <div class="toolbar">
+        ${syn && syn.avoir_faveur > 0 ? `<button class="btn btn-ghost" onclick="affecterCredit('${id}', ${syn.avoir_faveur})">Affecter le crédit</button>` : ''}
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
       </div>
     </div>
@@ -1666,6 +1667,19 @@ window.supprimerPrestation = async (pid, residentId) => {
   if (!await askConfirm('Annuler cette prestation ?')) return;
   try { await api(`/api/prestations/${pid}`, { method: 'DELETE' }); toast('Prestation annulée'); route(); }
   catch (err) { toast(err.message, true); }
+};
+
+// Affecte (lettrer) le crédit d'avance non affecté du client sur ses factures ouvertes,
+// des plus anciennes aux plus récentes. Le back (appliquerCredit) recalcule les soldes.
+window.affecterCredit = async (residentId, credit) => {
+  if (!await askConfirm(`Affecter le crédit disponible (${eur(credit)}) sur les factures ouvertes de ce client, des plus anciennes aux plus récentes ?`,
+    { titre: 'Affecter le crédit', ok: 'Affecter' })) return;
+  try {
+    const r = await api('/api/reglements/lettrer', { method: 'POST', body: { resident_id: residentId } });
+    if (r.affecte > 0) toast(`${eur(r.affecte)} affecté sur ${r.factures} facture${r.factures > 1 ? 's' : ''}`);
+    else toast('Aucune facture ouverte à lettrer', true);
+    route();
+  } catch (e) { toast(e.message, true); }
 };
 
 window.encaisserClient = async (id) => {
