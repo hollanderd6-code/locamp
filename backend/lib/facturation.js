@@ -144,6 +144,31 @@ function buildLignes(contrat, resident, periode, parametres) {
   return lignes;
 }
 
+// Résout la configuration de facturation applicable à un résident, dans l'ordre :
+//   1. config PROPRE du résident (tarif négocié) si elle porte un loyer ou des lignes ;
+//   2. sinon le MODÈLE de facturation rattaché à son emplacement
+//      (parametres.factures_types[], référencé par emplacement.meta.facture_type_id) — live ;
+//   3. sinon rien : buildLignes retombera sur le contrat.
+function resoudreFacturation(resident, emplacement, parametres) {
+  const own = (resident && resident.facturation) || {};
+  const aOwn = Number(own.loyer_mensuel || 0) > 0 || (own.lignes || []).length > 0;
+  if (aOwn) return own;
+  const typeId = emplacement && emplacement.meta && emplacement.meta.facture_type_id;
+  if (typeId) {
+    const t = ((parametres && parametres.factures_types) || []).find((x) => x && x.id === typeId);
+    if (t) {
+      return {
+        loyer_mensuel: Number(t.loyer_mensuel || 0),
+        loyer_tva: Number(t.loyer_tva || 0),
+        loyer_prorata: t.loyer_prorata !== false,
+        lignes: Array.isArray(t.lignes) ? t.lignes : [],
+        _modele_id: t.id, _modele_nom: t.nom,
+      };
+    }
+  }
+  return own;
+}
+
 // Numéro de facture atomique et continu : F-AAAA-NNNNN
 async function nextNumeroFacture(campingId) {
   const year = new Date().getFullYear();
@@ -410,7 +435,7 @@ async function runFacturationResident(campingId, residentId, periode) {
   const parametres = camp?.parametres || {};
 
   const { data: resident } = await supabase.from('residents')
-    .select('id,foyer,facturation').eq('camping_id', campingId).eq('id', residentId).maybeSingle();
+    .select('id,foyer,facturation,emplacement_id').eq('camping_id', campingId).eq('id', residentId).maybeSingle();
   if (!resident) return { error: 'Résident introuvable', code: 404 };
 
   // Le contrat est FACULTATIF : il ne sert qu'aux dates de présence (prorata).
@@ -426,11 +451,21 @@ async function runFacturationResident(campingId, residentId, periode) {
     .neq('statut', 'avoir').neq('statut', 'annulee').maybeSingle();
   if (existing) return { error: `Facture déjà émise pour cette période (${existing.numero})`, code: 409 };
 
+  // Config applicable : résident > modèle du logement (live). Résolue AVANT le garde-fou
+  // pour qu'un logement doté d'un modèle soit facturable sans config propre au résident.
+  let emplacement = null;
+  if (resident.emplacement_id) {
+    const { data: emp } = await supabase.from('emplacements').select('meta')
+      .eq('camping_id', campingId).eq('id', resident.emplacement_id).maybeSingle();
+    emplacement = emp || null;
+  }
+  resident.facturation = resoudreFacturation(resident, emplacement, parametres);
+
   // Garde-fou : sans loyer ni ligne récurrente configurés, il n'y a rien à facturer.
   // (Sans ce contrôle, on émettrait une facture ne contenant que la taxe de séjour.)
   const fact = resident.facturation || {};
   if (!(Number(fact.loyer_mensuel || 0) > 0) && !(fact.lignes || []).length) {
-    return { error: 'Aucun montant configuré pour ce résident. Cliquez sur « Configurer » pour saisir le loyer et les lignes récurrentes.', code: 400 };
+    return { error: 'Aucun montant configuré pour ce résident, ni de modèle sur son logement. Configurez le loyer via « Configurer », ou rattachez un modèle de facturation à l\'emplacement.', code: 400 };
   }
 
   const lignes = buildLignes(c, resident, periode, parametres);
@@ -488,8 +523,12 @@ async function runFacturationMensuelle(campingId, periode) {
   // On parcourt les RÉSIDENTS actifs (la facturation vit sur le résident) ;
   // le contrat, s'il existe, ne fournit que les dates de présence (prorata).
   const { data: residents, error } = await supabase.from('residents')
-    .select('id,foyer,facturation').eq('camping_id', campingId).eq('actif', true);
+    .select('id,foyer,facturation,emplacement_id').eq('camping_id', campingId).eq('actif', true);
   if (error) throw error;
+
+  // Modèles de facturation par emplacement (résolution live du "montant type" du logement).
+  const { data: emps } = await supabase.from('emplacements').select('id,meta').eq('camping_id', campingId);
+  const empMap = {}; (emps || []).forEach((e) => { empMap[e.id] = e; });
 
   const { data: contrats } = await supabase.from('contrats').select('*')
     .eq('camping_id', campingId).in('statut', ['signe', 'actif']).not('resident_id', 'is', null);
@@ -508,6 +547,8 @@ async function runFacturationMensuelle(campingId, periode) {
       .neq('statut', 'avoir').neq('statut', 'annulee').maybeSingle();
     if (existing) { res.ignores++; continue; }
 
+    // Résout la config applicable (résident > modèle du logement) avant construction.
+    r.facturation = resoudreFacturation(r, empMap[r.emplacement_id] || null, parametres);
     const lignes = buildLignes(c, r, periode, parametres);
     if (!lignes.length) { res.ignores++; continue; }
 
@@ -523,4 +564,4 @@ async function runFacturationMensuelle(campingId, periode) {
   return res;
 }
 
-module.exports = { runFacturationMensuelle, runFacturationResident, emettreFacture, creerFacture, buildLignes, computeTotals, htDepuisTtc, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };
+module.exports = { runFacturationMensuelle, runFacturationResident, emettreFacture, creerFacture, buildLignes, computeTotals, htDepuisTtc, resoudreFacturation, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };

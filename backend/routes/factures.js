@@ -40,11 +40,32 @@ router.post('/run-mensuel', requireRole('admin', 'gestionnaire'), async (req, re
 // GET /api/factures/config/:resident_id
 router.get('/config/:resident_id', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('residents').select('id,facturation')
+    const { data, error } = await supabase.from('residents').select('id,facturation,emplacement_id')
       .eq('camping_id', req.activeCampingId).eq('id', req.params.resident_id).maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Résident introuvable' });
-    res.json({ facturation: data.facturation || {} });
+
+    // Config effective = config propre du résident (override) sinon modèle du logement (live).
+    const own = data.facturation || {};
+    const aOwn = Number(own.loyer_mensuel || 0) > 0 || (own.lignes || []).length > 0;
+    let effective = own, source = aOwn ? 'resident' : 'aucun', modele = null;
+    if (!aOwn && data.emplacement_id) {
+      const [empR, campR] = await Promise.all([
+        supabase.from('emplacements').select('meta').eq('camping_id', req.activeCampingId).eq('id', data.emplacement_id).maybeSingle(),
+        supabase.from('campings').select('parametres').eq('id', req.activeCampingId).maybeSingle(),
+      ]);
+      const typeId = empR.data?.meta?.facture_type_id;
+      const t = typeId && (campR.data?.parametres?.factures_types || []).find((x) => x && x.id === typeId);
+      if (t) {
+        modele = { id: t.id, nom: t.nom };
+        effective = {
+          loyer_mensuel: Number(t.loyer_mensuel || 0), loyer_tva: Number(t.loyer_tva || 0),
+          loyer_prorata: t.loyer_prorata !== false, lignes: Array.isArray(t.lignes) ? t.lignes : [],
+        };
+        source = 'modele';
+      }
+    }
+    res.json({ facturation: own, effective, source, modele });
   } catch (e) {
     console.error('[factures:config-get]', e.message);
     res.status(500).json({ error: 'Erreur serveur — la migration db/18_facturation_resident.sql a-t-elle été exécutée ?' });

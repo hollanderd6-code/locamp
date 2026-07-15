@@ -1026,7 +1026,12 @@ window.saveCarte = async () => {
 };
 
 window.ficheEmplacement = async (id) => {
-  const { emplacement: e, residents } = await api('/api/emplacements/' + id);
+  const [{ emplacement: e, residents }, { camping }] = await Promise.all([
+    api('/api/emplacements/' + id),
+    api('/api/camping').catch(() => ({ camping: {} })),
+  ]);
+  const modeles = (camping && camping.parametres && camping.parametres.factures_types) || [];
+  const modeleActif = e.meta && e.meta.facture_type_id;
   const r = residents[0];
   let facturesHtml = '';
   if (r) {
@@ -1041,6 +1046,15 @@ window.ficheEmplacement = async (id) => {
     <ul class="list-tight">
       <li><span>Loyer de base</span><span>${eur(e.loyer_base)}</span></li>
     </ul>
+
+    <h2 style="margin-top:18px">Modèle de facturation</h2>
+    <p class="muted" style="font-size:12.5px;margin:2px 0 8px">Appliqué automatiquement au résident de ce logement (sauf s'il a une config perso). Toute révision du modèle vaut pour les prochaines factures.</p>
+    <select id="emp-modele" onchange="majModeleEmplacement('${e.id}', this.value)" style="width:100%;padding:9px 10px;border:1px solid var(--hairline);border-radius:9px">
+      <option value="">— Aucun (loyer saisi sur le résident) —</option>
+      ${modeles.map((m) => `<option value="${m.id}"${modeleActif === m.id ? ' selected' : ''}>${esc(m.nom)}${Number(m.loyer_mensuel) ? ` — ${eur(m.loyer_mensuel)}/mois` : ''}</option>`).join('')}
+    </select>
+    ${modeles.length ? '' : '<p class="muted" style="font-size:12px;margin-top:6px">Aucun modèle défini. Crée-en dans <a href="#/parametres">Paramètres → Modèles de facturation</a>.</p>'}
+
     ${r ? `<h2 style="margin-top:18px">Résident</h2>
       <ul class="list-tight">
         <li><span>${esc(r.prenom || '')} ${esc(r.nom)}</span><span class="fiche-solde ${Number(r.solde) < 0 ? 'neg' : 'pos'}"></span></li>
@@ -1048,6 +1062,94 @@ window.ficheEmplacement = async (id) => {
         ${r.telephone ? `<li><span>Téléphone</span><span>${esc(r.telephone)}</span></li>` : ''}
       </ul>${facturesHtml}` : '<p class="muted" style="margin-top:14px">Aucun résident rattaché.</p>'}
   `);
+};
+
+// Rattache / détache un modèle de facturation à un emplacement (fusion de meta).
+window.majModeleEmplacement = async (empId, modeleId) => {
+  try {
+    const { emplacement } = await api('/api/emplacements/' + empId);
+    const meta = { ...(emplacement.meta || {}) };
+    if (modeleId) meta.facture_type_id = modeleId; else delete meta.facture_type_id;
+    await api('/api/emplacements/' + empId, { method: 'PUT', body: { meta } });
+    toast(modeleId ? 'Modèle rattaché au logement' : 'Modèle retiré du logement');
+  } catch (err) { toast(err.message, true); }
+};
+
+/* --- Modèles de facturation (Paramètres) : "montant type" réutilisable par logement --- */
+window.formModeleFacturation = async (modeleId) => {
+  const { camping } = await api('/api/camping');
+  const liste = (camping && camping.parametres && camping.parametres.factures_types) || [];
+  const m = modeleId ? (liste.find((x) => x.id === modeleId) || {}) : {};
+  const ligne = (l = {}) => `
+    <div class="mod-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+      <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:160px">
+      <input name="quantite" type="number" step="0.01" placeholder="Qté" value="${l.quantite != null ? l.quantite : 1}" style="width:66px" title="Quantité">
+      <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:96px" title="Prix unitaire TTC">
+      <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : ''}" style="width:76px" title="Taux de TVA">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500" title="Ajuster au nombre de jours de présence (mois partiel)">
+        <input name="prorata" type="checkbox" ${l.prorata ? 'checked' : ''} style="width:16px;height:16px"> prorata</label>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+    </div>`;
+  openDrawer(`
+    <h2>${modeleId ? 'Modifier le modèle' : 'Nouveau modèle de facturation'}</h2>
+    <p class="muted" style="margin-top:4px">Un « montant type » réutilisable. Rattache-le ensuite à des logements depuis la fiche emplacement.</p>
+    <form id="f-modele" style="margin-top:16px">
+      <label style="display:flex;flex-direction:column;gap:3px;margin-bottom:14px">Nom du modèle *
+        <input name="nom" required placeholder="Ex : Parcelle nue, Mobil-home 4 pers…" value="${esc(m.nom || '')}"></label>
+      <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:14px;margin-bottom:16px">
+        <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:10px">Loyer emplacement</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input name="loyer_mensuel" type="number" step="0.01" placeholder="Montant TTC / mois" value="${m.loyer_mensuel != null ? m.loyer_mensuel : ''}" style="flex:1;min-width:140px">
+          <input name="loyer_tva" type="number" step="0.1" placeholder="TVA %" value="${m.loyer_tva != null ? m.loyer_tva : ''}" style="width:86px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500">
+            <input name="loyer_prorata" type="checkbox" ${m.loyer_prorata === false ? '' : 'checked'} style="width:16px;height:16px"> prorata</label>
+        </div>
+      </div>
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:8px">Lignes récurrentes</div>
+      <div id="mod-lignes">${(m.lignes || []).map(ligne).join('') || ligne()}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="mod-add">+ Ajouter une ligne</button>
+      <div style="margin-top:16px"><button class="btn btn-primary btn-block">${modeleId ? 'Enregistrer' : 'Créer le modèle'}</button></div>
+    </form>`);
+  $('#mod-add').addEventListener('click', () => $('#mod-lignes').insertAdjacentHTML('beforeend', ligne()));
+  $('#f-modele').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const nom = String(fd.get('nom') || '').trim();
+    if (!nom) return toast('Nom requis', true);
+    const lignes = [...document.querySelectorAll('#mod-lignes .mod-ligne')].map((el) => ({
+      designation: el.querySelector('[name=designation]').value.trim(),
+      quantite: Number(el.querySelector('[name=quantite]').value || 1),
+      pu_ttc: Number(el.querySelector('[name=pu_ttc]').value || 0),
+      taux_tva: Number(el.querySelector('[name=taux_tva]').value || 0),
+      prorata: el.querySelector('[name=prorata]').checked,
+    })).filter((l) => l.designation && l.pu_ttc !== 0);
+    const modele = {
+      id: modeleId || (crypto.randomUUID ? crypto.randomUUID() : 'm_' + Date.now().toString(36)),
+      nom,
+      loyer_mensuel: Number(fd.get('loyer_mensuel') || 0),
+      loyer_tva: Number(fd.get('loyer_tva') || 0),
+      loyer_prorata: !!e.target.querySelector('[name=loyer_prorata]').checked,
+      lignes,
+    };
+    const factures_types = liste.some((x) => x.id === modele.id)
+      ? liste.map((x) => (x.id === modele.id ? modele : x))
+      : [...liste, modele];
+    try {
+      await api('/api/camping/parametres', { method: 'PUT', body: { factures_types } });
+      closeDrawer(); toast('Modèle enregistré'); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.supprimerModele = async (modeleId) => {
+  if (!await askConfirm('Supprimer ce modèle ? Les logements qui l\'utilisaient repasseront sans modèle (le loyer devra alors être saisi sur le résident).',
+    { titre: 'Supprimer le modèle', ok: 'Supprimer', danger: true })) return;
+  try {
+    const { camping } = await api('/api/camping');
+    const liste = (camping && camping.parametres && camping.parametres.factures_types) || [];
+    await api('/api/camping/parametres', { method: 'PUT', body: { factures_types: liste.filter((x) => x.id !== modeleId) } });
+    toast('Modèle supprimé'); route();
+  } catch (err) { toast(err.message, true); }
 };
 
 /* ---------- Résidents ---------- */
@@ -1089,7 +1191,9 @@ async function vueFicheClient(id) {
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
     api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
   ]);
-  const fact = cfgRes.facturation || {};
+  const fact = cfgRes.effective || cfgRes.facturation || {};
+  const factSource = cfgRes.source || 'aucun';
+  const factModele = cfgRes.modele || null;
   const factLignes = fact.lignes || [];
   const aConfig = Number(fact.loyer_mensuel || 0) > 0 || factLignes.length > 0;
   const messages = msgRes.messages;
@@ -1224,9 +1328,15 @@ async function vueFicheClient(id) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <h2 style="margin:0">Facturation récurrente</h2>
-            <p class="muted" style="margin:2px 0 0;font-size:12.5px">Le « montant type » facturé chaque mois. Modifiable à tout moment (révision de tarif).</p>
+            <p class="muted" style="margin:2px 0 0;font-size:12.5px">
+              ${factSource === 'modele'
+                ? `Hérité du modèle <strong>« ${esc(factModele && factModele.nom || '')} »</strong> (logement). « Personnaliser » créera une config propre à ce résident.`
+                : factSource === 'resident'
+                ? 'Spécifique à ce résident. Modifiable à tout moment (révision de tarif).'
+                : 'Le « montant type » facturé chaque mois. Modifiable à tout moment (révision de tarif).'}
+            </p>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">Configurer</button>
+          <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">${factSource === 'modele' ? 'Personnaliser' : factSource === 'resident' ? 'Modifier' : 'Configurer'}</button>
         </div>
         ${aConfig ? `
           <table style="margin-top:12px"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
@@ -1561,8 +1671,11 @@ window.encaisserClient = async (id) => {
 };
 /* --- Facturation récurrente : loyer + lignes du "montant type" (sur le RÉSIDENT) --- */
 window.formFacturation = async (residentId) => {
-  const { facturation } = await api('/api/factures/config/' + residentId).catch(() => ({ facturation: {} }));
-  const f = facturation || {};
+  const cfg = await api('/api/factures/config/' + residentId).catch(() => ({ facturation: {} }));
+  const own = cfg.facturation || {};
+  const aOwn = Number(own.loyer_mensuel || 0) > 0 || (own.lignes || []).length > 0;
+  // Si pas de config propre, on part du modèle hérité (le résident le "personnalise").
+  const f = aOwn ? own : (cfg.effective || {});
   const ligne = (l = {}) => `
     <div class="rec-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
       <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:160px">
@@ -2761,6 +2874,18 @@ async function vueParametres() {
     </div>
 
     <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="margin:0">Modèles de facturation</h2>
+          <p class="muted" style="margin-top:2px">Un « montant type » (loyer + lignes récurrentes) défini une fois et rattaché à un ou plusieurs logements (fiche emplacement). Toute révision s'applique aux prochaines factures des logements liés.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="formModeleFacturation()">Nouveau modèle</button>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>Nom</th><th class="right">Loyer TTC</th><th class="right">TVA</th><th class="right">Lignes</th><th></th></tr></thead>
+        <tbody id="modeles-body"></tbody></table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
       <h2>Taxe de séjour</h2>
       <form id="f-taxe" class="form-grid" style="margin-top:12px">
         <label>Active<select name="actif"><option value="true"${ts.actif ? ' selected' : ''}>Oui</option><option value="false"${ts.actif ? '' : ' selected'}>Non</option></select></label>
@@ -2814,6 +2939,21 @@ async function vueParametres() {
       </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
   };
   renderArts(articles);
+
+  const renderModeles = (list) => {
+    $('#modeles-body').innerHTML = (list || []).map((m) => `
+      <tr>
+        <td><strong>${esc(m.nom)}</strong></td>
+        <td class="right">${eur(m.loyer_mensuel)}</td>
+        <td class="right muted">${Number(m.loyer_tva || 0)} %</td>
+        <td class="right muted">${(m.lignes || []).length}</td>
+        <td class="right">
+          <button class="btn btn-ghost btn-sm" onclick="formModeleFacturation('${m.id}')">Modifier</button>
+          <button class="btn btn-ghost btn-sm" onclick="supprimerModele('${m.id}')">Supprimer</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun modèle. Crée ton premier « montant type » réutilisable, puis rattache-le à des logements.</td></tr>';
+  };
+  renderModeles(p.factures_types || []);
 
   $('#f-article').addEventListener('submit', async (e) => {
     e.preventDefault();
