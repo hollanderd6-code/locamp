@@ -3412,8 +3412,8 @@ window.chargerRapprochement = async () => {
   const zone = $('#rp-resultat');
   zone.innerHTML = '<p class="muted">Chargement…</p>';
   try {
-    const { lignes, total } = await api(`/api/factures/rapprochement?du=${du}&au=${au}`);
-    if (!lignes.length) { zone.innerHTML = '<p class="muted">Aucune facture sur cette période.</p>'; return; }
+    const { lignes, non_affectes, total } = await api(`/api/factures/rapprochement?du=${du}&au=${au}`);
+    if (!lignes.length && !(non_affectes || []).length) { zone.innerHTML = '<p class="muted">Aucune facture ni règlement sur cette période.</p>'; return; }
     const cls = (s) => Number(s) > 0.005 ? 'neg' : 'pos';
     const cartes = lignes.map((f) => `
       <div style="border:1px solid var(--hairline);border-radius:11px;padding:11px 13px;margin-bottom:8px">
@@ -3435,7 +3435,21 @@ window.chargerRapprochement = async () => {
         <span class="muted">${total.nb} facture${total.nb > 1 ? 's' : ''} · Total <strong>${eur(total.factures)}</strong></span>
         <span class="muted">Réglé <strong>${eur(total.regles)}</strong> · Reste dû <strong class="fiche-solde ${cls(total.solde)}">${eur(total.solde)}</strong></span>
       </div>
-      ${cartes}`;
+      ${cartes || '<p class="muted">Aucune facture sur cette période.</p>'}
+      ${(non_affectes || []).length ? `
+        <h2 style="margin:18px 0 4px">Règlements non affectés <span class="map-count">${eur(total.non_affecte)}</span></h2>
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Encaissés sur la période mais non rattachés (totalement ou en partie) à une facture — acomptes, avances, trop-perçus.</p>
+        ${non_affectes.map((g) => `
+          <div style="border:1px solid var(--hairline);border-radius:11px;padding:10px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <strong>${esc(g.client)}</strong>
+              <div class="muted" style="font-size:12.5px">${esc(g.mode)}${g.reference ? ' · ' + esc(g.reference) : ''} · ${dfr(g.date_reglement)}</div>
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <strong class="fiche-solde neg">${eur(g.reste)}</strong>
+              ${g.affecte > 0 ? `<div class="muted" style="font-size:11.5px">sur ${eur(g.montant)} (affecté ${eur(g.affecte)})</div>` : ''}
+            </div>
+          </div>`).join('')}` : ''}`;
   } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
 };
 

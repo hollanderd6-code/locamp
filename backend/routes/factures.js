@@ -38,13 +38,10 @@ router.get('/rapprochement', async (req, res) => {
     if (error) throw error;
 
     const fids = (factures || []).map((f) => f.id);
-    const rids = [...new Set((factures || []).map((f) => f.resident_id).filter(Boolean))];
-    const [{ data: residents }, { data: regs }, { data: moyens }] = await Promise.all([
-      rids.length ? supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', req.activeCampingId).in('id', rids) : Promise.resolve({ data: [] }),
-      supabase.from('reglements').select('mode,montant,date_reglement,reference,affectations').eq('camping_id', req.activeCampingId),
+    const [{ data: regs }, { data: moyens }] = await Promise.all([
+      supabase.from('reglements').select('id,resident_id,mode,montant,date_reglement,reference,affectations').eq('camping_id', req.activeCampingId),
       supabase.from('moyens_paiement').select('code,libelle').eq('camping_id', req.activeCampingId),
     ]);
-    const rmap = {}; (residents || []).forEach((r) => { rmap[r.id] = r; });
     const lib = {}; (moyens || []).forEach((m) => { lib[m.code] = m.libelle; });
 
     // Règlements affectés à ces factures (via le tableau jsonb affectations).
@@ -58,6 +55,27 @@ router.get('/rapprochement', async (req, res) => {
       }
     }
 
+    // Règlements NON affectés (part non lettrée) encaissés sur la période : rien ne se perd.
+    const nonAffectesRaw = [];
+    for (const g of (regs || [])) {
+      if (du && String(g.date_reglement) < du) continue;
+      if (au && String(g.date_reglement) > au) continue;
+      const affecte = (g.affectations || []).reduce((s, a) => s + Number((a && a.montant) || 0), 0);
+      const reste = r2(Number(g.montant || 0) - affecte);
+      if (reste > 0.005) nonAffectesRaw.push({ ...g, affecte: r2(affecte), reste });
+    }
+
+    // Résidents : ceux des factures + ceux des règlements non affectés.
+    const rids = [...new Set([
+      ...(factures || []).map((f) => f.resident_id),
+      ...nonAffectesRaw.map((g) => g.resident_id),
+    ].filter(Boolean))];
+    const { data: residents } = rids.length
+      ? await supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', req.activeCampingId).in('id', rids)
+      : { data: [] };
+    const rmap = {}; (residents || []).forEach((r) => { rmap[r.id] = r; });
+    const nomClient = (id) => { const r = rmap[id] || {}; return `${r.prenom ? r.prenom + ' ' : ''}${r.nom || ''}`.trim() || '—'; };
+
     let tFactures = 0, tRegles = 0, tSolde = 0;
     const lignes = (factures || []).map((f) => {
       const r = rmap[f.resident_id] || {};
@@ -65,12 +83,24 @@ router.get('/rapprochement', async (req, res) => {
       tFactures += Number(f.total_ttc || 0); tRegles += Number(f.montant_regle || 0); tSolde += solde;
       return {
         id: f.id, numero: f.numero, date_emission: f.date_emission, statut: f.statut,
-        client: `${r.prenom ? r.prenom + ' ' : ''}${r.nom || '—'}`.trim(), compte_client: r.compte_comptable || null,
+        client: nomClient(f.resident_id), compte_client: r.compte_comptable || null,
         total_ttc: r2(f.total_ttc), montant_regle: r2(f.montant_regle || 0), solde,
         reglements: (parFacture[f.id] || []).sort((a, b) => String(a.date_reglement).localeCompare(String(b.date_reglement))),
       };
     });
-    res.json({ du: du || null, au: au || null, lignes, total: { factures: r2(tFactures), regles: r2(tRegles), solde: r2(tSolde), nb: lignes.length } });
+
+    const non_affectes = nonAffectesRaw
+      .map((g) => ({
+        client: nomClient(g.resident_id), mode: lib[g.mode] || g.mode, reference: g.reference || null,
+        date_reglement: g.date_reglement, montant: r2(g.montant), affecte: g.affecte, reste: g.reste,
+      }))
+      .sort((a, b) => String(a.date_reglement).localeCompare(String(b.date_reglement)));
+    const totalNonAffecte = r2(non_affectes.reduce((s, g) => s + g.reste, 0));
+
+    res.json({
+      du: du || null, au: au || null, lignes, non_affectes,
+      total: { factures: r2(tFactures), regles: r2(tRegles), solde: r2(tSolde), nb: lignes.length, non_affecte: totalNonAffecte },
+    });
   } catch (e) { console.error('[factures:rapprochement]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
