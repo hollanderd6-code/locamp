@@ -162,6 +162,37 @@ router.put('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
   } catch (e) { console.error('[contrats:update]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// ---------- PUT lignes récurrentes ("montant type" du résident) ----------
+// Config de FACTURATION (et non contenu contractuel) : n'altère pas le PDF signé,
+// donc modifiable même sur un contrat signé/actif — ce sont justement ceux qu'on facture.
+router.put('/:id/lignes-recurrentes', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: avant } = await supabase.from('contrats').select('id,numero,lignes_recurrentes')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!avant) return res.status(404).json({ error: 'Contrat introuvable' });
+
+    const src = Array.isArray(req.body?.lignes) ? req.body.lignes : [];
+    const lignes = src.slice(0, 50).map((l) => ({
+      designation: String(l.designation || '').slice(0, 200).trim(),
+      quantite: Number(l.quantite) > 0 ? Number(l.quantite) : 1,
+      pu_ttc: Math.round(Number(l.pu_ttc || 0) * 100) / 100,
+      taux_tva: Number(l.taux_tva || 0),
+      prorata: l.prorata === true,
+    })).filter((l) => l.designation && l.pu_ttc !== 0);
+
+    const { data, error } = await supabase.from('contrats').update({ lignes_recurrentes: lignes })
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).select('id,lignes_recurrentes').single();
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'update', entite: 'contrats', entite_id: req.params.id,
+      avant: { lignes_recurrentes: avant.lignes_recurrentes }, apres: { lignes_recurrentes: lignes } });
+    res.json({ lignes: data.lignes_recurrentes });
+  } catch (e) {
+    console.error('[contrats:recurrentes]', e.message);
+    res.status(500).json({ error: 'Erreur serveur — la migration db/17_lignes_recurrentes.sql a-t-elle été exécutée ?' });
+  }
+});
+
 // ---------- POST signer (signature simple + PDF scellé) ----------
 router.post('/:id/signer', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {

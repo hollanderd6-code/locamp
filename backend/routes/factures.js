@@ -2,7 +2,7 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { signedUrl } = require('../lib/storage');
-const { runFacturationMensuelle, creerFacture, genererPdfFacture, envoyerFactureEmail, currentPeriode } = require('../lib/facturation');
+const { runFacturationMensuelle, runFacturationResident, creerFacture, genererPdfFacture, envoyerFactureEmail, currentPeriode } = require('../lib/facturation');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -32,6 +32,20 @@ router.post('/run-mensuel', requireRole('admin', 'gestionnaire'), async (req, re
       apres: { periode: result.periode, crees: result.crees, ignores: result.ignores, erreurs: result.erreurs } });
     res.json(result);
   } catch (e) { console.error('[factures:run]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/factures/run-resident  { resident_id, periode? }  -> facture du mois d'un résident
+router.post('/run-resident', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { resident_id } = req.body || {};
+    if (!resident_id) return res.status(400).json({ error: 'resident_id requis' });
+    const periode = (req.body && req.body.periode) || currentPeriode();
+    const out = await runFacturationResident(req.activeCampingId, resident_id, periode);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    await writeAudit(req, { action: 'create', entite: 'factures', entite_id: out.facture.id,
+      apres: { numero: out.facture.numero, periode, total_ttc: out.facture.total_ttc } });
+    res.status(201).json({ facture: out.facture });
+  } catch (e) { console.error('[factures:run-resident]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // POST /api/factures  facture ponctuelle manuelle  { resident_id, contrat_id?, periode?, lignes[] }

@@ -972,14 +972,17 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, ctrRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id),
     api('/api/reglements?resident_id=' + id),
     api('/api/prestations?resident_id=' + id).catch(() => ({ prestations: null })),
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
+    api('/api/contrats?resident_id=' + id).catch(() => ({ contrats: [] })),
   ]);
+  const contratActif = (ctrRes.contrats || []).find((c) => ['signe', 'actif'].includes(c.statut))
+    || (ctrRes.contrats || [])[0] || null;
   const messages = msgRes.messages;
   const nbNonLus = (messages || []).filter((m) => m.auteur === 'resident' && !m.lu).length;
   const prestations = presRes.prestations;
@@ -1074,8 +1077,8 @@ async function vueFicheClient(id) {
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <h2 style="margin:0">Factures</h2>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span class="muted hide-sm" style="font-size:12px">Créer : onglet Prestations</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="genererFactureMois('${id}')" title="Loyer + lignes récurrentes + taxe de séjour">Générer la facture du mois</button>
             <button class="btn btn-ghost btn-sm" onclick="lettrerCredit('${id}')" title="Appliquer le crédit d'avance (trop-perçu) aux factures impayées">Lettrer le crédit</button>
           </div>
         </div>
@@ -1096,6 +1099,29 @@ async function vueFicheClient(id) {
             </td>
           </tr>`;
         }).join('') || '<tr><td colspan="7" class="muted">Aucune facture pour ce résident.</td></tr>'}</tbody></table>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <h2 style="margin:0">Facturation récurrente</h2>
+            <p class="muted" style="margin:2px 0 0;font-size:12.5px">Le « montant type » du résident : lignes reprises chaque mois, en plus du loyer.</p>
+          </div>
+          ${contratActif
+            ? `<button class="btn btn-ghost btn-sm" onclick="formLignesRecurrentes('${contratActif.id}')">Configurer</button>`
+            : '<span class="muted" style="font-size:12.5px">Aucun contrat</span>'}
+        </div>
+        ${contratActif ? `
+          <table style="margin-top:12px"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
+          <tbody>${(contratActif.lignes_recurrentes || []).map((l) => `
+            <tr>
+              <td data-l="Désignation">${esc(l.designation)}</td>
+              <td class="right" data-l="Qté">${l.quantite || 1}</td>
+              <td class="right" data-l="PU TTC">${eur(l.pu_ttc)}</td>
+              <td class="right" data-l="TVA">${Number(l.taux_tva || 0)} %</td>
+              <td data-l="Prorata">${l.prorata ? '<span class="badge emise">au prorata</span>' : '<span class="muted">fixe</span>'}</td>
+            </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucune ligne récurrente. Cliquez sur « Configurer » pour ajouter le forfait, la redevance OM, etc.</td></tr>'}</tbody></table>`
+          : '<p class="muted" style="margin-top:10px">Créez un contrat pour ce résident afin de configurer sa facturation récurrente.</p>'}
       </div>
     </section>
 
@@ -1407,6 +1433,59 @@ window.encaisserClient = async (id) => {
     catch (err) { toast(err.message, true); }
   });
 };
+/* --- Facturation récurrente : configuration des lignes du "montant type" --- */
+window.formLignesRecurrentes = async (contratId) => {
+  const { contrat } = await api('/api/contrats/' + contratId);
+  const ligne = (l = {}) => `
+    <div class="rec-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+      <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:170px">
+      <input name="quantite" type="number" step="0.01" placeholder="Qté" value="${l.quantite != null ? l.quantite : 1}" style="width:70px" title="Quantité">
+      <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:100px" title="Prix unitaire TTC">
+      <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : ''}" style="width:80px" title="Taux de TVA">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500" title="Ajuster le montant au nombre de jours de présence (mois partiel)">
+        <input name="prorata" type="checkbox" ${l.prorata ? 'checked' : ''} style="width:16px;height:16px"> prorata</label>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+    </div>`;
+  openDrawer(`
+    <h2>Facturation récurrente</h2>
+    <p class="muted" style="margin-top:4px">Ces lignes s'ajoutent automatiquement au loyer à chaque facture mensuelle.
+      Cochez « prorata » pour les lignes à ajuster sur un mois partiel (entrée/sortie).</p>
+    <form id="f-rec" style="margin-top:14px">
+      <div id="rec-lignes">${(contrat.lignes_recurrentes || []).map(ligne).join('') || ligne()}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="rec-add">+ Ajouter une ligne</button>
+      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Enregistrer</button></div>
+    </form>`);
+  $('#rec-add').addEventListener('click', () => $('#rec-lignes').insertAdjacentHTML('beforeend', ligne()));
+  $('#f-rec').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const lignes = [...document.querySelectorAll('#rec-lignes .rec-ligne')].map((el) => ({
+      designation: el.querySelector('[name=designation]').value.trim(),
+      quantite: Number(el.querySelector('[name=quantite]').value || 1),
+      pu_ttc: Number(el.querySelector('[name=pu_ttc]').value || 0),
+      taux_tva: Number(el.querySelector('[name=taux_tva]').value || 0),
+      prorata: el.querySelector('[name=prorata]').checked,
+    })).filter((l) => l.designation && l.pu_ttc !== 0);
+    try {
+      await api(`/api/contrats/${contratId}/lignes-recurrentes`, { method: 'PUT', body: { lignes } });
+      closeDrawer(); toast(`${lignes.length} ligne(s) récurrente(s) enregistrée(s)`); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+/* --- Facture du mois en un clic (loyer + lignes récurrentes + taxe de séjour) --- */
+window.genererFactureMois = async (residentId) => {
+  const now = new Date();
+  const defaut = now.toISOString().slice(0, 7);
+  const periode = prompt('Période à facturer (AAAA-MM) :', defaut);
+  if (!periode) return;
+  if (!/^\d{4}-\d{2}$/.test(periode)) return toast('Format attendu : AAAA-MM', true);
+  try {
+    const r = await api('/api/factures/run-resident', { method: 'POST', body: { resident_id: residentId, periode } });
+    toast(`Facture ${r.facture.numero} créée — ${eur(r.facture.total_ttc)}`);
+    route();
+  } catch (e) { toast(e.message, true); }
+};
+
 window.lettrerCredit = async (residentId) => {
   try {
     const r = await api('/api/reglements/lettrer', { method: 'POST', body: { resident_id: residentId } });

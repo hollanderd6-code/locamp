@@ -75,6 +75,26 @@ function buildLignes(contrat, resident, periode, parametres) {
     });
   }
 
+  // --- Lignes récurrentes du contrat ("montant type" du résident) ---
+  // Saisies une fois sur le contrat, reprises à chaque facturation mensuelle.
+  // prorata:true -> ajustées au nombre de jours de présence, comme le loyer.
+  for (const r of (contrat.lignes_recurrentes || [])) {
+    const pu = Number(r.pu_ttc || 0);
+    if (!r.designation || pu === 0) continue;
+    const auProrata = r.prorata === true && factor < 1;
+    const montant = auProrata ? Math.round(pu * factor * 100) / 100 : Math.round(pu * 100) / 100;
+    if (montant === 0) continue;
+    lignes.push({
+      designation: auProrata
+        ? `${r.designation} — ${periodeLabel(periode)} (prorata ${activeDays}/${dim} j)`
+        : `${r.designation} — ${periodeLabel(periode)}`,
+      date_debut: dDebut, date_fin: dFin, nuits: activeDays,
+      quantite: Number(r.quantite || 1),
+      pu_ttc: montant,
+      taux_tva: Number(r.taux_tva || 0),
+    });
+  }
+
   const ts = parametres?.taxe_sejour;
   if (ts && ts.actif && Number(ts.tarif_nuit_personne) > 0) {
     const occ = resident?.foyer?.occupants ?? resident?.foyer?.personnes ?? 1;
@@ -278,6 +298,40 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
   return facture;
 }
 
+// Facturation mensuelle d'UN résident (bouton « Générer la facture du mois »).
+// Même logique que le batch : loyer + lignes récurrentes + taxe de séjour, anti-doublon.
+async function runFacturationResident(campingId, residentId, periode) {
+  periode = periode || currentPeriode();
+  const [y, m] = periode.split('-').map(Number);
+  const dim = daysInMonth(y, m);
+  const start = `${periode}-01`;
+  const end = `${periode}-${String(dim).padStart(2, '0')}`;
+
+  const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
+  const parametres = camp?.parametres || {};
+
+  const { data: contrats } = await supabase.from('contrats').select('*')
+    .eq('camping_id', campingId).eq('resident_id', residentId)
+    .in('statut', ['signe', 'actif']).order('created_at', { ascending: false });
+  const c = (contrats || []).find((x) =>
+    !(x.date_debut && x.date_debut > end) && !(x.date_fin && x.date_fin < start));
+  if (!c) return { error: 'Aucun contrat actif pour ce résident sur cette période', code: 400 };
+
+  const { data: existing } = await supabase.from('factures').select('id,numero')
+    .eq('camping_id', campingId).eq('contrat_id', c.id).eq('periode', periode)
+    .neq('statut', 'avoir').maybeSingle();
+  if (existing) return { error: `Facture déjà émise pour cette période (${existing.numero})`, code: 409 };
+
+  const { data: resident } = await supabase.from('residents')
+    .select('foyer').eq('id', residentId).maybeSingle();
+
+  const lignes = buildLignes(c, resident || {}, periode, parametres);
+  if (!lignes.length) return { error: 'Rien à facturer pour cette période (ni loyer, ni ligne récurrente)', code: 400 };
+
+  const facture = await creerFacture({ campingId, resident_id: residentId, contrat_id: c.id, periode, lignes });
+  return { facture };
+}
+
 // Facturation mensuelle d'un camping pour une période.
 async function runFacturationMensuelle(campingId, periode) {
   periode = periode || currentPeriode();
@@ -321,4 +375,4 @@ async function runFacturationMensuelle(campingId, periode) {
   return res;
 }
 
-module.exports = { runFacturationMensuelle, creerFacture, buildLignes, computeTotals, htDepuisTtc, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };
+module.exports = { runFacturationMensuelle, runFacturationResident, creerFacture, buildLignes, computeTotals, htDepuisTtc, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };
