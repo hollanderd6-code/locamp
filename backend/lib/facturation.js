@@ -8,6 +8,12 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
 function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }        // m : 1-12
+// Ajoute n jours à une date 'YYYY-MM-DD' (UTC, sans dérive de fuseau).
+function addDays(iso, n) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 function currentPeriode() { return new Date().toISOString().slice(0, 7); } // 'YYYY-MM'
 function periodeLabel(p) { const [y, m] = p.split('-').map(Number); return `${MOIS[m - 1]} ${y}`; }
 
@@ -68,7 +74,9 @@ function buildLignes(contrat, resident, periode, parametres) {
 
   const lignes = [];
   const dDebut = `${periode}-${String(first).padStart(2, '0')}`;
-  const dFin = `${periode}-${String(last).padStart(2, '0')}`;
+  // Convention hôtelière : « Au » = jour de DÉPART (entrée + nuits), pas le dernier
+  // jour de présence. Un mois complet va donc du 01/09 au 01/10 (30 nuits).
+  const dFin = addDays(dDebut, activeDays);
   // Loyer : configuré sur le résident ; repli sur le contrat pour les fiches pas encore migrées.
   const loyer = Number(fact.loyer_mensuel != null ? fact.loyer_mensuel : (c.montant_mensuel || 0));
   const tvaLoyer = Number(fact.loyer_tva != null ? fact.loyer_tva : (parametres?.facturation?.tva_taux_loyer || 0));
