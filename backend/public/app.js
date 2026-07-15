@@ -1194,16 +1194,24 @@ async function vueFicheClient(id) {
         <table style="margin-top:12px"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
         <tbody>${(factures || []).map((f) => {
           const reste = Math.round((Number(f.total_ttc) - Number(f.montant_regle || 0)) * 100) / 100;
-          const payable = !['avoir', 'annulee'].includes(f.statut) && reste > 0.004;
-          return `<tr>
-            <td data-l="N°"><strong>${esc(f.numero)}</strong></td>
+          const brouillon = f.statut === 'brouillon';
+          const payable = !brouillon && !['avoir', 'annulee'].includes(f.statut) && reste > 0.004;
+          return `<tr${brouillon ? ' style="background:#FDFBF4"' : ''}>
+            <td data-l="N°">${brouillon
+              ? '<em class="muted">à émettre</em>'
+              : `<strong>${esc(f.numero)}</strong>`}</td>
             <td class="muted" data-l="Date">${dfr(f.date_emission)}</td>
             <td data-l="Statut"><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
             <td class="right" data-l="TTC">${eur(f.total_ttc)}</td>
-            <td class="right" data-l="Réglé">${eur(f.montant_regle)}</td>
-            <td class="right" data-l="Reste">${reste > 0.004 ? eur(reste) : '<span class="badge reglee">soldée</span>'}</td>
+            <td class="right" data-l="Réglé">${brouillon ? '—' : eur(f.montant_regle)}</td>
+            <td class="right" data-l="Reste">${brouillon ? '—'
+              : (reste > 0.004 ? eur(reste) : '<span class="badge reglee">soldée</span>')}</td>
             <td class="right">
               <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
+              ${brouillon ? `
+                <button class="btn btn-ghost btn-sm" onclick="editerLignesFacture('${f.id}')">Modifier</button>
+                <button class="btn btn-ghost btn-sm" onclick="supprimerBrouillon('${f.id}')">Supprimer</button>
+                <button class="btn btn-primary btn-sm" onclick="emettreFacture('${f.id}')">Émettre</button>` : ''}
               ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
             </td>
           </tr>`;
@@ -1607,6 +1615,67 @@ window.formFacturation = async (residentId) => {
   });
 };
 
+/* --- Brouillons : éditer les lignes, émettre, supprimer --- */
+window.editerLignesFacture = async (factureId) => {
+  const { facture } = await api('/api/factures/' + factureId);
+  const ligne = (l = {}) => `
+    <div class="fl-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+      <input name="designation" placeholder="Désignation" value="${esc(l.designation || '')}" style="flex:1;min-width:160px">
+      <input name="quantite" type="number" step="0.01" value="${l.quantite != null ? l.quantite : 1}" style="width:66px" title="Quantité">
+      <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:96px" title="Prix unitaire TTC">
+      <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : 0}" style="width:76px" title="Taux de TVA">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+    </div>`;
+  // le PDF stocke pu_ht ; on réaffiche le TTC pour l'édition
+  const enTtc = (l) => ({ ...l, pu_ttc: l.pu_ttc != null ? l.pu_ttc
+    : Math.round(Number(l.pu_ht || 0) * (1 + Number(l.taux_tva || 0) / 100) * 100) / 100 });
+  openDrawer(`
+    <h2>Modifier le brouillon</h2>
+    <p class="muted" style="margin-top:4px">Ajustez les lignes avant émission. Une fois émise, la facture est figée
+      (elle ne se corrige plus que par un avoir).</p>
+    <form id="f-lignes" style="margin-top:14px">
+      <div id="fl-lignes">${(facture.lignes || []).map((l) => ligne(enTtc(l))).join('')}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="fl-add">+ Ajouter une ligne</button>
+      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Enregistrer le brouillon</button></div>
+    </form>`);
+  $('#fl-add').addEventListener('click', () => $('#fl-lignes').insertAdjacentHTML('beforeend', ligne()));
+  $('#f-lignes').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const lignes = [...document.querySelectorAll('#fl-lignes .fl-ligne')].map((el) => ({
+      designation: el.querySelector('[name=designation]').value.trim(),
+      quantite: Number(el.querySelector('[name=quantite]').value || 1),
+      pu_ttc: Number(el.querySelector('[name=pu_ttc]').value || 0),
+      taux_tva: Number(el.querySelector('[name=taux_tva]').value || 0),
+    })).filter((l) => l.designation);
+    if (!lignes.length) return toast('Au moins une ligne est requise', true);
+    try {
+      await api(`/api/factures/${factureId}/lignes`, { method: 'PUT', body: { lignes } });
+      closeDrawer(); toast('Brouillon enregistré'); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.emettreFacture = async (factureId) => {
+  if (!await askConfirm(
+    "L'émission est définitive : un numéro de facture est attribué, la pièce entre dans la chaîne fiscale "
+    + 'et la facture est envoyée au locataire par e-mail.\n\nVérifiez le brouillon avant de continuer.',
+    { titre: 'Émettre la facture', ok: 'Émettre' })) return;
+  try {
+    const r = await api(`/api/factures/${factureId}/emettre`, { method: 'POST' });
+    toast(`Facture ${r.facture.numero} émise — ${eur(r.facture.total_ttc)}`);
+    route();
+  } catch (e) { toast(e.message, true); }
+};
+
+window.supprimerBrouillon = async (factureId) => {
+  if (!await askConfirm('Supprimer ce brouillon ? Les prestations qu\'il reprend redeviendront facturables.',
+    { titre: 'Supprimer le brouillon', ok: 'Supprimer', danger: true })) return;
+  try {
+    await api('/api/factures/' + factureId, { method: 'DELETE' });
+    toast('Brouillon supprimé'); route();
+  } catch (e) { toast(e.message, true); }
+};
+
 /* --- Facture du mois en un clic (loyer + lignes récurrentes + taxe de séjour) --- */
 window.genererFactureMois = async (residentId) => {
   const periode = await askMois(new Date().toISOString().slice(0, 7),
@@ -1614,7 +1683,7 @@ window.genererFactureMois = async (residentId) => {
   if (!periode) return;
   try {
     const r = await api('/api/factures/run-resident', { method: 'POST', body: { resident_id: residentId, periode } });
-    toast(`Facture ${r.facture.numero} créée — ${eur(r.facture.total_ttc)}`);
+    toast(`Brouillon créé — ${eur(r.facture.total_ttc)}${r.prestations ? ` (${r.prestations} prestation(s) reprise(s))` : ''}. Vérifiez puis émettez.`);
     route();
   } catch (e) { toast(e.message, true); }
 };

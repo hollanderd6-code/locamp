@@ -203,7 +203,11 @@ async function genererPdfFacture(campingId, facture) {
     catch (e) { console.error('[pdf logo]', e.message); }
   }
   const paiement = await construirePaiement(campingId, facture);
-  const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture: { ...facture, paiement } });
+  // Un brouillon s'imprime en PROFORMA (pas de n° comptable, mention « ne vaut pas facture »).
+  const pdf = await buildFacturePdf({
+    camping: campData, resident: resident.data || {},
+    facture: { ...facture, paiement, proforma: facture.statut === 'brouillon' },
+  });
   const path = `factures/${campingId}/${facture.id}.pdf`;
   const { error: upErr } = await supabase.storage.from(BUCKET)
     .upload(path, pdf, { contentType: 'application/pdf', upsert: true });
@@ -259,7 +263,12 @@ async function envoyerFactureEmail(campingId, factureId, { force = false } = {})
 // Crée une facture à partir de lignes déjà prêtes. Renvoie la facture (avec PDF).
 async function creerFacture({ campingId, resident_id, contrat_id, periode, lignes, statut = 'emise', avoir_de = null, req = null }) {
   const t = computeTotals(lignes);
-  const numero = await nextNumeroFacture(campingId);
+  const brouillon = statut === 'brouillon';
+  // Un brouillon ne consomme AUCUN numéro de la séquence fiscale (la numérotation
+  // doit rester continue) : il porte un numéro provisoire jusqu'à son émission.
+  const numero = brouillon
+    ? `PROFORMA-${require('crypto').randomUUID().slice(0, 8)}`
+    : await nextNumeroFacture(campingId);
   const { data: facture, error } = await supabase.from('factures').insert({
     camping_id: campingId, resident_id: resident_id || null, contrat_id: contrat_id || null,
     numero, periode: periode || null, date_emission: new Date().toISOString().slice(0, 10),
@@ -267,6 +276,13 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
     statut, avoir_de,
   }).select().single();
   if (error) throw error;
+
+  // Un brouillon reste hors chaîne fiscale, sans e-mail ni notification :
+  // rien n'est définitif tant qu'il n'est pas émis.
+  if (brouillon) {
+    await genererPdfFacture(campingId, facture).catch((e) => console.error('[pdf brouillon]', e.message));
+    return facture;
+  }
 
   // Inaltérabilité (art. 286-I-3° bis du CGI) : la facture entre dans la chaîne fiscale.
   await inscrireFacture(campingId, facture, req);
@@ -308,6 +324,57 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
   return facture;
 }
 
+// Émission d'un brouillon : c'est ICI que tout devient définitif.
+//   - numéro définitif attribué (la séquence n'est consommée qu'à cet instant)
+//   - entrée dans la chaîne d'inaltérabilité (art. 286-I-3° bis du CGI)
+//   - lettrage du crédit d'avance, PDF, e-mail au locataire, notification portail
+async function emettreFacture(campingId, factureId, req = null) {
+  const { data: f } = await supabase.from('factures').select('*')
+    .eq('camping_id', campingId).eq('id', factureId).maybeSingle();
+  if (!f) return { error: 'Facture introuvable', code: 404 };
+  if (f.statut !== 'brouillon') return { error: 'Cette facture est déjà émise', code: 409 };
+  if (!(f.lignes || []).length) return { error: 'Facture vide : ajoutez au moins une ligne', code: 400 };
+
+  const numero = await nextNumeroFacture(campingId);
+  const { data: facture, error } = await supabase.from('factures').update({
+    numero, statut: 'emise', date_emission: new Date().toISOString().slice(0, 10),
+  }).eq('camping_id', campingId).eq('id', factureId).select().single();
+  if (error) throw error;
+
+  await inscrireFacture(campingId, facture, req);
+
+  if (facture.resident_id) {
+    try { await require('./lettrage').appliquerCredit(campingId, facture.resident_id); }
+    catch (e) { console.error('[emission:lettrage]', e.message); }
+  }
+
+  await genererPdfFacture(campingId, facture).catch((e) => console.error('[pdf emission]', e.message));
+
+  // Notification portail (best-effort)
+  if (facture.resident_id) {
+    Promise.resolve().then(async () => {
+      const { creerNotifResident } = require('./notifications');
+      await creerNotifResident(campingId, facture.resident_id, {
+        type: 'nouvelle_facture',
+        titre: `Nouvelle facture ${facture.numero}`,
+        corps: `Montant : ${Number(facture.total_ttc).toFixed(2)} €. Consultable dans votre espace locataire.`,
+        entite: 'facture', entite_id: facture.id,
+        donnees: { numero: facture.numero, total_ttc: facture.total_ttc },
+      });
+    }).catch((e) => console.error('[emission notif]', e.message));
+  }
+
+  // E-mail au locataire — uniquement à l'émission.
+  Promise.resolve().then(async () => {
+    const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
+    if (camp?.parametres?.facturation?.email_auto === false) return;
+    const out = await envoyerFactureEmail(campingId, facture.id, {});
+    if (out.error || (out.skipped && out.skipped !== 'deja_envoye')) console.log('[emission email]', facture.numero, out);
+  }).catch((e) => console.error('[emission email]', e.message));
+
+  return { facture };
+}
+
 // Facturation mensuelle d'UN résident (bouton « Générer la facture du mois »).
 // Même logique que le batch : loyer + lignes récurrentes + taxe de séjour, anti-doublon.
 async function runFacturationResident(campingId, residentId, periode) {
@@ -337,13 +404,47 @@ async function runFacturationResident(campingId, residentId, periode) {
     .neq('statut', 'avoir').neq('statut', 'annulee').maybeSingle();
   if (existing) return { error: `Facture déjà émise pour cette période (${existing.numero})`, code: 409 };
 
-  const lignes = buildLignes(c, resident, periode, parametres);
-  if (!lignes.length) {
-    return { error: 'Rien à facturer : configurez le loyer ou des lignes récurrentes sur la fiche du résident.', code: 400 };
+  // Garde-fou : sans loyer ni ligne récurrente configurés, il n'y a rien à facturer.
+  // (Sans ce contrôle, on émettrait une facture ne contenant que la taxe de séjour.)
+  const fact = resident.facturation || {};
+  if (!(Number(fact.loyer_mensuel || 0) > 0) && !(fact.lignes || []).length) {
+    return { error: 'Aucun montant configuré pour ce résident. Cliquez sur « Configurer » pour saisir le loyer et les lignes récurrentes.', code: 400 };
   }
 
-  const facture = await creerFacture({ campingId, resident_id: residentId, contrat_id: c ? c.id : null, periode, lignes });
-  return { facture };
+  const lignes = buildLignes(c, resident, periode, parametres);
+
+  // Prestations non facturées (charges eau/élec, ventes...) : reprises dans le
+  // même brouillon. Les cautions ne sont pas facturables.
+  const { data: prestas } = await supabase.from('prestations')
+    .select('id,type,designation,quantite,pu_ttc,taux_tva,date_debut,date_fin')
+    .eq('camping_id', campingId).eq('resident_id', residentId)
+    .neq('type', 'caution').neq('statut', 'facturee').neq('statut', 'annulee');
+  for (const p of (prestas || [])) {
+    lignes.push({
+      designation: p.designation,
+      quantite: Number(p.quantite || 1),
+      pu_ttc: Number(p.pu_ttc || 0),
+      taux_tva: Number(p.taux_tva || 0),
+      date_debut: p.date_debut || null, date_fin: p.date_fin || null,
+    });
+  }
+
+  if (!lignes.length) return { error: 'Rien à facturer pour cette période.', code: 400 };
+
+  // Créée en BROUILLON : rien de définitif tant qu'elle n'est pas émise.
+  const facture = await creerFacture({
+    campingId, resident_id: residentId, contrat_id: c ? c.id : null,
+    periode, lignes, statut: 'brouillon',
+  });
+
+  // Les prestations reprises sont rattachées au brouillon (libérées s'il est supprimé).
+  const ids = (prestas || []).map((p) => p.id);
+  if (ids.length) {
+    await supabase.from('prestations').update({ statut: 'facturee', facture_id: facture.id })
+      .eq('camping_id', campingId).in('id', ids);
+  }
+
+  return { facture, prestations: ids.length };
 }
 
 // Facturation mensuelle d'un camping pour une période.
@@ -395,4 +496,4 @@ async function runFacturationMensuelle(campingId, periode) {
   return res;
 }
 
-module.exports = { runFacturationMensuelle, runFacturationResident, creerFacture, buildLignes, computeTotals, htDepuisTtc, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };
+module.exports = { runFacturationMensuelle, runFacturationResident, emettreFacture, creerFacture, buildLignes, computeTotals, htDepuisTtc, genererPdfFacture, genererProformaPdf, envoyerFactureEmail, currentPeriode };

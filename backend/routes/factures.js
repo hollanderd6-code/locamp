@@ -2,7 +2,7 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { signedUrl } = require('../lib/storage');
-const { runFacturationMensuelle, runFacturationResident, creerFacture, genererPdfFacture, envoyerFactureEmail, currentPeriode } = require('../lib/facturation');
+const { runFacturationMensuelle, runFacturationResident, emettreFacture, creerFacture, genererPdfFacture, envoyerFactureEmail, currentPeriode } = require('../lib/facturation');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -110,6 +110,65 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
       apres: { numero: facture.numero, total_ttc: facture.total_ttc } });
     res.status(201).json({ facture });
   } catch (e) { console.error('[factures:create]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// --- Brouillons (proforma) : vérifier / ajuster / émettre ---
+
+// POST /api/factures/:id/emettre  -> numéro définitif + chaîne fiscale + e-mail
+router.post('/:id/emettre', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const out = await emettreFacture(req.activeCampingId, req.params.id, req);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    await writeAudit(req, { action: 'create', entite: 'factures', entite_id: out.facture.id,
+      apres: { numero: out.facture.numero, total_ttc: out.facture.total_ttc, emission: true } });
+    res.json({ facture: out.facture });
+  } catch (e) { console.error('[factures:emettre]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// PUT /api/factures/:id/lignes  { lignes[] }  -> BROUILLON uniquement
+// Une facture émise est figée (inaltérabilité) : elle ne se corrige que par un avoir.
+router.put('/:id/lignes', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: f } = await supabase.from('factures').select('id,statut')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    if (f.statut !== 'brouillon') {
+      return res.status(409).json({ error: 'Facture déjà émise : elle ne peut plus être modifiée (utilisez un avoir).' });
+    }
+    const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : [];
+    if (!lignes.length) return res.status(400).json({ error: 'Au moins une ligne est requise' });
+
+    const { computeTotals } = require('../lib/facturation');
+    const t = computeTotals(lignes);
+    const { data, error } = await supabase.from('factures').update({
+      lignes: t.lignes, total_ht: t.total_ht, total_tva: t.total_tva, total_ttc: t.total_ttc,
+    }).eq('camping_id', req.activeCampingId).eq('id', req.params.id).select().single();
+    if (error) throw error;
+
+    await genererPdfFacture(req.activeCampingId, data).catch(() => {});
+    await writeAudit(req, { action: 'update', entite: 'factures', entite_id: data.id,
+      apres: { total_ttc: data.total_ttc, nb_lignes: t.lignes.length } });
+    res.json({ facture: data });
+  } catch (e) { console.error('[factures:lignes]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// DELETE /api/factures/:id  -> BROUILLON uniquement (libère les prestations reprises)
+router.delete('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: f } = await supabase.from('factures').select('id,statut,numero')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    if (f.statut !== 'brouillon') {
+      return res.status(409).json({ error: 'Seul un brouillon peut être supprimé. Une facture émise s\'annule par un avoir.' });
+    }
+    // libère les prestations rattachées au brouillon
+    await supabase.from('prestations').update({ statut: 'prevue', facture_id: null })
+      .eq('camping_id', req.activeCampingId).eq('facture_id', f.id);
+    await supabase.from('factures').delete()
+      .eq('camping_id', req.activeCampingId).eq('id', f.id);
+    await writeAudit(req, { action: 'delete', entite: 'factures', entite_id: f.id, avant: { numero: f.numero } });
+    res.json({ ok: true });
+  } catch (e) { console.error('[factures:delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // GET /api/factures/:id
