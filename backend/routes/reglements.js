@@ -76,7 +76,8 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
     moyen = moyens || null;
     if (moyen && moyen.actif === false) return res.status(400).json({ error: `Moyen de paiement « ${moyen.libelle} » désactivé` });
 
-    let affectations = Array.isArray(req.body.affectations) ? req.body.affectations : null;
+    const autoMode = !Array.isArray(req.body.affectations);
+    let affectations = autoMode ? null : req.body.affectations;
     if (!affectations && resident_id) affectations = await autoAffectations(req.activeCampingId, resident_id, montant);
     affectations = affectations || [];
 
@@ -96,6 +97,15 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
     await inscrireReglement(req.activeCampingId, reglement, req);
 
     for (const a of affectations) await recomputeFacture(req.activeCampingId, a.facture_id);
+
+    // Balayage auto-réparateur : en encaissement automatique, on lettre tout crédit non
+    // affecté restant (ce paiement + avances antérieures bloquées) sur les factures ouvertes,
+    // des plus anciennes aux plus récentes. Rend inutile toute affectation manuelle ultérieure.
+    // (Ignoré si l'appelant a fourni des affectations explicites : on respecte son intention.)
+    if (autoMode && resident_id) {
+      try { await require('../lib/lettrage').appliquerCredit(req.activeCampingId, resident_id); }
+      catch (e) { console.error('[reglement:auto-lettrage]', e.message); }
+    }
 
     await writeAudit(req, { action: 'create', entite: 'reglements', entite_id: reglement.id,
       apres: { mode, montant, affectations: affectations.length } });
