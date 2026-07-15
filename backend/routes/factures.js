@@ -23,6 +23,57 @@ router.get('/', async (req, res) => {
   } catch (e) { console.error('[factures:list]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// GET /api/factures/rapprochement?du=&au=  -> état de rapprochement factures / règlements.
+// Pour chaque facture émise sur la plage, ses règlements affectés (mode, montant, date) et son solde.
+router.get('/rapprochement', async (req, res) => {
+  try {
+    const { du, au } = req.query;
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    let q = supabase.from('factures')
+      .select('id,numero,resident_id,date_emission,total_ttc,montant_regle,statut')
+      .eq('camping_id', req.activeCampingId).neq('statut', 'annulee').neq('statut', 'avoir');
+    if (du) q = q.gte('date_emission', du);
+    if (au) q = q.lte('date_emission', au);
+    const { data: factures, error } = await q.order('date_emission', { ascending: true }).order('numero', { ascending: true });
+    if (error) throw error;
+
+    const fids = (factures || []).map((f) => f.id);
+    const rids = [...new Set((factures || []).map((f) => f.resident_id).filter(Boolean))];
+    const [{ data: residents }, { data: regs }, { data: moyens }] = await Promise.all([
+      rids.length ? supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', req.activeCampingId).in('id', rids) : Promise.resolve({ data: [] }),
+      supabase.from('reglements').select('mode,montant,date_reglement,reference,affectations').eq('camping_id', req.activeCampingId),
+      supabase.from('moyens_paiement').select('code,libelle').eq('camping_id', req.activeCampingId),
+    ]);
+    const rmap = {}; (residents || []).forEach((r) => { rmap[r.id] = r; });
+    const lib = {}; (moyens || []).forEach((m) => { lib[m.code] = m.libelle; });
+
+    // Règlements affectés à ces factures (via le tableau jsonb affectations).
+    const parFacture = {};
+    for (const g of (regs || [])) {
+      for (const a of (g.affectations || [])) {
+        if (!a || !fids.includes(a.facture_id)) continue;
+        (parFacture[a.facture_id] ||= []).push({
+          mode: lib[g.mode] || g.mode, montant: r2(a.montant), date_reglement: g.date_reglement, reference: g.reference || null,
+        });
+      }
+    }
+
+    let tFactures = 0, tRegles = 0, tSolde = 0;
+    const lignes = (factures || []).map((f) => {
+      const r = rmap[f.resident_id] || {};
+      const solde = r2(Number(f.total_ttc) - Number(f.montant_regle || 0));
+      tFactures += Number(f.total_ttc || 0); tRegles += Number(f.montant_regle || 0); tSolde += solde;
+      return {
+        id: f.id, numero: f.numero, date_emission: f.date_emission, statut: f.statut,
+        client: `${r.prenom ? r.prenom + ' ' : ''}${r.nom || '—'}`.trim(), compte_client: r.compte_comptable || null,
+        total_ttc: r2(f.total_ttc), montant_regle: r2(f.montant_regle || 0), solde,
+        reglements: (parFacture[f.id] || []).sort((a, b) => String(a.date_reglement).localeCompare(String(b.date_reglement))),
+      };
+    });
+    res.json({ du: du || null, au: au || null, lignes, total: { factures: r2(tFactures), regles: r2(tRegles), solde: r2(tSolde), nb: lignes.length } });
+  } catch (e) { console.error('[factures:rapprochement]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // POST /api/factures/run-mensuel  { periode?: 'YYYY-MM' }  (camping actif)
 router.post('/run-mensuel', requireRole('admin', 'gestionnaire'), async (req, res) => {
   try {

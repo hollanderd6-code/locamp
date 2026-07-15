@@ -10,6 +10,34 @@ const router = express.Router();
 router.use(auth, campingScope);
 
 // GET /api/reglements  (filtre: resident_id)
+// GET /api/reglements/journal?du=&au=  -> encaissements agrégés par mode de paiement.
+router.get('/journal', async (req, res) => {
+  try {
+    const { du, au } = req.query;
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    let q = supabase.from('reglements').select('mode,montant,date_reglement').eq('camping_id', req.activeCampingId);
+    if (du) q = q.gte('date_reglement', du);
+    if (au) q = q.lte('date_reglement', au);
+    const { data, error } = await q;
+    if (error) throw error;
+    const { data: moyens } = await supabase.from('moyens_paiement').select('code,libelle').eq('camping_id', req.activeCampingId);
+    const lib = {}; (moyens || []).forEach((m) => { lib[m.code] = m.libelle; });
+
+    const parMode = {};
+    let tMontant = 0, tNb = 0;
+    for (const g of (data || [])) {
+      const k = g.mode || '—';
+      if (!parMode[k]) parMode[k] = { mode: k, libelle: lib[k] || k, nb: 0, montant: 0 };
+      parMode[k].nb += 1; parMode[k].montant += Number(g.montant || 0);
+      tNb += 1; tMontant += Number(g.montant || 0);
+    }
+    const lignes = Object.values(parMode)
+      .map((m) => ({ ...m, montant: r2(m.montant) }))
+      .sort((a, b) => b.montant - a.montant);
+    res.json({ du: du || null, au: au || null, lignes, total: { nb: tNb, montant: r2(tMontant) } });
+  } catch (e) { console.error('[reglements:journal]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 router.get('/', async (req, res) => {
   try {
     let q = supabase.from('reglements').select('*').eq('camping_id', req.activeCampingId);

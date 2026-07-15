@@ -141,6 +141,24 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
 })();
 
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+// "2026-07" -> "Juillet 2026"
+const moisAnnee = (p) => {
+  if (!p || !/^\d{4}-\d{2}$/.test(p)) return p || '—';
+  const [y, m] = p.split('-').map(Number);
+  const s = new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+// Options de sélecteur de période : les 18 derniers mois (value "YYYY-MM", libellé "Mois année").
+const moisOptions = (selected) => {
+  const now = new Date();
+  const out = [];
+  for (let i = 0; i < 18; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    out.push(`<option value="${val}"${val === selected ? ' selected' : ''}>${moisAnnee(val)}</option>`);
+  }
+  return out.join('');
+};
 
 /* Libellés lisibles : jamais de code technique à l'écran. */
 const STATUT_LIB = {
@@ -1976,14 +1994,14 @@ async function vueFactures() {
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
       <div class="toolbar">
-        <input id="fac-periode" type="month" value="${mois}">
+        <select id="fac-periode">${moisOptions(mois)}</select>
         <button class="btn btn-ghost" onclick="formFacture()">Nouvelle facture</button>
         <button class="btn btn-primary" onclick="runFacturation()">Générer la facturation du mois</button>
       </div></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th></th></tr></thead>
     <tbody>${factures.map((f) => `
       <tr>
-        <td><strong>${esc(f.numero)}</strong></td><td class="muted">${esc(f.periode || '—')}</td>
+        <td><strong>${esc(f.numero)}</strong></td><td class="muted">${f.periode ? moisAnnee(f.periode) : '—'}</td>
         <td class="muted">${dfr(f.date_emission)}</td><td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
         <td class="right">
@@ -3313,9 +3331,34 @@ async function vueReglements() {
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const moyens = moyRes.moyens || [];
   const mlib = {}; moyens.forEach((m) => { mlib[m.code] = m.libelle; });
+  const auj = new Date().toISOString().slice(0, 10);
+  const debutMois = auj.slice(0, 8) + '01';
 
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Journal des encaissements</h2>
+        <div class="toolbar">
+          <label style="margin:0">Du<input id="jr-du" type="date" value="${debutMois}"></label>
+          <label style="margin:0">Au<input id="jr-au" type="date" value="${auj}"></label>
+          <button class="btn btn-primary btn-sm" onclick="chargerJournalEncaissements()">Afficher</button>
+        </div></div>
+      <p class="muted">Tous les encaissements de la période, regroupés par moyen de paiement.</p>
+      <div id="jr-resultat" style="margin-top:12px"><p class="muted">Choisis une période puis « Afficher ».</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Rapprochement factures / règlements</h2>
+        <div class="toolbar">
+          <label style="margin:0">Factures du<input id="rp-du" type="date" value="${debutMois}"></label>
+          <label style="margin:0">au<input id="rp-au" type="date" value="${auj}"></label>
+          <button class="btn btn-primary btn-sm" onclick="chargerRapprochement()">Afficher</button>
+        </div></div>
+      <p class="muted">Chaque facture émise sur la période, ses règlements affectés et son solde restant.</p>
+      <div id="rp-resultat" style="margin-top:12px"><p class="muted">Choisis une période puis « Afficher ».</p></div>
+    </div>
+
     <div class="card">
       <h2>Enregistrer un paiement</h2>
       <form id="f-reg" class="form-grid" style="margin-top:10px">
@@ -3348,6 +3391,53 @@ async function vueReglements() {
   $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
   chargerRemises();
 }
+
+// Journal des encaissements : agrégat par moyen de paiement sur la période.
+window.chargerJournalEncaissements = async () => {
+  const du = $('#jr-du').value, au = $('#jr-au').value;
+  const zone = $('#jr-resultat');
+  zone.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { lignes, total } = await api(`/api/reglements/journal?du=${du}&au=${au}`);
+    if (!lignes.length) { zone.innerHTML = '<p class="muted">Aucun encaissement sur cette période.</p>'; return; }
+    zone.innerHTML = `<table><thead><tr><th>Moyen de paiement</th><th class="right">Nombre</th><th class="right">Montant</th></tr></thead>
+      <tbody>${lignes.map((m) => `<tr><td>${esc(m.libelle)}</td><td class="right">${m.nb}</td><td class="right"><strong>${eur(m.montant)}</strong></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td class="right"><strong>TOTAL</strong></td><td class="right"><strong>${total.nb}</strong></td><td class="right"><strong>${eur(total.montant)}</strong></td></tr></tfoot></table>`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+// Rapprochement factures / règlements : par facture, ses règlements et son solde.
+window.chargerRapprochement = async () => {
+  const du = $('#rp-du').value, au = $('#rp-au').value;
+  const zone = $('#rp-resultat');
+  zone.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { lignes, total } = await api(`/api/factures/rapprochement?du=${du}&au=${au}`);
+    if (!lignes.length) { zone.innerHTML = '<p class="muted">Aucune facture sur cette période.</p>'; return; }
+    const cls = (s) => Number(s) > 0.005 ? 'neg' : 'pos';
+    const cartes = lignes.map((f) => `
+      <div style="border:1px solid var(--hairline);border-radius:11px;padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <div><strong>${esc(f.numero)}</strong> <span class="muted" style="font-size:12.5px">· ${dfr(f.date_emission)} · ${esc(f.client)}${f.compte_client ? ' · ' + esc(f.compte_client) : ''}</span></div>
+          <span class="badge ${f.statut}">${lib(f.statut)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:13px">
+          <span class="muted">Total TTC <strong>${eur(f.total_ttc)}</strong></span>
+          <span class="muted">Réglé <strong>${eur(f.montant_regle)}</strong></span>
+          <span class="muted">Solde <strong class="fiche-solde ${cls(f.solde)}">${eur(f.solde)}</strong></span>
+        </div>
+        ${f.reglements.length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--hairline);display:flex;flex-direction:column;gap:3px">
+          ${f.reglements.map((g) => `<div style="display:flex;justify-content:space-between;font-size:12.5px;gap:10px"><span class="muted">${esc(g.mode)}${g.reference ? ' · ' + esc(g.reference) : ''} <span style="opacity:.7">${dfr(g.date_reglement)}</span></span><span>${eur(g.montant)}</span></div>`).join('')}
+        </div>` : '<div class="muted" style="margin-top:6px;font-size:12.5px">Aucun règlement affecté.</div>'}
+      </div>`).join('');
+    zone.innerHTML = `
+      <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:12px 14px;margin-bottom:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span class="muted">${total.nb} facture${total.nb > 1 ? 's' : ''} · Total <strong>${eur(total.factures)}</strong></span>
+        <span class="muted">Réglé <strong>${eur(total.regles)}</strong> · Reste dû <strong class="fiche-solde ${cls(total.solde)}">${eur(total.solde)}</strong></span>
+      </div>
+      ${cartes}`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
 
 // Remises en banque : un bordereau par moyen de paiement (chèques ≠ ANCV).
 async function chargerRemises() {
