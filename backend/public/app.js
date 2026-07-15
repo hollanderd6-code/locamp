@@ -1923,18 +1923,28 @@ window.formResident = async () => {
 
 /* ---------- Emplacements ---------- */
 async function vueEmplacements() {
-  const { emplacements } = await api('/api/emplacements');
+  const [{ emplacements }, campRes] = await Promise.all([
+    api('/api/emplacements'),
+    api('/api/camping').catch(() => ({ camping: {} })),
+  ]);
+  const modeles = (campRes.camping && campRes.camping.parametres && campRes.camping.parametres.factures_types) || [];
+  const modNom = {}; modeles.forEach((m) => { modNom[m.id] = m.nom; });
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Parcelles</div><h1>Emplacements</h1></div>
       <button class="btn btn-primary" onclick="formEmplacement()">Nouvel emplacement</button></div>
-    <div class="card"><table><thead><tr><th>N°</th><th>Secteur</th><th>Type</th><th>Statut</th><th class="right">Loyer</th><th>Carte</th></tr></thead>
-    <tbody>${emplacements.map((e) => `
+    <div class="card"><table><thead><tr><th>N°</th><th>Secteur</th><th>Type</th><th>Statut</th><th class="right">Loyer</th><th>Modèle</th><th>Carte</th></tr></thead>
+    <tbody>${emplacements.map((e) => {
+      const mid = e.meta && e.meta.facture_type_id;
+      const mlabel = mid ? (modNom[mid] || 'Modèle supprimé') : null;
+      return `
       <tr class="row-click" onclick="ficheEmplacement('${e.id}')">
         <td><strong>${esc(e.numero)}</strong></td><td class="muted">${esc(e.secteur || '—')}</td>
         <td class="muted">${esc(e.type || '—')}</td><td><span class="badge ${e.statut}">${lib(e.statut)}</span></td>
         <td class="right">${eur(e.loyer_base)}</td>
+        <td data-l="Modèle">${mlabel ? `<span class="badge${mid && modNom[mid] ? '' : ' indisponible'}">${esc(mlabel)}</span>` : '<span class="muted">—</span>'}</td>
         <td class="muted">${e.coord_x != null ? '✓' : '—'}</td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
 }
 
 window.formEmplacement = () => {
