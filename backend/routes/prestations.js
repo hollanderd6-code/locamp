@@ -2,6 +2,7 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { creerFacture, genererProformaPdf } = require('../lib/facturation');
+const { buildReleve } = require('../lib/releve');
 const { signedUrl } = require('../lib/storage');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
@@ -48,20 +49,24 @@ router.get('/', async (req, res) => {
 router.get('/synthese/:residentId', async (req, res) => {
   try {
     const rid = req.params.residentId;
-    const [pRes, fRes] = await Promise.all([
+    const [pRes, releve] = await Promise.all([
       supabase.from('prestations').select('type,designation,date_debut,date_fin,montant_ttc,statut')
         .eq('camping_id', req.activeCampingId).eq('resident_id', rid).neq('statut', 'annulee'),
-      supabase.from('factures').select('total_ttc,montant_regle,statut')
-        .eq('camping_id', req.activeCampingId).eq('resident_id', rid),
+      buildReleve(req.activeCampingId, rid).catch(() => null),
     ]);
     const prestations = pRes.data || [];
-    const factures = (fRes.data || []).filter((f) => !['avoir', 'annulee'].includes(f.statut));
 
     const enCours = prestations.filter((p) => p.statut === 'en_cours');
     const aFacturer = r2(enCours.filter((p) => p.type !== 'caution').reduce((s, p) => s + Number(p.montant_ttc), 0));
     const totalPresta = r2(prestations.filter((p) => p.type !== 'caution').reduce((s, p) => s + Number(p.montant_ttc), 0));
-    const totalRegle = r2(factures.reduce((s, f) => s + Number(f.montant_regle), 0));
-    const aRegler = r2(factures.reduce((s, f) => s + (Number(f.total_ttc) - Number(f.montant_regle)), 0));
+
+    // Réglé et à régler = MÊME source que le relevé de compte (tous les règlements,
+    // y compris ceux non lettrés à une facture précise), et non factures.montant_regle.
+    // solde = ce que le client doit ; négatif = avoir en sa faveur.
+    const solde = releve ? releve.solde_total : 0;
+    const totalRegle = releve ? r2(Object.values(releve.par_annee || {}).reduce((s, y) => s + Number(y.regle || 0), 0)) : 0;
+    const aRegler = r2(Math.max(0, solde));
+    const avoirFaveur = r2(Math.max(0, -solde));
 
     const sejours = prestations.filter((p) => p.type === 'sejour' && p.date_debut)
       .sort((a, b) => (b.date_debut || '').localeCompare(a.date_debut || ''));
@@ -79,6 +84,8 @@ router.get('/synthese/:residentId', async (req, res) => {
         regle_total: totalRegle,
         a_facturer: aFacturer,
         a_regler: aRegler,
+        solde,
+        avoir_faveur: avoirFaveur,
         nb_sejours: sejours.length,
         nb_nuits: nuits,
         dernier_sejour: sejours[0] ? { du: sejours[0].date_debut, au: sejours[0].date_fin } : null,

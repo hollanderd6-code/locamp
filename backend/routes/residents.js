@@ -40,14 +40,38 @@ async function reconcileStatut(campingId, empId) {
 // GET /api/residents  (recherche ?q= sur nom/prénom/email/téléphone)
 router.get('/', async (req, res) => {
   try {
+    const cid = req.activeCampingId;
     let q = supabase.from('residents')
-      .select('id,civilite,nom,prenom,email,telephone,emplacement_id,solde,actif,compte_comptable')
-      .eq('camping_id', req.activeCampingId);
+      .select('id,civilite,nom,prenom,email,telephone,emplacement_id,actif,compte_comptable')
+      .eq('camping_id', cid);
     const s = (req.query.q || '').trim();
     if (s) q = q.or(`nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,telephone.ilike.%${s}%`);
     const { data, error } = await q.order('nom');
     if (error) throw error;
-    res.json({ residents: data });
+    const residents = data || [];
+
+    // Solde recalculé (même règle que le relevé de compte) : Σ factures − Σ règlements.
+    // Négatif = avoir en faveur du client. Deux agrégats suffisent quel que soit le nombre de résidents.
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    const ids = residents.map((r) => r.id);
+    const soldeMap = {};
+    if (ids.length) {
+      const [factR, reglR] = await Promise.all([
+        supabase.from('factures').select('resident_id,total_ttc,statut').eq('camping_id', cid).in('resident_id', ids),
+        supabase.from('reglements').select('resident_id,montant').eq('camping_id', cid).in('resident_id', ids),
+      ]);
+      (factR.data || []).forEach((f) => {
+        if (f.statut === 'brouillon' || !f.resident_id) return;   // un brouillon n'est pas encore une créance
+        soldeMap[f.resident_id] = (soldeMap[f.resident_id] || 0) + Number(f.total_ttc || 0);
+      });
+      (reglR.data || []).forEach((g) => {
+        if (!g.resident_id) return;
+        soldeMap[g.resident_id] = (soldeMap[g.resident_id] || 0) - Number(g.montant || 0);
+      });
+    }
+    residents.forEach((r) => { r.solde = r2(soldeMap[r.id] || 0); });
+
+    res.json({ residents });
   } catch (e) {
     console.error('[residents:list]', e.message);
     res.status(500).json({ error: 'Erreur serveur' });

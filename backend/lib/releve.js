@@ -21,7 +21,9 @@ async function buildReleve(campingId, residentId, annee = null) {
       .eq('camping_id', campingId).eq('id', residentId).maybeSingle(),
     supabase.from('factures')
       .select('id,numero,date_emission,periode,statut,total_ttc,montant_regle,avoir_de')
-      .eq('camping_id', campingId).eq('resident_id', residentId).order('date_emission'),
+      .eq('camping_id', campingId).eq('resident_id', residentId)
+      .neq('statut', 'brouillon')   // un proforma n'est pas une écriture : hors relevé et hors solde
+      .order('date_emission'),
     supabase.from('reglements')
       .select('id,date_reglement,mode,montant,reference,statut_cheque')
       .eq('camping_id', campingId).eq('resident_id', residentId).order('date_reglement'),

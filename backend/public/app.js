@@ -1188,7 +1188,7 @@ async function vueResidents() {
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
         <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
         <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
-        <td class="right" data-l="Solde">${eur(r.solde)}</td>
+        <td class="right" data-l="Solde"><span class="fiche-solde ${Number(r.solde) > 0.005 ? 'neg' : (Number(r.solde) < -0.005 ? 'pos' : '')}">${eur(r.solde)}</span></td>
       </tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
   };
   render(residents);
@@ -1255,7 +1255,9 @@ async function vueFicheClient(id) {
     ${syn ? `
     <div class="synth">
       ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? 'warn' : '')}
-      ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? 'bad' : '')}
+      ${syn.avoir_faveur > 0
+        ? banItem(eur(syn.avoir_faveur), 'Avoir en sa faveur', 'good')
+        : banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? 'bad' : '')}
       ${banItem(eur(syn.regle_total), 'Réglé (total)')}
       ${banItem(`${syn.nb_sejours} <small>(${syn.nb_nuits} nuits)</small>`, 'Séjours')}
       ${banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <small>→ ${dfr(syn.dernier_sejour.au)}</small>` : '—', 'Dernier séjour')}

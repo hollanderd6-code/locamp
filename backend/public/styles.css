@@ -246,6 +246,7 @@ tr:hover td{background:#FBF9F3}
 .synth-item .v small{font-size:13px;font-weight:500;font-family:"Inter",sans-serif}
 .synth-item .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--brume);margin-top:3px;font-weight:600}
 .synth-item.warn .v{color:var(--laiton)}
+.synth-item.good .v{color:var(--sapin)}
 .synth-item.bad .v{color:var(--rouge)}
 
 /* onglets pills */
