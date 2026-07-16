@@ -685,3 +685,74 @@ $('#sig-signer').addEventListener('click', async () => {
   [1000, 3000].forEach((t) => setTimeout(() => { build(); majCompteur(); }, t));
   setInterval(() => { build(); majCompteur(); }, 25000);
 })();
+
+/* ==================== NOTIFICATIONS PUSH (app locataire) ==================== */
+/* Actif uniquement dans l'app native (Capacitor). Sur le web, ce bloc ne fait rien. */
+(function () {
+  const PN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+  if (!PN) return;   // navigateur : pas de push natif
+
+  const plateforme = () => (window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : 'ios');
+  let dejaFait = false;
+  let monToken = null;
+
+  async function enregistrer() {
+    if (dejaFait || !RTOKEN) return;
+    dejaFait = true;
+    try {
+      // iOS exige une demande explicite ; Android 13+ aussi.
+      let perm = await PN.checkPermissions();
+      if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+        perm = await PN.requestPermissions();
+      }
+      if (perm.receive !== 'granted') {
+        console.log('[push] permission refusée par le locataire');
+        return;
+      }
+
+      PN.addListener('registration', async (t) => {
+        monToken = t.value;
+        try {
+          await api('/api/portail/push/register', { method: 'POST', body: { token: t.value, platform: plateforme() } });
+          console.log('[push] appareil enregistré');
+        } catch (e) { console.error('[push] enregistrement :', e.message); }
+      });
+
+      PN.addListener('registrationError', (e) => console.error('[push] erreur FCM :', JSON.stringify(e)));
+
+      // Notification reçue app au premier plan : on rafraîchit la cloche.
+      PN.addListener('pushNotificationReceived', () => {
+        if (typeof chargerEspace === 'function') chargerEspace().catch(() => {});
+      });
+
+      // L'utilisateur tape la notification : on ouvre l'espace au bon endroit.
+      PN.addListener('pushNotificationActionPerformed', (action) => {
+        const d = (action && action.notification && action.notification.data) || {};
+        const cible = d.type === 'nouveau_message' ? '#fil-messages' : '#liste-factures';
+        setTimeout(() => { const el = $(cible); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 400);
+      });
+
+      await PN.register();
+    } catch (e) { console.error('[push] init :', e.message); }
+  }
+
+  // À la déconnexion : on retire le jeton pour ne plus recevoir les push de ce compte.
+  const _logout = window.logout || logout;
+  window.logout = function () {
+    if (monToken && RTOKEN) {
+      api('/api/portail/push/register', { method: 'DELETE', body: { token: monToken } }).catch(() => {});
+    }
+    dejaFait = false; monToken = null;
+    return _logout.apply(this, arguments);
+  };
+  const btn = document.getElementById('btn-logout');
+  if (btn) { btn.replaceWith(btn.cloneNode(true)); document.getElementById('btn-logout').addEventListener('click', window.logout); }
+
+  // On enregistre dès que la session locataire est établie.
+  if (typeof chargerEspace === 'function') {
+    const _charger = chargerEspace;
+    // eslint-disable-next-line no-global-assign
+    chargerEspace = async function () { const r = await _charger.apply(this, arguments); enregistrer(); return r; };
+  }
+  setTimeout(enregistrer, 2500);
+})();
