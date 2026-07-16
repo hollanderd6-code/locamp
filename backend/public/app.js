@@ -141,6 +141,24 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
 })();
 
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+// "2026-07" -> "Juillet 2026"
+const moisAnnee = (p) => {
+  if (!p || !/^\d{4}-\d{2}$/.test(p)) return p || '—';
+  const [y, m] = p.split('-').map(Number);
+  const s = new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+// Options de sélecteur de période : les 18 derniers mois (value "YYYY-MM", libellé "Mois année").
+const moisOptions = (selected) => {
+  const now = new Date();
+  const out = [];
+  for (let i = 0; i < 18; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    out.push(`<option value="${val}"${val === selected ? ' selected' : ''}>${moisAnnee(val)}</option>`);
+  }
+  return out.join('');
+};
 
 /* Libellés lisibles : jamais de code technique à l'écran. */
 const STATUT_LIB = {
@@ -372,12 +390,12 @@ async function vueDashboard() {
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
+      <div class="kpi clickable" onclick="location.hash='#/emplacements'"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
         <div class="l">Emplacements occupés · ${d.occupation.taux} %</div></div>
-      <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
-      <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div>
+      <div class="kpi clickable" onclick="location.hash='#/factures'"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
+      <div class="kpi clickable ${d.impayes.total_du > 0 ? 'bad' : ''}" onclick="location.hash='#/impayes'"><div class="v">${eur(d.impayes.total_du)}</div>
         <div class="l">Impayés · ${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}</div></div>
-      <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div>
+      <div class="kpi clickable ${aFacturer > 0 ? 'warn' : ''}" onclick="location.hash='#/factures'"><div class="v">${eur(aFacturer)}</div>
         <div class="l">Prestations à facturer</div></div>
     </div>
 
@@ -516,10 +534,11 @@ const snap = (v) => Math.round(v / SNAP) * SNAP;
 const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 async function vueCarte() {
-  const [{ emplacements }, imp, elemRes] = await Promise.all([
+  const [{ emplacements }, imp, elemRes, fondRes] = await Promise.all([
     api('/api/emplacements/carte'),
     api('/api/relances/impayes'),
     api('/api/carte-elements').catch(() => ({ elements: [], migration_manquante: true })),
+    api('/api/camping/carte-fond').catch(() => ({ url: null })),
   ]);
   const enRetard = new Set();
   for (const f of imp.impayes || []) if (f.en_retard) enRetard.add(f.resident_id);
@@ -533,6 +552,7 @@ async function vueCarte() {
     })),
     migrationManquante: !!elemRes.migration_manquante,
     enRetard,
+    fond: fondRes && fondRes.url ? { url: fondRes.url, opacite: fondRes.opacite ?? 0.6 } : { url: null },
     mode: 'view',
     dirty: new Map(),
     dirtyElems: new Map(),
@@ -577,7 +597,7 @@ function dessinerElement(el, edit) {
         stroke-width="${allee ? 22 : 4}" stroke-linecap="round" ${allee ? '' : 'stroke-dasharray="9 7"'}></line>
       ${allee ? `<line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="#F7F2E4" stroke-width="16" stroke-linecap="round"></line>` : ''}
       ${lib && allee ? `<g transform="rotate(${angle} ${mx} ${my})">
-        <rect class="celem-allee-bg" x="${mx - larg / 2}" y="${my - 8}" width="${larg}" height="16" rx="8"></rect>
+        <rect class="celem-allee-bg" fill="#F7F2E4" stroke="#E4DCC8" x="${mx - larg / 2}" y="${my - 8}" width="${larg}" height="16" rx="8"></rect>
         <text class="celem-allee" x="${mx}" y="${my}">${esc(lib)}</text></g>` : ''}
       ${edit && sel ? `<circle class="handle" data-h="a" cx="${v.x}" cy="${v.y}" r="7"></circle>
                        <circle class="handle" data-h="b" cx="${x2}" cy="${y2}" r="7"></circle>` : ''}
@@ -641,7 +661,10 @@ function renderCarte() {
           <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
           <button class="btn btn-primary btn-sm" onclick="saveCarte()" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
         </div>`
-        : `<button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>`}
+        : `<div class="map-tools">
+          <button class="btn btn-ghost btn-sm" onclick="imprimerCarte()">Imprimer</button>
+          <button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>
+        </div>`}
     </div>
     ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
     ${edit ? '' : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
@@ -650,6 +673,7 @@ function renderCarte() {
       <div>
         <div class="map-wrap${edit ? ' editing' : ''}">
           <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
+            ${st.fond && st.fond.url ? `<image href="${st.fond.url}" x="0" y="0" width="${CARTE_W}" height="${CARTE_H}" preserveAspectRatio="xMidYMid meet" opacity="${st.fond.opacite ?? 0.6}"></image>` : ''}
             <g class="layer-decor">${decor}</g>
             <g class="layer-pins">${pins}</g>
           </svg>
@@ -666,6 +690,20 @@ function renderCarte() {
 
       ${edit ? `<aside class="map-panel">
         <div id="map-props"></div>
+        <div class="map-panel-sec">
+          <h3>Plan de fond</h3>
+          ${st.fond && st.fond.url ? `
+            <img src="${st.fond.url}" alt="Plan de fond" style="width:100%;border-radius:8px;border:1px solid var(--hairline);display:block;margin-bottom:8px">
+            <label class="map-fond-lbl">Opacité</label>
+            <input type="range" min="0.1" max="1" step="0.05" value="${st.fond.opacite ?? 0.6}" oninput="setCarteFondOpacite(this.value)" class="map-fond-range">
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <label class="btn btn-ghost btn-sm" style="flex:1;text-align:center;cursor:pointer;margin:0">Remplacer<input type="file" accept="image/*" onchange="uploadCarteFond(this.files[0])" hidden></label>
+              <button class="btn btn-ghost btn-sm" onclick="removeCarteFond()">Retirer</button>
+            </div>`
+          : `
+            <p class="muted" style="font-size:12.5px;margin-bottom:8px;line-height:1.4">Téléverse un scan de ton plan papier, puis place simplement les emplacements par-dessus.</p>
+            <label class="btn btn-primary btn-sm" style="width:100%;text-align:center;cursor:pointer;margin:0">Téléverser un plan<input type="file" accept="image/*" onchange="uploadCarteFond(this.files[0])" hidden></label>`}
+        </div>
         <div class="map-panel-sec">
           <h3>Ajouter</h3>
           ${Object.entries(groupes).map(([g, items]) => `
@@ -922,6 +960,81 @@ function attacherHandle(h, svg) {
 
 /* ------------------------------ actions ------------------------------ */
 
+// Impression du plan : fenêtre propre avec le SVG (fond compris) + la légende, en paysage.
+window.imprimerCarte = () => {
+  const svg = document.querySelector('.map-svg');
+  if (!svg) { toast('Ouvre la carte avant d\u2019imprimer', true); return; }
+  const legend = document.querySelector('.map-legend');
+  const nom = (CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) || {}).nom || 'Camping';
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+  const w = window.open('', '_blank', 'width=1200,height=850');
+  if (!w) { toast('Autorise les pop-ups pour imprimer le plan', true); return; }
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Plan — ${esc(nom)}</title>
+    <style>
+      @page{size:A4 landscape;margin:8mm}
+      *{box-sizing:border-box}
+      body{margin:0;padding:14px;font-family:system-ui,-apple-system,sans-serif;color:#2b2b26}
+      .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+      .hd h1{font-size:17px;margin:0}
+      .hd .dt{font-size:12px;color:#777}
+      svg{width:100%;height:auto;border:1px solid #e3ddcf;border-radius:8px}
+      .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin-top:12px;color:#444}
+      .legend>span{display:inline-flex;align-items:center}
+      .legend .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px}
+      @media print{body{padding:0}.legend{margin-top:8px}}
+    </style></head><body>
+    <div class="hd"><h1>${esc(nom)} — plan du camping</h1><span class="dt">${dateStr}</span></div>
+    ${svg.outerHTML}
+    ${legend ? `<div class="legend">${legend.innerHTML}</div>` : ''}
+  </body></html>`);
+  w.document.close();
+  const go = () => { try { w.focus(); w.print(); } catch (_) { /* ignore */ } };
+  const img = w.document.querySelector('svg image');   // attendre le fond si présent
+  if (img) {
+    let done = false; const once = () => { if (done) return; done = true; go(); };
+    img.addEventListener('load', once); img.addEventListener('error', once);
+    setTimeout(once, 1500);                             // filet de sécurité
+  } else {
+    w.onload = go;
+  }
+};
+
+// Plan de fond : upload du scan, opacité (avec aperçu immédiat), retrait.
+window.uploadCarteFond = async (file) => {
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { toast('Image trop lourde (4 Mo max).', true); return; }
+  const fd = new FormData(); fd.append('file', file);
+  toast('Téléversement du plan…');
+  try {
+    const r = await api('/api/camping/carte-fond', { method: 'POST', body: fd });
+    carteState.fond = { url: r.url, opacite: r.opacite ?? 0.6 };
+    renderCarte();
+    toast('Plan de fond ajouté');
+  } catch (e) { toast(e.message || 'Échec du téléversement', true); }
+};
+
+window.setCarteFondOpacite = (v) => {
+  if (!carteState.fond) return;
+  const op = Number(v);
+  carteState.fond.opacite = op;
+  const img = document.querySelector('.map-svg image');
+  if (img) img.setAttribute('opacity', op);           // aperçu immédiat, sans re-render
+  clearTimeout(carteState._opTimer);
+  carteState._opTimer = setTimeout(() => {
+    api('/api/camping/carte-fond', { method: 'PUT', body: { opacite: op } }).catch(() => {});
+  }, 400);                                             // enregistrement différé (anti-spam)
+};
+
+window.removeCarteFond = async () => {
+  if (!await askConfirm('Retirer le plan de fond de la carte ?', { titre: 'Retirer le plan', ok: 'Retirer', danger: true })) return;
+  try {
+    await api('/api/camping/carte-fond', { method: 'DELETE' });
+    carteState.fond = { url: null };
+    renderCarte();
+    toast('Plan de fond retiré');
+  } catch (e) { toast(e.message, true); }
+};
+
 window.toggleCarteEdit = () => {
   carteState.mode = 'edit';
   renderCarte();
@@ -1026,7 +1139,12 @@ window.saveCarte = async () => {
 };
 
 window.ficheEmplacement = async (id) => {
-  const { emplacement: e, residents } = await api('/api/emplacements/' + id);
+  const [{ emplacement: e, residents }, { camping }] = await Promise.all([
+    api('/api/emplacements/' + id),
+    api('/api/camping').catch(() => ({ camping: {} })),
+  ]);
+  const modeles = (camping && camping.parametres && camping.parametres.factures_types) || [];
+  const modeleActif = e.meta && e.meta.facture_type_id;
   const r = residents[0];
   let facturesHtml = '';
   if (r) {
@@ -1041,6 +1159,15 @@ window.ficheEmplacement = async (id) => {
     <ul class="list-tight">
       <li><span>Loyer de base</span><span>${eur(e.loyer_base)}</span></li>
     </ul>
+
+    <h2 style="margin-top:18px">Modèle de facturation</h2>
+    <p class="muted" style="font-size:12.5px;margin:2px 0 8px">Appliqué automatiquement au résident de ce logement (sauf s'il a une config perso). Toute révision du modèle vaut pour les prochaines factures.</p>
+    <select id="emp-modele" onchange="majModeleEmplacement('${e.id}', this.value)" style="width:100%;padding:9px 10px;border:1px solid var(--hairline);border-radius:9px">
+      <option value="">— Aucun (loyer saisi sur le résident) —</option>
+      ${modeles.map((m) => `<option value="${m.id}"${modeleActif === m.id ? ' selected' : ''}>${esc(m.nom)}${Number(m.loyer_mensuel) ? ` — ${eur(m.loyer_mensuel)}/mois` : ''}</option>`).join('')}
+    </select>
+    ${modeles.length ? '' : '<p class="muted" style="font-size:12px;margin-top:6px">Aucun modèle défini. Crée-en dans <a href="#/parametres">Paramètres → Modèles de facturation</a>.</p>'}
+
     ${r ? `<h2 style="margin-top:18px">Résident</h2>
       <ul class="list-tight">
         <li><span>${esc(r.prenom || '')} ${esc(r.nom)}</span><span class="fiche-solde ${Number(r.solde) < 0 ? 'neg' : 'pos'}"></span></li>
@@ -1048,6 +1175,94 @@ window.ficheEmplacement = async (id) => {
         ${r.telephone ? `<li><span>Téléphone</span><span>${esc(r.telephone)}</span></li>` : ''}
       </ul>${facturesHtml}` : '<p class="muted" style="margin-top:14px">Aucun résident rattaché.</p>'}
   `);
+};
+
+// Rattache / détache un modèle de facturation à un emplacement (fusion de meta).
+window.majModeleEmplacement = async (empId, modeleId) => {
+  try {
+    const { emplacement } = await api('/api/emplacements/' + empId);
+    const meta = { ...(emplacement.meta || {}) };
+    if (modeleId) meta.facture_type_id = modeleId; else delete meta.facture_type_id;
+    await api('/api/emplacements/' + empId, { method: 'PUT', body: { meta } });
+    toast(modeleId ? 'Modèle rattaché au logement' : 'Modèle retiré du logement');
+  } catch (err) { toast(err.message, true); }
+};
+
+/* --- Modèles de facturation (Paramètres) : "montant type" réutilisable par logement --- */
+window.formModeleFacturation = async (modeleId) => {
+  const { camping } = await api('/api/camping');
+  const liste = (camping && camping.parametres && camping.parametres.factures_types) || [];
+  const m = modeleId ? (liste.find((x) => x.id === modeleId) || {}) : {};
+  const ligne = (l = {}) => `
+    <div class="mod-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+      <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:160px">
+      <input name="quantite" type="number" step="0.01" placeholder="Qté" value="${l.quantite != null ? l.quantite : 1}" style="width:66px" title="Quantité">
+      <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:96px" title="Prix unitaire TTC">
+      <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : ''}" style="width:76px" title="Taux de TVA">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500" title="Ajuster au nombre de jours de présence (mois partiel)">
+        <input name="prorata" type="checkbox" ${l.prorata ? 'checked' : ''} style="width:16px;height:16px"> prorata</label>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+    </div>`;
+  openDrawer(`
+    <h2>${modeleId ? 'Modifier le modèle' : 'Nouveau modèle de facturation'}</h2>
+    <p class="muted" style="margin-top:4px">Un « montant type » réutilisable. Rattache-le ensuite à des logements depuis la fiche emplacement.</p>
+    <form id="f-modele" style="margin-top:16px">
+      <label style="display:flex;flex-direction:column;gap:3px;margin-bottom:14px">Nom du modèle *
+        <input name="nom" required placeholder="Ex : Parcelle nue, Mobil-home 4 pers…" value="${esc(m.nom || '')}"></label>
+      <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:14px;margin-bottom:16px">
+        <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:10px">Loyer emplacement</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input name="loyer_mensuel" type="number" step="0.01" placeholder="Montant TTC / mois" value="${m.loyer_mensuel != null ? m.loyer_mensuel : ''}" style="flex:1;min-width:140px">
+          <input name="loyer_tva" type="number" step="0.1" placeholder="TVA %" value="${m.loyer_tva != null ? m.loyer_tva : ''}" style="width:86px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500">
+            <input name="loyer_prorata" type="checkbox" ${m.loyer_prorata === false ? '' : 'checked'} style="width:16px;height:16px"> prorata</label>
+        </div>
+      </div>
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:8px">Lignes récurrentes</div>
+      <div id="mod-lignes">${(m.lignes || []).map(ligne).join('') || ligne()}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="mod-add">+ Ajouter une ligne</button>
+      <div style="margin-top:16px"><button class="btn btn-primary btn-block">${modeleId ? 'Enregistrer' : 'Créer le modèle'}</button></div>
+    </form>`);
+  $('#mod-add').addEventListener('click', () => $('#mod-lignes').insertAdjacentHTML('beforeend', ligne()));
+  $('#f-modele').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const nom = String(fd.get('nom') || '').trim();
+    if (!nom) return toast('Nom requis', true);
+    const lignes = [...document.querySelectorAll('#mod-lignes .mod-ligne')].map((el) => ({
+      designation: el.querySelector('[name=designation]').value.trim(),
+      quantite: Number(el.querySelector('[name=quantite]').value || 1),
+      pu_ttc: Number(el.querySelector('[name=pu_ttc]').value || 0),
+      taux_tva: Number(el.querySelector('[name=taux_tva]').value || 0),
+      prorata: el.querySelector('[name=prorata]').checked,
+    })).filter((l) => l.designation && l.pu_ttc !== 0);
+    const modele = {
+      id: modeleId || (crypto.randomUUID ? crypto.randomUUID() : 'm_' + Date.now().toString(36)),
+      nom,
+      loyer_mensuel: Number(fd.get('loyer_mensuel') || 0),
+      loyer_tva: Number(fd.get('loyer_tva') || 0),
+      loyer_prorata: !!e.target.querySelector('[name=loyer_prorata]').checked,
+      lignes,
+    };
+    const factures_types = liste.some((x) => x.id === modele.id)
+      ? liste.map((x) => (x.id === modele.id ? modele : x))
+      : [...liste, modele];
+    try {
+      await api('/api/camping/parametres', { method: 'PUT', body: { factures_types } });
+      closeDrawer(); toast('Modèle enregistré'); route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.supprimerModele = async (modeleId) => {
+  if (!await askConfirm('Supprimer ce modèle ? Les logements qui l\'utilisaient repasseront sans modèle (le loyer devra alors être saisi sur le résident).',
+    { titre: 'Supprimer le modèle', ok: 'Supprimer', danger: true })) return;
+  try {
+    const { camping } = await api('/api/camping');
+    const liste = (camping && camping.parametres && camping.parametres.factures_types) || [];
+    await api('/api/camping/parametres', { method: 'PUT', body: { factures_types: liste.filter((x) => x.id !== modeleId) } });
+    toast('Modèle supprimé'); route();
+  } catch (err) { toast(err.message, true); }
 };
 
 /* ---------- Résidents ---------- */
@@ -1068,7 +1283,7 @@ async function vueResidents() {
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
         <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
         <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
-        <td class="right" data-l="Solde">${eur(r.solde)}</td>
+        <td class="right" data-l="Solde"><span class="fiche-solde ${Number(r.solde) > 0.005 ? 'neg' : (Number(r.solde) < -0.005 ? 'pos' : '')}">${eur(r.solde)}</span></td>
       </tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
   };
   render(residents);
@@ -1080,7 +1295,7 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes, moyRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id),
     api('/api/reglements?resident_id=' + id),
@@ -1088,8 +1303,11 @@ async function vueFicheClient(id) {
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
     api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
+    api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
   ]);
-  const fact = cfgRes.facturation || {};
+  const fact = cfgRes.effective || cfgRes.facturation || {};
+  const factSource = cfgRes.source || 'aucun';
+  const factModele = cfgRes.modele || null;
   const factLignes = fact.lignes || [];
   const aConfig = Number(fact.loyer_mensuel || 0) > 0 || factLignes.length > 0;
   const messages = msgRes.messages;
@@ -1097,6 +1315,17 @@ async function vueFicheClient(id) {
   const prestations = presRes.prestations;
   const syn = synRes.synthese;
   const facNum = {}; factures.forEach((f) => { facNum[f.id] = f.numero; });
+  // Paiements lettrés par facture (pour les afficher sous chaque facture).
+  const mlib = {}; (moyRes.moyens || []).forEach((m) => { mlib[m.code] = m.libelle; });
+  const payParFacture = {};
+  (reglements || []).forEach((g) => {
+    (g.affectations || []).forEach((a) => {
+      if (!a || !a.facture_id) return;
+      (payParFacture[a.facture_id] ||= []).push({
+        mode: mlib[g.mode] || g.mode, montant: Number(a.montant || 0), date: g.date_reglement, reference: g.reference || null,
+      });
+    });
+  });
 
   const PTYPE = { sejour: 'Séjour', vente: 'Vente', charge: 'Charge', caution: 'Caution' };
   const etatBadge = (p) => {
@@ -1112,6 +1341,7 @@ async function vueFicheClient(id) {
 
   const migrationManquante = prestations === null;
   const nbEnCours = (prestations || []).filter((p) => p.statut === 'en_cours').length;
+  const nbFacturables = (prestations || []).filter((p) => p.statut === 'en_cours' && p.type !== 'caution').length;
 
   $('#main').innerHTML = `
     <div class="page-head">
@@ -1125,6 +1355,7 @@ async function vueFicheClient(id) {
         </div>
       </div>
       <div class="toolbar">
+        ${syn && syn.credit_a_affecter > 0 ? `<button class="btn btn-ghost" onclick="affecterCredit('${id}', ${syn.credit_a_affecter})">Affecter les paiements (${eur(syn.credit_a_affecter)})</button>` : ''}
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
       </div>
     </div>
@@ -1132,7 +1363,9 @@ async function vueFicheClient(id) {
     ${syn ? `
     <div class="synth">
       ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? 'warn' : '')}
-      ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? 'bad' : '')}
+      ${syn.avoir_faveur > 0
+        ? banItem(eur(syn.avoir_faveur), 'Avoir en sa faveur', 'good')
+        : banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? 'bad' : '')}
       ${banItem(eur(syn.regle_total), 'Réglé (total)')}
       ${banItem(`${syn.nb_sejours} <small>(${syn.nb_nuits} nuits)</small>`, 'Séjours')}
       ${banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <small>→ ${dfr(syn.dernier_sejour.au)}</small>` : '—', 'Dernier séjour')}
@@ -1209,13 +1442,20 @@ async function vueFicheClient(id) {
             <td class="right">
               <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
               ${brouillon ? `
-                <button class="btn btn-ghost btn-sm" onclick="ajouterPrestationsFacture('${f.id}','${id}')">+ Prestations</button>
+                ${nbFacturables ? `<button class="btn btn-ghost btn-sm" onclick="ajouterPrestationsBrouillon('${f.id}','${id}')" title="Ajouter des prestations en cours à ce brouillon">+ Prestations</button>` : ''}
                 <button class="btn btn-ghost btn-sm" onclick="editerLignesFacture('${f.id}')">Modifier</button>
                 <button class="btn btn-ghost btn-sm" onclick="supprimerBrouillon('${f.id}')">Supprimer</button>
                 <button class="btn btn-primary btn-sm" onclick="emettreFacture('${f.id}')">Émettre</button>` : ''}
               ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
             </td>
-          </tr>`;
+          </tr>
+          ${!brouillon && (payParFacture[f.id] || []).length ? `<tr class="pay-detail">
+            <td colspan="7" style="padding:2px 12px 10px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                ${payParFacture[f.id].map((p) => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--brume,#8a8778)"><span>↳ Paiement · ${esc(p.mode)}${p.reference ? ' · ' + esc(p.reference) : ''} · ${dfr(p.date)}</span><span>${eur(p.montant)}</span></div>`).join('')}
+              </div>
+            </td>
+          </tr>` : ''}`;
         }).join('') || '<tr><td colspan="7" class="muted">Aucune facture pour ce résident.</td></tr>'}</tbody></table>
       </div>
 
@@ -1223,9 +1463,15 @@ async function vueFicheClient(id) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <h2 style="margin:0">Facturation récurrente</h2>
-            <p class="muted" style="margin:2px 0 0;font-size:12.5px">Le « montant type » facturé chaque mois. Modifiable à tout moment (révision de tarif).</p>
+            <p class="muted" style="margin:2px 0 0;font-size:12.5px">
+              ${factSource === 'modele'
+                ? `Hérité du modèle <strong>« ${esc(factModele && factModele.nom || '')} »</strong> (logement). « Personnaliser » créera une config propre à ce résident.`
+                : factSource === 'resident'
+                ? 'Spécifique à ce résident. Modifiable à tout moment (révision de tarif).'
+                : 'Le « montant type » facturé chaque mois. Modifiable à tout moment (révision de tarif).'}
+            </p>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">Configurer</button>
+          <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">${factSource === 'modele' ? 'Personnaliser' : factSource === 'resident' ? 'Modifier' : 'Configurer'}</button>
         </div>
         ${aConfig ? `
           <table style="margin-top:12px"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
@@ -1336,16 +1582,16 @@ window.chargerReleve = async (id, annee) => {
           </div>
           <div class="toolbar">
             <select id="rel-annee" style="width:auto" onchange="chargerReleve('${id}', this.value)">
-              ${d.annees.map((a) => `<option value="${a}"${a === d.annee ? ' selected' : ''}>${a}</option>`).join('') || `<option>${d.annee}</option>`}
+              ${(d.exercices || []).map((e) => `<option value="${e.annee}"${e.annee === d.annee ? ' selected' : ''}>${e.label}${e.scelle ? ' 🔒' : ''}</option>`).join('') || `<option>${d.exercice_label || d.annee}</option>`}
             </select>
             <button class="btn btn-primary btn-sm" onclick="relevePdf('${id}')">Relevé PDF</button>
           </div>
         </div>
 
         <div class="kpis" style="margin-top:14px">
-          <div class="kpi"><div class="v">${eur(d.report_a_nouveau)}</div><div class="l">Report au 1ᵉʳ janvier</div></div>
-          <div class="kpi"><div class="v">${eur(d.totaux.facture)}</div><div class="l">Facturé en ${d.annee}</div></div>
-          <div class="kpi"><div class="v">${eur(d.totaux.regle)}</div><div class="l">Réglé en ${d.annee}</div></div>
+          <div class="kpi"><div class="v">${eur(d.report_a_nouveau)}</div><div class="l">Report à l'ouverture (${dfr(d.exercice_debut)})</div></div>
+          <div class="kpi"><div class="v">${eur(d.totaux.facture)}</div><div class="l">Facturé en ${d.exercice_label}</div></div>
+          <div class="kpi"><div class="v">${eur(d.totaux.regle)}</div><div class="l">Réglé en ${d.exercice_label}</div></div>
           <div class="kpi ${du ? 'bad' : ''}"><div class="v">${eur(d.solde_total)}</div>
             <div class="l">${du ? 'Reste dû aujourd\u2019hui' : credit ? 'Avoir en sa faveur' : 'Compte soldé ✓'}</div></div>
         </div>
@@ -1354,8 +1600,8 @@ window.chargerReleve = async (id, annee) => {
           <thead><tr><th>Date</th><th>Opération</th><th class="right">Débit</th><th class="right">Crédit</th><th class="right">Solde</th><th></th></tr></thead>
           <tbody>
             <tr class="rel-report">
-              <td class="muted">01/01/${d.annee}</td>
-              <td class="muted"><em>Report à nouveau</em></td>
+              <td class="muted">${dfr(d.exercice_debut)}</td>
+              <td class="muted"><em>Report à nouveau</em>${d.scelle ? ' <span class="badge reglee">exercice clôturé</span>' : ''}</td>
               <td></td><td></td>
               <td class="right"><strong>${eur(d.report_a_nouveau)}</strong></td><td></td>
             </tr>
@@ -1371,7 +1617,7 @@ window.chargerReleve = async (id, annee) => {
               <td class="right" data-l="Crédit" style="color:var(--sapin)">${l.credit ? eur(l.credit) : ''}</td>
               <td class="right" data-l="Solde"><strong>${eur(l.solde)}</strong></td>
               <td class="right">${l.facture_id ? `<button class="btn btn-ghost btn-sm" onclick="pdfFacture('${l.facture_id}')">PDF</button>` : ''}</td>
-            </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cette année.</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cet exercice.</td></tr>'}
           </tbody>
           <tfoot><tr class="rel-total">
             <td colspan="2"><strong>Total ${d.annee}</strong></td>
@@ -1537,6 +1783,19 @@ window.supprimerPrestation = async (pid, residentId) => {
   catch (err) { toast(err.message, true); }
 };
 
+// Affecte (lettrer) le crédit d'avance non affecté du client sur ses factures ouvertes,
+// des plus anciennes aux plus récentes. Le back (appliquerCredit) recalcule les soldes.
+window.affecterCredit = async (residentId, credit) => {
+  if (!await askConfirm(`Affecter les paiements non lettrés (${eur(credit)}) sur les factures ouvertes de ce client, des plus anciennes aux plus récentes ?`,
+    { titre: 'Affecter les paiements', ok: 'Affecter' })) return;
+  try {
+    const r = await api('/api/reglements/lettrer', { method: 'POST', body: { resident_id: residentId } });
+    if (r.affecte > 0) toast(`${eur(r.affecte)} affecté sur ${r.factures} facture${r.factures > 1 ? 's' : ''}`);
+    else toast('Aucune facture ouverte à lettrer', true);
+    route();
+  } catch (e) { toast(e.message, true); }
+};
+
 window.encaisserClient = async (id) => {
   const { moyens } = await api('/api/moyens-paiement').catch(() => ({ moyens: [] }));
   openDrawer(`
@@ -1560,8 +1819,11 @@ window.encaisserClient = async (id) => {
 };
 /* --- Facturation récurrente : loyer + lignes du "montant type" (sur le RÉSIDENT) --- */
 window.formFacturation = async (residentId) => {
-  const { facturation } = await api('/api/factures/config/' + residentId).catch(() => ({ facturation: {} }));
-  const f = facturation || {};
+  const cfg = await api('/api/factures/config/' + residentId).catch(() => ({ facturation: {} }));
+  const own = cfg.facturation || {};
+  const aOwn = Number(own.loyer_mensuel || 0) > 0 || (own.lignes || []).length > 0;
+  // Si pas de config propre, on part du modèle hérité (le résident le "personnalise").
+  const f = aOwn ? own : (cfg.effective || {});
   const ligne = (l = {}) => `
     <div class="rec-ligne" style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
       <input name="designation" placeholder="Désignation (ex : Forfait Confort)" value="${esc(l.designation || '')}" style="flex:1;min-width:160px">
@@ -1656,36 +1918,44 @@ window.editerLignesFacture = async (factureId) => {
   });
 };
 
-window.ajouterPrestationsFacture = async (factureId, residentId) => {
-  const { prestations } = await api('/api/prestations?resident_id=' + residentId).catch(() => ({ prestations: [] }));
-  const dispo = (prestations || []).filter((p) =>
-    p.type !== 'caution' && p.statut !== 'facturee' && p.statut !== 'annulee');
-  if (!dispo.length) {
-    return toast('Aucune prestation à facturer pour ce résident', true);
-  }
+/* --- Ajouter des prestations « en cours » à un brouillon existant --- */
+window.ajouterPrestationsBrouillon = async (factureId, residentId) => {
+  const { prestations } = await api('/api/prestations?resident_id=' + residentId + '&statut=en_cours')
+    .catch(() => ({ prestations: [] }));
+  const dispo = (prestations || []).filter((p) => p.type !== 'caution');
+  if (!dispo.length) { toast('Aucune prestation en cours à ajouter', true); return; }
+  const PTYPE = { sejour: 'Séjour', vente: 'Vente', charge: 'Charge' };
   openDrawer(`
     <h2>Ajouter des prestations</h2>
-    <p class="muted" style="margin-top:4px">Cochez ce que vous voulez ajouter à ce brouillon.</p>
-    <form id="f-addp" style="margin-top:14px">
-      ${dispo.map((p) => `
-        <label style="display:flex;gap:10px;align-items:center;padding:11px 2px;border-bottom:1px solid #F1EDE2;
-          text-transform:none;letter-spacing:0;font-weight:400;font-size:14px">
-          <input type="checkbox" value="${esc(p.id)}" checked style="width:17px;height:17px;flex-shrink:0">
-          <span style="flex:1;min-width:0">
-            <span style="font-weight:600">${esc(p.designation)}</span>
-            ${p.quantite && Number(p.quantite) !== 1 ? `<span class="muted"> × ${p.quantite}</span>` : ''}
-          </span>
-          <strong style="white-space:nowrap">${eur(Number(p.pu_ttc || 0) * Number(p.quantite || 1))}</strong>
-        </label>`).join('')}
+    <p class="muted" style="margin-top:4px">Elles seront ajoutées à ce brouillon et rattachées à la facture.</p>
+    <form id="f-addpresta" style="margin-top:14px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${dispo.map((p) => `
+          <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border,#e7e2d6);border-radius:8px;cursor:pointer">
+            <input type="checkbox" class="addp-check" data-pid="${p.id}" data-ttc="${p.montant_ttc}" checked>
+            <span style="flex:1"><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''} <span class="muted">— ${PTYPE[p.type] || p.type}</span></span>
+            <strong>${eur(p.montant_ttc)}</strong>
+          </label>`).join('')}
+      </div>
+      <div id="addp-total" class="muted" style="margin-top:10px;font-weight:600"></div>
       <div style="margin-top:16px"><button class="btn btn-primary btn-block">Ajouter au brouillon</button></div>
     </form>`);
-  $('#f-addp').addEventListener('submit', async (e) => {
+  const maj = () => {
+    const checks = [...document.querySelectorAll('.addp-check:checked')];
+    const total = checks.reduce((s, c) => s + Number(c.dataset.ttc), 0);
+    $('#addp-total').innerHTML = `${checks.length} prestation(s) — <strong>${eur(total)}</strong>`;
+  };
+  document.querySelectorAll('.addp-check').forEach((c) => c.addEventListener('change', maj));
+  maj();
+  $('#f-addpresta').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const ids = [...e.target.querySelectorAll('input[type=checkbox]:checked')].map((i) => i.value);
-    if (!ids.length) return toast('Sélectionnez au moins une prestation', true);
+    const ids = [...document.querySelectorAll('.addp-check:checked')].map((c) => c.dataset.pid);
+    if (!ids.length) return toast('Sélectionne au moins une prestation', true);
     try {
       const r = await api(`/api/factures/${factureId}/prestations`, { method: 'POST', body: { prestation_ids: ids } });
-      closeDrawer(); toast(`${r.ajoutees} prestation(s) ajoutée(s) — total ${eur(r.facture.total_ttc)}`); route();
+      closeDrawer();
+      toast(`${r.prestations_ajoutees} prestation(s) ajoutée(s) — ${eur(r.facture.total_ttc)}`);
+      route();
     } catch (err) { toast(err.message, true); }
   });
 };
@@ -1801,18 +2071,28 @@ window.formResident = async () => {
 
 /* ---------- Emplacements ---------- */
 async function vueEmplacements() {
-  const { emplacements } = await api('/api/emplacements');
+  const [{ emplacements }, campRes] = await Promise.all([
+    api('/api/emplacements'),
+    api('/api/camping').catch(() => ({ camping: {} })),
+  ]);
+  const modeles = (campRes.camping && campRes.camping.parametres && campRes.camping.parametres.factures_types) || [];
+  const modNom = {}; modeles.forEach((m) => { modNom[m.id] = m.nom; });
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Parcelles</div><h1>Emplacements</h1></div>
       <button class="btn btn-primary" onclick="formEmplacement()">Nouvel emplacement</button></div>
-    <div class="card"><table><thead><tr><th>N°</th><th>Secteur</th><th>Type</th><th>Statut</th><th class="right">Loyer</th><th>Carte</th></tr></thead>
-    <tbody>${emplacements.map((e) => `
+    <div class="card"><table><thead><tr><th>N°</th><th>Secteur</th><th>Type</th><th>Statut</th><th class="right">Loyer</th><th>Modèle</th><th>Carte</th></tr></thead>
+    <tbody>${emplacements.map((e) => {
+      const mid = e.meta && e.meta.facture_type_id;
+      const mlabel = mid ? (modNom[mid] || 'Modèle supprimé') : null;
+      return `
       <tr class="row-click" onclick="ficheEmplacement('${e.id}')">
         <td><strong>${esc(e.numero)}</strong></td><td class="muted">${esc(e.secteur || '—')}</td>
         <td class="muted">${esc(e.type || '—')}</td><td><span class="badge ${e.statut}">${lib(e.statut)}</span></td>
         <td class="right">${eur(e.loyer_base)}</td>
+        <td data-l="Modèle">${mlabel ? `<span class="badge${mid && modNom[mid] ? '' : ' indisponible'}">${esc(mlabel)}</span>` : '<span class="muted">—</span>'}</td>
         <td class="muted">${e.coord_x != null ? '✓' : '—'}</td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
 }
 
 window.formEmplacement = () => {
@@ -1844,14 +2124,14 @@ async function vueFactures() {
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
       <div class="toolbar">
-        <input id="fac-periode" type="month" value="${mois}">
+        <select id="fac-periode">${moisOptions(mois)}</select>
         <button class="btn btn-ghost" onclick="formFacture()">Nouvelle facture</button>
         <button class="btn btn-primary" onclick="runFacturation()">Générer la facturation du mois</button>
       </div></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th></th></tr></thead>
     <tbody>${factures.map((f) => `
       <tr>
-        <td><strong>${esc(f.numero)}</strong></td><td class="muted">${esc(f.periode || '—')}</td>
+        <td><strong>${esc(f.numero)}</strong></td><td class="muted">${f.periode ? moisAnnee(f.periode) : '—'}</td>
         <td class="muted">${dfr(f.date_emission)}</td><td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
         <td class="right">
@@ -1909,7 +2189,9 @@ async function vueCompteurs() {
         <td class="muted">${e.dernier_releve ? dfr(e.dernier_releve.date_releve) + (e.dernier_releve.conso_kwh != null ? ` <span class="badge occupe">${Number(e.dernier_releve.conso_kwh)} kWh</span>` : '') : '<span class="badge emise">jamais relevé</span>'}</td>
         <td class="right">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
         <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
-        <td class="right"><button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
+        <td class="right" style="white-space:nowrap">
+          ${e.dernier_releve ? `<button class="btn btn-ghost btn-sm" onclick="histoCompteur('${e.id}','${esc(e.numero)}')">Historique</button>` : ''}
+          <button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>
     <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix kWh) — à facturer depuis sa fiche.</p>`;
 }
@@ -1923,6 +2205,147 @@ window.releverCompteur = async (empId) => {
     if (r.prestation) toast(`Relevé enregistré — charge de ${eur(r.prestation.montant_ttc)} créée (${Number(r.releve.conso_kwh)} kWh)`);
     else toast(r.info || 'Relevé enregistré');
     route();
+  } catch (err) { toast(err.message, true); }
+};
+
+// Historique des relevés d'un emplacement (+ courbe, cumul, notes, correction, suppression).
+window.histoCompteur = async (empId, numero) => {
+  const { releves } = await api('/api/compteurs/' + empId + '/historique').catch(() => ({ releves: [] }));
+  const liste = releves || [];
+  const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  // Échappe un objet JSON pour un attribut onclick en guillemets simples (notes = texte libre).
+  const jarg = (o) => JSON.stringify(o).replace(/&/g, '&amp;').replace(/'/g, '&#39;');
+  const ownOK = (r) => !r.charge || r.charge.statut === 'en_cours';   // charge modifiable (non facturée)
+
+  // --- Cumul kWh + coût (sur l'historique affiché, 24 derniers relevés) + ventilation par an ---
+  const avecConso = liste.filter((r) => r.conso_kwh != null && Number(r.conso_kwh) > 0);
+  const cumulKwh = round2(avecConso.reduce((s, r) => s + Number(r.conso_kwh), 0));
+  const cumulCout = round2(avecConso.reduce((s, r) => s + (r.charge ? Number(r.charge.montant_ttc) : 0), 0));
+  const parAn = {};
+  avecConso.forEach((r) => {
+    const y = String(r.date_releve || '').slice(0, 4) || '—';
+    if (!parAn[y]) parAn[y] = { kwh: 0, eur: 0 };
+    parAn[y].kwh += Number(r.conso_kwh);
+    parAn[y].eur += r.charge ? Number(r.charge.montant_ttc) : 0;
+  });
+  const annees = Object.keys(parAn).sort().reverse();
+  const resumeHtml = avecConso.length ? `
+    <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:12px 14px;margin:12px 0 4px">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline">
+        <span class="muted" style="font-size:12.5px">Cumul (${avecConso.length} relevé${avecConso.length > 1 ? 's' : ''})</span>
+        <strong>${round2(cumulKwh)} kWh · ${eur(cumulCout)} TTC</strong>
+      </div>
+      ${annees.length > 1 ? `<div style="margin-top:8px;border-top:1px solid var(--hairline);padding-top:8px;display:flex;flex-direction:column;gap:3px">
+        ${annees.map((y) => `<div style="display:flex;justify-content:space-between;font-size:12.5px"><span class="muted">${y}</span><span>${round2(parAn[y].kwh)} kWh · ${eur(round2(parAn[y].eur))}</span></div>`).join('')}
+      </div>` : ''}
+    </div>` : '';
+
+  // --- Courbe de consommation (barres kWh par relevé, chronologique) ---
+  const chrono = avecConso.slice().reverse();   // du plus ancien au plus récent
+  let courbeHtml = '';
+  if (chrono.length >= 2) {
+    const max = Math.max(...chrono.map((r) => Number(r.conso_kwh)));
+    const pad = 26, bw = 24, slotMin = 40;
+    const W = Math.max(300, pad * 2 + chrono.length * slotMin), H = 152;
+    const slot = (W - pad * 2) / chrono.length;
+    const bars = chrono.map((r, i) => {
+      const x = pad + i * slot + (slot - bw) / 2;
+      const h = max > 0 ? (Number(r.conso_kwh) / max) * (H - 50) : 0;
+      const y = H - 28 - h;
+      const d = new Date(r.date_releve);
+      const lbl = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+      return `<g>
+        <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${Math.max(1, h).toFixed(1)}" rx="4" fill="#1A7A5E"><title>${lbl} — ${Number(r.conso_kwh)} kWh${r.charge ? ' · ' + eur(r.charge.montant_ttc) : ''}</title></rect>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="10" fill="#6b6b6b">${Number(r.conso_kwh)}</text>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${H - 9}" text-anchor="middle" font-size="9.5" fill="#9a9a9a">${lbl}</text>
+      </g>`;
+    }).join('');
+    courbeHtml = `<div style="overflow-x:auto;margin:4px 0 8px">
+      <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;font-family:inherit">
+        <line x1="${pad}" y1="${H - 28}" x2="${W - 4}" y2="${H - 28}" stroke="var(--hairline,#e7e2d6)"/>${bars}
+      </svg></div>`;
+  }
+
+  const rows = liste.map((r, i) => {
+    // Corrigeable si sa charge ET celle du relevé suivant (plus récent = au-dessus) sont modifiables.
+    const succOK = i === 0 ? true : ownOK(liste[i - 1]);
+    const editable = ownOK(r) && succOK;
+    const chargeCell = r.charge
+      ? `<strong>${eur(r.charge.montant_ttc)}</strong> <span class="badge ${r.charge.statut}">${lib(r.charge.statut)}</span>`
+      : (r.conso_kwh != null ? '<span class="muted">—</span>' : '<span class="muted">index initial</span>');
+    const noteBtn = `<button class="btn btn-ghost btn-sm" onclick='noterReleve(${jarg({ id: r.id, empId, numero, date_releve: r.date_releve, note: r.note || '' })})'>${r.note ? 'Modifier la note' : '+ note'}</button>`;
+    const editBtns = editable
+      ? `<button class="btn btn-ghost btn-sm" onclick='modifierReleve(${jarg({ id: r.id, empId, numero, index_kwh: r.index_kwh, date_releve: r.date_releve })})'>Modifier</button>
+         <button class="btn btn-ghost btn-sm" onclick="supprimerReleve('${r.id}','${empId}','${esc(numero)}')">Supprimer</button>`
+      : '<span class="muted" title="Charge engagée sur une facture : fais un avoir avant de corriger" style="font-size:12px;align-self:center">🔒 verrouillé</span>';
+    return `<div style="border:1px solid var(--hairline);border-radius:11px;padding:11px 13px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <strong>${dfr(r.date_releve)}</strong>
+        <span class="muted" style="font-size:12.5px">index ${Number(r.index_kwh)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap">
+        <span>${r.conso_kwh != null ? '<strong>' + Number(r.conso_kwh) + '</strong> kWh' : '<span class="muted">—</span>'}</span>
+        <span style="text-align:right">${chargeCell}</span>
+      </div>
+      ${r.note ? `<div class="muted" style="font-style:italic;font-size:12px;margin-top:7px;padding-top:7px;border-top:1px dashed var(--hairline)">${esc(r.note)}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${editBtns} ${noteBtn}</div>
+    </div>`;
+  }).join('') || '<p class="muted">Aucun relevé.</p>';
+  openDrawer(`
+    <h2>Historique — emplacement ${esc(numero)}</h2>
+    <p class="muted" style="margin-top:4px">Corriger ou supprimer un relevé recalcule sa consommation, celle du relevé suivant, et les charges « en cours » associées. Une charge déjà facturée est verrouillée (la note, elle, reste éditable).</p>
+    ${resumeHtml}
+    ${courbeHtml}
+    <div style="margin-top:8px">${rows}</div>`);
+};
+
+// Édite la note documentaire d'un relevé (toujours autorisé, même si la charge est facturée).
+window.noterReleve = (r) => {
+  openDrawer(`
+    <h2>Note du relevé</h2>
+    <p class="muted" style="margin-top:4px">Emplacement ${esc(r.numero)} · relevé du ${dfr(r.date_releve)}. Documentaire — n'affecte ni la conso ni la charge.</p>
+    <form id="f-note" style="margin-top:14px">
+      <textarea name="note" rows="4" placeholder="Ex : compteur changé, index estimé, sous-compteur atelier…" style="width:100%;padding:10px;border:1px solid var(--hairline);border-radius:9px;font:inherit;resize:vertical">${esc(r.note || '')}</textarea>
+      <div style="margin-top:14px"><button class="btn btn-primary btn-block">Enregistrer la note</button></div>
+    </form>`);
+  $('#f-note').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const note = e.target.querySelector('[name=note]').value.trim();
+    try {
+      await api('/api/compteurs/releve/' + r.id + '/note', { method: 'PUT', body: { note } });
+      toast('Note enregistrée');
+      histoCompteur(r.empId, r.numero);
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.modifierReleve = (r) => {
+  openDrawer(`
+    <h2>Corriger le relevé</h2>
+    <p class="muted" style="margin-top:4px">Emplacement ${esc(r.numero)} · relevé du ${dfr(r.date_releve)}.</p>
+    <form id="f-releve" class="form-grid" style="margin-top:14px">
+      <label>Index (kWh)<input name="index_kwh" type="number" step="0.01" min="0" value="${Number(r.index_kwh)}"></label>
+      <label>Date du relevé<input name="date_releve" type="date" value="${r.date_releve}"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Enregistrer la correction</button></div>
+    </form>`);
+  $('#f-releve').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      const res = await api('/api/compteurs/releve/' + r.id, { method: 'PUT', body: { index_kwh: Number(f.index_kwh), date_releve: f.date_releve } });
+      toast(`Relevé corrigé${res.suivant_recalcule ? ' (relevé suivant recalculé)' : ''}`);
+      histoCompteur(r.empId, r.numero);   // rouvre l'historique à jour
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.supprimerReleve = async (releveId, empId, numero) => {
+  if (!await askConfirm('Supprimer ce relevé ? Sa charge « en cours » sera retirée et le relevé suivant sera recalculé sur le relevé précédent.',
+    { titre: 'Supprimer le relevé', ok: 'Supprimer', danger: true })) return;
+  try {
+    const res = await api('/api/compteurs/releve/' + releveId, { method: 'DELETE' });
+    toast(`Relevé supprimé${res.suivant_recalcule ? ' (relevé suivant recalculé)' : ''}`);
+    histoCompteur(empId, numero);
   } catch (err) { toast(err.message, true); }
 };
 
@@ -2747,8 +3170,22 @@ async function vueParametres() {
         <label class="full">Message e-mail (paragraphe ajouté au corps)<input name="message_email" value="${esc(fp.message_email || '')}"></label>
         <label>Expéditeur e-mail<input name="email_exp" type="email" value="${esc(fp.email || '')}"></label>
         <label>Envoi auto de la facture<select name="email_auto"><option value="true"${fp.email_auto === false ? '' : ' selected'}>Activé</option><option value="false"${fp.email_auto === false ? ' selected' : ''}>Désactivé</option></select></label>
+        <label>Début de l'exercice fiscal<select name="exercice_debut_mois">${['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => `<option value="${i + 1}"${Number(p.exercice_debut_mois || 1) === i + 1 ? ' selected' : ''}>1er ${m}</option>`).join('')}</select></label>
+        <p class="muted full" style="margin:0">L'exercice dure 12 mois à partir de ce mois. Les relevés de compte et les clôtures de soldes suivent cet exercice (pas l'année civile).</p>
         <div class="full"><button class="btn btn-primary">Enregistrer la facturation</button></div>
       </form>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="margin:0">Modèles de facturation</h2>
+          <p class="muted" style="margin-top:2px">Un « montant type » (loyer + lignes récurrentes) défini une fois et rattaché à un ou plusieurs logements (fiche emplacement). Toute révision s'applique aux prochaines factures des logements liés.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="formModeleFacturation()">Nouveau modèle</button>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>Nom</th><th class="right">Loyer TTC</th><th class="right">TVA</th><th class="right">Lignes</th><th></th></tr></thead>
+        <tbody id="modeles-body"></tbody></table>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -2805,6 +3242,21 @@ async function vueParametres() {
       </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
   };
   renderArts(articles);
+
+  const renderModeles = (list) => {
+    $('#modeles-body').innerHTML = (list || []).map((m) => `
+      <tr>
+        <td><strong>${esc(m.nom)}</strong></td>
+        <td class="right">${eur(m.loyer_mensuel)}</td>
+        <td class="right muted">${Number(m.loyer_tva || 0)} %</td>
+        <td class="right muted">${(m.lignes || []).length}</td>
+        <td class="right">
+          <button class="btn btn-ghost btn-sm" onclick="formModeleFacturation('${m.id}')">Modifier</button>
+          <button class="btn btn-ghost btn-sm" onclick="supprimerModele('${m.id}')">Supprimer</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun modèle. Crée ton premier « montant type » réutilisable, puis rattache-le à des logements.</td></tr>';
+  };
+  renderModeles(p.factures_types || []);
 
   $('#f-article').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3011,9 +3463,34 @@ async function vueReglements() {
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const moyens = moyRes.moyens || [];
   const mlib = {}; moyens.forEach((m) => { mlib[m.code] = m.libelle; });
+  const auj = new Date().toISOString().slice(0, 10);
+  const debutMois = auj.slice(0, 8) + '01';
 
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Journal des encaissements</h2>
+        <div class="toolbar">
+          <label style="margin:0">Du<input id="jr-du" type="date" value="${debutMois}"></label>
+          <label style="margin:0">Au<input id="jr-au" type="date" value="${auj}"></label>
+          <button class="btn btn-primary btn-sm" onclick="chargerJournalEncaissements()">Afficher</button>
+        </div></div>
+      <p class="muted">Tous les encaissements de la période, regroupés par moyen de paiement.</p>
+      <div id="jr-resultat" style="margin-top:12px"><p class="muted">Choisis une période puis « Afficher ».</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Rapprochement factures / règlements</h2>
+        <div class="toolbar">
+          <label style="margin:0">Factures du<input id="rp-du" type="date" value="${debutMois}"></label>
+          <label style="margin:0">au<input id="rp-au" type="date" value="${auj}"></label>
+          <button class="btn btn-primary btn-sm" onclick="chargerRapprochement()">Afficher</button>
+        </div></div>
+      <p class="muted">Chaque facture émise sur la période, ses règlements affectés et son solde restant.</p>
+      <div id="rp-resultat" style="margin-top:12px"><p class="muted">Choisis une période puis « Afficher ».</p></div>
+    </div>
+
     <div class="card">
       <h2>Enregistrer un paiement</h2>
       <form id="f-reg" class="form-grid" style="margin-top:10px">
@@ -3046,6 +3523,67 @@ async function vueReglements() {
   $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
   chargerRemises();
 }
+
+// Journal des encaissements : agrégat par moyen de paiement sur la période.
+window.chargerJournalEncaissements = async () => {
+  const du = $('#jr-du').value, au = $('#jr-au').value;
+  const zone = $('#jr-resultat');
+  zone.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { lignes, total } = await api(`/api/reglements/journal?du=${du}&au=${au}`);
+    if (!lignes.length) { zone.innerHTML = '<p class="muted">Aucun encaissement sur cette période.</p>'; return; }
+    zone.innerHTML = `<table><thead><tr><th>Moyen de paiement</th><th class="right">Nombre</th><th class="right">Montant</th></tr></thead>
+      <tbody>${lignes.map((m) => `<tr><td>${esc(m.libelle)}</td><td class="right">${m.nb}</td><td class="right"><strong>${eur(m.montant)}</strong></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td class="right"><strong>TOTAL</strong></td><td class="right"><strong>${total.nb}</strong></td><td class="right"><strong>${eur(total.montant)}</strong></td></tr></tfoot></table>`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+// Rapprochement factures / règlements : par facture, ses règlements et son solde.
+window.chargerRapprochement = async () => {
+  const du = $('#rp-du').value, au = $('#rp-au').value;
+  const zone = $('#rp-resultat');
+  zone.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { lignes, non_affectes, total } = await api(`/api/factures/rapprochement?du=${du}&au=${au}`);
+    if (!lignes.length && !(non_affectes || []).length) { zone.innerHTML = '<p class="muted">Aucune facture ni règlement sur cette période.</p>'; return; }
+    const cls = (s) => Number(s) > 0.005 ? 'neg' : 'pos';
+    const cartes = lignes.map((f) => `
+      <div style="border:1px solid var(--hairline);border-radius:11px;padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <div><strong>${esc(f.numero)}</strong> <span class="muted" style="font-size:12.5px">· ${dfr(f.date_emission)} · ${esc(f.client)}${f.compte_client ? ' · ' + esc(f.compte_client) : ''}</span></div>
+          <span class="badge ${f.statut}">${lib(f.statut)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:13px">
+          <span class="muted">Total TTC <strong>${eur(f.total_ttc)}</strong></span>
+          <span class="muted">Réglé <strong>${eur(f.montant_regle)}</strong></span>
+          <span class="muted">Solde <strong class="fiche-solde ${cls(f.solde)}">${eur(f.solde)}</strong></span>
+        </div>
+        ${f.reglements.length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--hairline);display:flex;flex-direction:column;gap:3px">
+          ${f.reglements.map((g) => `<div style="display:flex;justify-content:space-between;font-size:12.5px;gap:10px"><span class="muted">${esc(g.mode)}${g.reference ? ' · ' + esc(g.reference) : ''} <span style="opacity:.7">${dfr(g.date_reglement)}</span></span><span>${eur(g.montant)}</span></div>`).join('')}
+        </div>` : '<div class="muted" style="margin-top:6px;font-size:12.5px">Aucun règlement affecté.</div>'}
+      </div>`).join('');
+    zone.innerHTML = `
+      <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:12px 14px;margin-bottom:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span class="muted">${total.nb} facture${total.nb > 1 ? 's' : ''} · Total <strong>${eur(total.factures)}</strong></span>
+        <span class="muted">Réglé <strong>${eur(total.regles)}</strong> · Reste dû <strong class="fiche-solde ${cls(total.solde)}">${eur(total.solde)}</strong></span>
+      </div>
+      ${cartes || '<p class="muted">Aucune facture sur cette période.</p>'}
+      ${(non_affectes || []).length ? `
+        <h2 style="margin:18px 0 4px">Règlements non affectés <span class="map-count">${eur(total.non_affecte)}</span></h2>
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Encaissés sur la période mais non rattachés (totalement ou en partie) à une facture — acomptes, avances, trop-perçus.</p>
+        ${non_affectes.map((g) => `
+          <div style="border:1px solid var(--hairline);border-radius:11px;padding:10px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <strong>${esc(g.client)}</strong>
+              <div class="muted" style="font-size:12.5px">${esc(g.mode)}${g.reference ? ' · ' + esc(g.reference) : ''} · ${dfr(g.date_reglement)}</div>
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <strong class="fiche-solde neg">${eur(g.reste)}</strong>
+              ${g.affecte > 0 ? `<div class="muted" style="font-size:11.5px">sur ${eur(g.montant)} (affecté ${eur(g.affecte)})</div>` : ''}
+            </div>
+          </div>`).join('')}` : ''}`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
 
 // Remises en banque : un bordereau par moyen de paiement (chèques ≠ ANCV).
 async function chargerRemises() {
@@ -3234,11 +3772,73 @@ async function vueCompta() {
         <button class="btn btn-primary" onclick="telechargerExport('/api/compta/fec?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'FEC_' + $('#exp-fin').value + '.txt')">Export FEC</button>
         <button class="btn btn-ghost" onclick="telechargerExport('/api/compta/export.csv?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'ecritures_' + $('#exp-debut').value + '_' + $('#exp-fin').value + '.csv')">Écritures CSV</button>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Clôture d'exercice — soldes clients</h2></div>
+      <p class="muted">Report à nouveau : le solde de chaque client (dû ou crédit) est reporté à l'ouverture de l'exercice suivant. Clôturer scelle les soldes de l'exercice (non modifiables ensuite) et fige le report à nouveau.</p>
+      <div id="exercices-zone" style="margin-top:12px"><p class="muted">Chargement…</p></div>
     </div>`;
   majApercuCompte();
+  chargerExercices();
   $('#cc-racine').addEventListener('input', majApercuCompte);
   $('#cc-lng').addEventListener('input', majApercuCompte);
 }
+
+// --- Clôture des exercices : liste, aperçu des soldes, scellement, exports ---
+async function chargerExercices() {
+  const zone = $('#exercices-zone');
+  if (!zone) return;
+  try {
+    const { exercices } = await api('/api/exercices');
+    if (!exercices.length) { zone.innerHTML = '<p class="muted">Aucun exercice avec activité.</p>'; return; }
+    zone.innerHTML = `
+      <table><thead><tr><th>Exercice</th><th>Période</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${exercices.map((e) => `<tr>
+        <td><strong>${e.label}</strong>${e.courant ? ' <span class="badge emise">en cours</span>' : ''}</td>
+        <td class="muted">${dfr(e.debut)} → ${dfr(e.fin)}</td>
+        <td>${e.scelle ? `<span class="badge reglee">clôturé</span>${e.scellee_at ? ` <span class="muted" style="font-size:11.5px">${dfr(e.scellee_at)}</span>` : ''}` : '<span class="badge emise">ouvert</span>'}</td>
+        <td class="right" style="white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" onclick="voirSoldesExercice(${e.annee})">Soldes</button>
+          <button class="btn btn-ghost btn-sm" onclick="telechargerExport('/api/exercices/${e.annee}/soldes.csv','soldes_${e.label.replace('/', '-')}.csv')">CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="telechargerExport('/api/exercices/${e.annee}/soldes.pdf','soldes_${e.label.replace('/', '-')}.pdf')">PDF</button>
+          ${e.scelle ? '' : `<button class="btn btn-primary btn-sm" onclick="cloturerExercice(${e.annee},'${e.label}')">Clôturer</button>`}
+        </td></tr>`).join('')}</tbody></table>
+      <div id="soldes-detail" style="margin-top:14px"></div>`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+}
+
+window.voirSoldesExercice = async (annee) => {
+  const zone = $('#soldes-detail');
+  zone.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { label, debut, fin, scelle, lignes, totaux } = await api('/api/exercices/' + annee + '/soldes');
+    if (!lignes.length) { zone.innerHTML = `<p class="muted">Aucun solde sur l'exercice ${esc(label)}.</p>`; return; }
+    const cls = (s) => Number(s) > 0.005 ? 'neg' : (Number(s) < -0.005 ? 'pos' : '');
+    zone.innerHTML = `
+      <h2 style="margin:6px 0">Soldes ${esc(label)} <span class="muted" style="font-weight:400;font-size:13px">${dfr(debut)} → ${dfr(fin)}${scelle ? ' · clôturé' : ''}</span></h2>
+      <table><thead><tr><th>Compte</th><th>Client</th><th class="right">Report</th><th class="right">Facturé</th><th class="right">Réglé</th><th class="right">Solde clôture</th></tr></thead>
+      <tbody>${lignes.map((l) => `<tr>
+        <td class="muted">${esc(l.compte_comptable || '—')}</td><td>${esc(l.nom)}</td>
+        <td class="right">${eur(l.report_ouverture)}</td><td class="right">${eur(l.facture)}</td><td class="right">${eur(l.regle)}</td>
+        <td class="right"><strong class="fiche-solde ${cls(l.solde_cloture)}">${eur(l.solde_cloture)}</strong></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td></td><td><strong>TOTAL</strong></td>
+        <td class="right"><strong>${eur(totaux.report_ouverture)}</strong></td>
+        <td class="right"><strong>${eur(totaux.facture)}</strong></td>
+        <td class="right"><strong>${eur(totaux.regle)}</strong></td>
+        <td class="right"><strong>${eur(totaux.solde_cloture)}</strong></td></tr></tfoot></table>`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.cloturerExercice = async (annee, label) => {
+  if (!await askConfirm(`Clôturer l'exercice ${label} ? Les soldes de clôture de chaque client seront scellés (non modifiables) et deviendront le report à nouveau de l'exercice suivant.`,
+    { titre: 'Clôturer l\'exercice', ok: 'Clôturer', danger: true })) return;
+  try {
+    const r = await api('/api/exercices/' + annee + '/cloturer', { method: 'POST' });
+    toast(`Exercice ${label} clôturé — ${r.residents} client(s) scellés`);
+    chargerExercices();
+  } catch (e) { toast(e.message, true); }
+};
 
 function majApercuCompte() {
   const r = ($('#cc-racine')?.value || '411').replace(/[^0-9A-Za-z]/g, '');
@@ -3423,67 +4023,4 @@ boot();
   window.addEventListener('hashchange', () => { build(); majCompteur(); });
   [800, 2500].forEach((t) => setTimeout(() => { build(); majCompteur(); }, t));
   setInterval(() => { build(); majCompteur(); }, 25000);
-})();
-
-/* ==================== NOTIFICATIONS PUSH (app gestion) ==================== */
-/* Actif uniquement dans l'app native (Capacitor). Sur le web, ce bloc ne fait rien. */
-(function () {
-  const PN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
-  if (!PN) return;
-
-  const plateforme = () => (window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : 'ios');
-  let dejaFait = false;
-  let monToken = null;
-
-  async function enregistrer() {
-    if (dejaFait || !TOKEN || !ACTIVE_CAMPING) return;   // il faut une session + un camping actif
-    dejaFait = true;
-    try {
-      let perm = await PN.checkPermissions();
-      if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
-        perm = await PN.requestPermissions();
-      }
-      if (perm.receive !== 'granted') { console.log('[push] permission refusée'); return; }
-
-      PN.addListener('registration', async (t) => {
-        monToken = t.value;
-        try {
-          await api('/api/push/register', { method: 'POST', body: { token: t.value, platform: plateforme() } });
-          console.log('[push] appareil enregistré');
-        } catch (e) { console.error('[push] enregistrement :', e.message); }
-      });
-
-      PN.addListener('registrationError', (e) => console.error('[push] erreur FCM :', JSON.stringify(e)));
-
-      // Notification reçue app ouverte : on rafraîchit la vue (badge de la cloche).
-      PN.addListener('pushNotificationReceived', () => { try { route(); } catch { /* ignore */ } });
-
-      // Tap sur la notification : lien profond vers la fiche concernée.
-      PN.addListener('pushNotificationActionPerformed', (action) => {
-        const d = (action && action.notification && action.notification.data) || {};
-        setTimeout(() => {
-          if (d.type === 'nouveau_message') location.hash = '#/messagerie';
-          else if (d.type === 'relance' || d.type === 'paiement_recu') location.hash = '#/impayes';
-          else if (d.entite === 'facture') location.hash = '#/factures';
-        }, 300);
-      });
-
-      await PN.register();
-    } catch (e) { console.error('[push] init :', e.message); }
-  }
-
-  // Déconnexion : on retire le jeton de cet appareil.
-  const _logout = window.logout || logout;
-  window.logout = function () {
-    if (monToken && TOKEN) {
-      api('/api/push/register', { method: 'DELETE', body: { token: monToken } }).catch(() => {});
-    }
-    dejaFait = false; monToken = null;
-    return _logout.apply(this, arguments);
-  };
-  const btn = document.getElementById('logout-btn');
-  if (btn) { btn.replaceWith(btn.cloneNode(true)); document.getElementById('logout-btn').addEventListener('click', window.logout); }
-
-  window.addEventListener('hashchange', enregistrer);
-  [1500, 4000].forEach((t) => setTimeout(enregistrer, t));
 })();
