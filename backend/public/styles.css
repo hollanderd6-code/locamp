@@ -184,6 +184,8 @@ a.brand-side:focus-visible{outline:2px solid var(--laiton-vif);outline-offset:2p
 .kpi{position:relative;background:var(--carte);border:1px solid var(--hairline);border-radius:var(--r);
   padding:19px 21px 17px;box-shadow:var(--shadow-s);overflow:hidden;transition:box-shadow .2s, transform .2s var(--ease)}
 .kpi:hover{box-shadow:var(--shadow-m);transform:translateY(-2px)}
+.kpi.clickable{cursor:pointer}
+.kpi.clickable:active{transform:translateY(0)}
 .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sapin);opacity:.85}
 .kpi.warn::after{background:var(--laiton)}
 .kpi.bad::after{background:var(--rouge)}

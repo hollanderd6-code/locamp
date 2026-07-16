@@ -10,16 +10,38 @@ function joursRetard(dateEmission, delai) {
 
 // Liste les factures impayées d'un camping avec reste dû, retard et balance âgée.
 async function listImpayes(campingId) {
+  const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
   const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
   const delai = Number(camp?.parametres?.facturation?.delai_paiement ?? 30);
-  const { data: factures } = await supabase.from('factures')
-    .select('id,numero,resident_id,total_ttc,montant_regle,date_emission,statut')
-    .eq('camping_id', campingId).in('statut', ['emise', 'partielle', 'en_retard']);
+  const [{ data: factures }, { data: regs }] = await Promise.all([
+    supabase.from('factures')
+      .select('id,numero,resident_id,total_ttc,montant_regle,date_emission,statut')
+      .eq('camping_id', campingId).in('statut', ['emise', 'partielle', 'en_retard']),
+    supabase.from('reglements').select('resident_id,montant,affectations').eq('camping_id', campingId),
+  ]);
+
+  // Crédit encaissé mais NON affecté, par résident : il éteint virtuellement les impayés
+  // (un client avec une avance n'est pas « impayé »), exactement comme le ferait le lettrage.
+  const credit = {};
+  (regs || []).forEach((g) => {
+    if (!g.resident_id) return;
+    const aff = (g.affectations || []).reduce((x, a) => x + Number((a && a.montant) || 0), 0);
+    credit[g.resident_id] = r2((credit[g.resident_id] || 0) + Math.max(0, Number(g.montant || 0) - aff));
+  });
 
   const impayes = [];
   const aging = { a_echoir: 0, j0_30: 0, j31_60: 0, j61_90: 0, j90_plus: 0 };
-  for (const f of (factures || [])) {
-    const reste = Math.round((Number(f.total_ttc) - Number(f.montant_regle)) * 100) / 100;
+  // Plus anciennes d'abord : le crédit absorbe les factures dans le bon ordre.
+  const facts = (factures || []).slice().sort((a, b) => String(a.date_emission).localeCompare(String(b.date_emission)));
+  for (const f of facts) {
+    let reste = r2(Number(f.total_ttc) - Number(f.montant_regle));
+    if (reste <= 0) continue;
+    const cr = credit[f.resident_id] || 0;
+    if (cr > 0) {
+      const absorbe = Math.min(cr, reste);
+      reste = r2(reste - absorbe);
+      credit[f.resident_id] = r2(cr - absorbe);
+    }
     if (reste <= 0) continue;
     const jr = joursRetard(f.date_emission, delai);
     impayes.push({ id: f.id, numero: f.numero, resident_id: f.resident_id, reste, jours_retard: jr, en_retard: jr > 0 });
@@ -29,8 +51,8 @@ async function listImpayes(campingId) {
     else if (jr <= 90) aging.j61_90 += reste;
     else aging.j90_plus += reste;
   }
-  for (const k in aging) aging[k] = Math.round(aging[k] * 100) / 100;
-  return { delai, impayes, aging, total_du: Math.round(impayes.reduce((s, f) => s + f.reste, 0) * 100) / 100 };
+  for (const k in aging) aging[k] = r2(aging[k]);
+  return { delai, impayes, aging, total_du: r2(impayes.reduce((s, f) => s + f.reste, 0)) };
 }
 
 // Envoie les relances pour les factures en retard.

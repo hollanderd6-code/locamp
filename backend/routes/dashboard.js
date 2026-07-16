@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
     const total = emplacements.length;
 
     const fmois = facturesMois.data || [];
-    const caMois = Math.round(fmois.filter((f) => !['avoir', 'annulee'].includes(f.statut))
+    const caMois = Math.round(fmois.filter((f) => !['avoir', 'annulee', 'brouillon'].includes(f.statut))
       .reduce((s, f) => s + Number(f.total_ttc || 0), 0) * 100) / 100;
     const parStatut = {};
     fmois.forEach((f) => { parStatut[f.statut] = (parStatut[f.statut] || 0) + 1; });

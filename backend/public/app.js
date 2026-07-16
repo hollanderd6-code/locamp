@@ -390,12 +390,12 @@ async function vueDashboard() {
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
+      <div class="kpi clickable" onclick="location.hash='#/emplacements'"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
         <div class="l">Emplacements occupés · ${d.occupation.taux} %</div></div>
-      <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
-      <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div>
+      <div class="kpi clickable" onclick="location.hash='#/factures'"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
+      <div class="kpi clickable ${d.impayes.total_du > 0 ? 'bad' : ''}" onclick="location.hash='#/impayes'"><div class="v">${eur(d.impayes.total_du)}</div>
         <div class="l">Impayés · ${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}</div></div>
-      <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div>
+      <div class="kpi clickable ${aFacturer > 0 ? 'warn' : ''}" onclick="location.hash='#/factures'"><div class="v">${eur(aFacturer)}</div>
         <div class="l">Prestations à facturer</div></div>
     </div>
 
