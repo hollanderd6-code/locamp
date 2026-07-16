@@ -455,4 +455,36 @@ router.post('/notifications/tout-lu', async (req, res) => {
   } catch (e) { console.error('[portail:notif-tout-lu]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// ---------- Notifications push (app locataire) ----------
+
+// POST /api/portail/push/register  { token, platform }
+// Enregistre le jeton FCM de l'appareil du résident (idempotent : upsert sur le jeton).
+router.post('/push/register', async (req, res) => {
+  try {
+    const { token, platform } = req.body || {};
+    if (!token) return res.status(400).json({ error: 'token requis' });
+    const { enregistrerToken } = require('../lib/push');
+    const out = await enregistrerToken({
+      campingId: req.resident.camping_id, canal: 'portail',
+      residentId: req.resident.id, token, platform, app: 'portail',
+    });
+    if (out.error) throw new Error(out.error);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[portail:push-register]', e.message);
+    res.status(500).json({ error: 'Erreur serveur — la migration db/16_push_tokens.sql a-t-elle été exécutée ?' });
+  }
+});
+
+// DELETE /api/portail/push/register  { token }  -> à la déconnexion
+router.delete('/push/register', async (req, res) => {
+  try {
+    const token = (req.body && req.body.token) || req.query.token;
+    if (!token) return res.status(400).json({ error: 'token requis' });
+    await supabase.from('push_tokens').delete()
+      .eq('resident_id', req.resident.id).eq('token', token);
+    res.json({ ok: true });
+  } catch (e) { console.error('[portail:push-delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;

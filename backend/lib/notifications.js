@@ -39,6 +39,12 @@ async function creerNotifsStaff(campingId, {
     }));
     const { error: errIns } = await supabase.from('notifications').insert(rows);
     if (errIns) throw errIns;
+
+    // Push sur les appareils du staff concerné (best-effort : n'échoue jamais vers l'appelant).
+    require('./push').pushStaff(cibles.map((m) => m.user_id), {
+      titre, corps, donnees: { type, entite: entite || '', entite_id: entite_id || '' },
+    }).catch((e) => console.error('[notifications:push-staff]', e.message));
+
     return { inserees: rows.length };
   } catch (e) {
     console.error('[notifications:staff]', e.message);
@@ -57,6 +63,12 @@ async function creerNotifResident(campingId, residentId, {
       type, titre, corps, entite, entite_id, lien, donnees: donnees || {},
     });
     if (error) throw error;
+
+    // Push sur les appareils du résident (best-effort).
+    require('./push').pushResident(residentId, {
+      titre, corps, donnees: { type, entite: entite || '', entite_id: entite_id || '' },
+    }).catch((e) => console.error('[notifications:push-resident]', e.message));
+
     return { inseree: true };
   } catch (e) {
     console.error('[notifications:resident]', e.message);
