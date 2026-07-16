@@ -661,7 +661,10 @@ function renderCarte() {
           <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
           <button class="btn btn-primary btn-sm" onclick="saveCarte()" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
         </div>`
-        : `<button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>`}
+        : `<div class="map-tools">
+          <button class="btn btn-ghost btn-sm" onclick="imprimerCarte()">Imprimer</button>
+          <button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>
+        </div>`}
     </div>
     ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
     ${edit ? '' : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
@@ -956,6 +959,45 @@ function attacherHandle(h, svg) {
 }
 
 /* ------------------------------ actions ------------------------------ */
+
+// Impression du plan : fenêtre propre avec le SVG (fond compris) + la légende, en paysage.
+window.imprimerCarte = () => {
+  const svg = document.querySelector('.map-svg');
+  if (!svg) { toast('Ouvre la carte avant d\u2019imprimer', true); return; }
+  const legend = document.querySelector('.map-legend');
+  const nom = (CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) || {}).nom || 'Camping';
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+  const w = window.open('', '_blank', 'width=1200,height=850');
+  if (!w) { toast('Autorise les pop-ups pour imprimer le plan', true); return; }
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Plan — ${esc(nom)}</title>
+    <style>
+      @page{size:A4 landscape;margin:8mm}
+      *{box-sizing:border-box}
+      body{margin:0;padding:14px;font-family:system-ui,-apple-system,sans-serif;color:#2b2b26}
+      .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+      .hd h1{font-size:17px;margin:0}
+      .hd .dt{font-size:12px;color:#777}
+      svg{width:100%;height:auto;border:1px solid #e3ddcf;border-radius:8px}
+      .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin-top:12px;color:#444}
+      .legend>span{display:inline-flex;align-items:center}
+      .legend .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px}
+      @media print{body{padding:0}.legend{margin-top:8px}}
+    </style></head><body>
+    <div class="hd"><h1>${esc(nom)} — plan du camping</h1><span class="dt">${dateStr}</span></div>
+    ${svg.outerHTML}
+    ${legend ? `<div class="legend">${legend.innerHTML}</div>` : ''}
+  </body></html>`);
+  w.document.close();
+  const go = () => { try { w.focus(); w.print(); } catch (_) { /* ignore */ } };
+  const img = w.document.querySelector('svg image');   // attendre le fond si présent
+  if (img) {
+    let done = false; const once = () => { if (done) return; done = true; go(); };
+    img.addEventListener('load', once); img.addEventListener('error', once);
+    setTimeout(once, 1500);                             // filet de sécurité
+  } else {
+    w.onload = go;
+  }
+};
 
 // Plan de fond : upload du scan, opacité (avec aperçu immédiat), retrait.
 window.uploadCarteFond = async (file) => {
