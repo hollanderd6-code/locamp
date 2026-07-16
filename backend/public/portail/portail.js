@@ -687,56 +687,55 @@ $('#sig-signer').addEventListener('click', async () => {
 })();
 
 /* ==================== NOTIFICATIONS PUSH (app locataire) ==================== */
-/* Actif uniquement dans l'app native (Capacitor). Sur le web, ce bloc ne fait rien. */
+/* Plugin @capacitor-firebase/messaging : renvoie un vrai jeton FCM sur iOS ET Android.
+   (@capacitor/push-notifications renverrait le jeton APNs brut sur iOS, que FCM rejette.)
+   Sur le web, ce bloc ne fait rien. */
 (function () {
-  const PN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
-  if (!PN) return;   // navigateur : pas de push natif
+  const FM = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseMessaging;
+  if (!FM) return;
 
   const plateforme = () => (window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : 'ios');
   let dejaFait = false;
   let monToken = null;
 
+  async function envoyerToken(token) {
+    if (!token) return;
+    monToken = token;
+    try {
+      await api('/api/portail/push/register', { method: 'POST', body: { token, platform: plateforme() } });
+      console.log('[push] appareil enregistré');
+    } catch (e) { console.error('[push] enregistrement refusé par le serveur :', e.message); }
+  }
+
   async function enregistrer() {
     if (dejaFait || !RTOKEN) return;
     dejaFait = true;
     try {
-      // iOS exige une demande explicite ; Android 13+ aussi.
-      let perm = await PN.checkPermissions();
-      if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
-        perm = await PN.requestPermissions();
-      }
-      if (perm.receive !== 'granted') {
-        console.log('[push] permission refusée par le locataire');
-        return;
-      }
+      const perm = await FM.requestPermissions();
+      if (perm.receive !== 'granted') { console.log('[push] permission refusée'); return; }
 
-      PN.addListener('registration', async (t) => {
-        monToken = t.value;
-        try {
-          await api('/api/portail/push/register', { method: 'POST', body: { token: t.value, platform: plateforme() } });
-          console.log('[push] appareil enregistré');
-        } catch (e) { console.error('[push] enregistrement :', e.message); }
-      });
-
-      PN.addListener('registrationError', (e) => console.error('[push] erreur FCM :', JSON.stringify(e)));
+      // Jeton renouvelé par Firebase (rare, mais il faut le suivre).
+      FM.addListener('tokenReceived', (e) => envoyerToken(e && e.token));
 
       // Notification reçue app au premier plan : on rafraîchit la cloche.
-      PN.addListener('pushNotificationReceived', () => {
+      FM.addListener('notificationReceived', () => {
         if (typeof chargerEspace === 'function') chargerEspace().catch(() => {});
       });
 
-      // L'utilisateur tape la notification : on ouvre l'espace au bon endroit.
-      PN.addListener('pushNotificationActionPerformed', (action) => {
+      // L'utilisateur tape la notification.
+      FM.addListener('notificationActionPerformed', (action) => {
         const d = (action && action.notification && action.notification.data) || {};
         const cible = d.type === 'nouveau_message' ? '#fil-messages' : '#liste-factures';
         setTimeout(() => { const el = $(cible); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 400);
       });
 
-      await PN.register();
-    } catch (e) { console.error('[push] init :', e.message); }
+      const { token } = await FM.getToken();
+      console.log('[push] jeton FCM obtenu');
+      await envoyerToken(token);
+    } catch (e) { console.error('[push] init :', e && e.message); dejaFait = false; }
   }
 
-  // À la déconnexion : on retire le jeton pour ne plus recevoir les push de ce compte.
+  // Déconnexion : on retire le jeton de cet appareil.
   const _logout = window.logout || logout;
   window.logout = function () {
     if (monToken && RTOKEN) {
@@ -748,7 +747,6 @@ $('#sig-signer').addEventListener('click', async () => {
   const btn = document.getElementById('btn-logout');
   if (btn) { btn.replaceWith(btn.cloneNode(true)); document.getElementById('btn-logout').addEventListener('click', window.logout); }
 
-  // On enregistre dès que la session locataire est établie.
   if (typeof chargerEspace === 'function') {
     const _charger = chargerEspace;
     // eslint-disable-next-line no-global-assign
