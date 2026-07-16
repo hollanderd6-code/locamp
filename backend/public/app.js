@@ -598,7 +598,7 @@ function dessinerElement(el, edit) {
       ${allee ? `<line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="#F7F2E4" stroke-width="16" stroke-linecap="round"></line>` : ''}
       ${lib && allee ? `<g transform="rotate(${angle} ${mx} ${my})">
         <rect class="celem-allee-bg" fill="#F7F2E4" stroke="#E4DCC8" x="${mx - larg / 2}" y="${my - 8}" width="${larg}" height="16" rx="8"></rect>
-        <text class="celem-allee" x="${mx}" y="${my}">${esc(lib)}</text></g>` : ''}
+        <text class="celem-allee" text-anchor="middle" dominant-baseline="middle" fill="#7E7358" font-family="Inter, system-ui, sans-serif" font-size="10.5" font-weight="600" x="${mx}" y="${my}">${esc(lib)}</text></g>` : ''}
       ${edit && sel ? `<circle class="handle" data-h="a" cx="${v.x}" cy="${v.y}" r="7"></circle>
                        <circle class="handle" data-h="b" cx="${x2}" cy="${y2}" r="7"></circle>` : ''}
     </g>`;
@@ -616,7 +616,7 @@ function dessinerElement(el, edit) {
 
   if (def.forme === 'texte') {
     return `<g class="${cls}" data-id="${v.id}" data-kind="elem" transform="translate(${v.x},${v.y})">
-      <text class="celem-libre">${esc(lib || 'Texte')}</text>
+      <text class="celem-libre" text-anchor="middle" dominant-baseline="middle" fill="#3E5A4B" font-family="Fraunces, Georgia, serif" font-size="15" font-weight="600">${esc(lib || 'Texte')}</text>
     </g>`;
   }
 
@@ -628,7 +628,7 @@ function dessinerElement(el, edit) {
       ${zone ? 'opacity=".55" stroke="#9FB8A8" stroke-dasharray="7 6"' : 'stroke="rgba(255,255,255,.35)"'} stroke-width="1.5"></rect>
     ${!zone && def.icone ? `<path d="${def.icone}" transform="translate(${w / 2 - 12}, ${h / 2 - 21})"
       fill="none" stroke="${def.fg}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".9"></path>` : ''}
-    <text class="celem-lib" x="${w / 2}" y="${zone ? h / 2 : h / 2 + 20}" fill="${zone ? '#3E5A4B' : def.fg}">${esc(lib)}</text>
+    <text class="celem-lib" text-anchor="middle" dominant-baseline="middle" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="700" x="${w / 2}" y="${zone ? h / 2 : h / 2 + 20}" fill="${zone ? '#3E5A4B' : def.fg}">${esc(lib)}</text>
     ${edit && sel ? `<circle class="handle" data-h="size" cx="${w}" cy="${h}" r="7"></circle>` : ''}
   </g>`;
 }
@@ -646,7 +646,7 @@ function renderCarte() {
     const y = carteClamp(c.coord_y, CARTE_PAD, CARTE_H - CARTE_PAD);
     const sel = st.selected?.kind === 'emp' && st.selected.id === e.id ? ' selected' : '';
     return `<g class="pin${sel}" data-id="${e.id}" data-kind="emp" transform="translate(${x},${y})">
-      <circle r="13" fill="${carteColor(e)}"></circle><text>${esc(e.numero)}</text></g>`;
+      <circle r="13" fill="${carteColor(e)}"></circle><text text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="Inter, system-ui, sans-serif" font-size="10" font-weight="700">${esc(e.numero)}</text></g>`;
   }).join('');
 
   const n = nbModifs();
