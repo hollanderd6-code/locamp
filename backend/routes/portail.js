@@ -294,6 +294,22 @@ router.post('/messages', async (req, res) => {
     }).select('id,auteur,corps,created_at').single();
     if (error) throw error;
     await auditPortail(req, req.resident, 'portail_message', { entite: 'messages', entite_id: data.id });
+
+    // Notifier le staff (cloche + push). Best-effort : ne bloque jamais l'envoi du message.
+    (async () => {
+      const { creerNotifsStaff } = require('../lib/notifications');
+      const { data: r } = await supabase.from('residents').select('nom,prenom')
+        .eq('id', req.resident.id).maybeSingle();
+      const nom = `${(r && r.prenom) || ''} ${(r && r.nom) || ''}`.trim() || 'Un résident';
+      await creerNotifsStaff(req.resident.camping_id, {
+        type: 'nouveau_message', perm: 'messagerie',
+        titre: `Nouveau message de ${nom}`,
+        corps: corps.slice(0, 140),
+        entite: 'message', entite_id: data.id,
+        donnees: { resident_id: req.resident.id },
+      });
+    })().catch((e) => console.error('[portail:message notif]', e.message));
+
     res.status(201).json({ message: data });
   } catch (e) { console.error('[portail:message]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });

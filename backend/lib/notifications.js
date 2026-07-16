@@ -31,7 +31,11 @@ async function creerNotifsStaff(campingId, {
         catch { return true; }
       });
     }
-    if (!cibles.length) return { inserees: 0 };
+    if (!cibles.length) {
+      console.log(`[notifications:staff] aucun destinataire pour « ${type} »`
+        + (perm ? ` (aucun membre n'a le droit « ${perm} »)` : ' (aucun membre sur ce camping)'));
+      return { inserees: 0 };
+    }
 
     const rows = cibles.map((m) => ({
       camping_id: campingId, canal: 'staff', destinataire_user_id: m.user_id,
