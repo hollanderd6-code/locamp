@@ -1487,16 +1487,16 @@ window.chargerReleve = async (id, annee) => {
           </div>
           <div class="toolbar">
             <select id="rel-annee" style="width:auto" onchange="chargerReleve('${id}', this.value)">
-              ${d.annees.map((a) => `<option value="${a}"${a === d.annee ? ' selected' : ''}>${a}</option>`).join('') || `<option>${d.annee}</option>`}
+              ${(d.exercices || []).map((e) => `<option value="${e.annee}"${e.annee === d.annee ? ' selected' : ''}>${e.label}${e.scelle ? ' 🔒' : ''}</option>`).join('') || `<option>${d.exercice_label || d.annee}</option>`}
             </select>
             <button class="btn btn-primary btn-sm" onclick="relevePdf('${id}')">Relevé PDF</button>
           </div>
         </div>
 
         <div class="kpis" style="margin-top:14px">
-          <div class="kpi"><div class="v">${eur(d.report_a_nouveau)}</div><div class="l">Report au 1ᵉʳ janvier</div></div>
-          <div class="kpi"><div class="v">${eur(d.totaux.facture)}</div><div class="l">Facturé en ${d.annee}</div></div>
-          <div class="kpi"><div class="v">${eur(d.totaux.regle)}</div><div class="l">Réglé en ${d.annee}</div></div>
+          <div class="kpi"><div class="v">${eur(d.report_a_nouveau)}</div><div class="l">Report à l'ouverture (${dfr(d.exercice_debut)})</div></div>
+          <div class="kpi"><div class="v">${eur(d.totaux.facture)}</div><div class="l">Facturé en ${d.exercice_label}</div></div>
+          <div class="kpi"><div class="v">${eur(d.totaux.regle)}</div><div class="l">Réglé en ${d.exercice_label}</div></div>
           <div class="kpi ${du ? 'bad' : ''}"><div class="v">${eur(d.solde_total)}</div>
             <div class="l">${du ? 'Reste dû aujourd\u2019hui' : credit ? 'Avoir en sa faveur' : 'Compte soldé ✓'}</div></div>
         </div>
@@ -1505,8 +1505,8 @@ window.chargerReleve = async (id, annee) => {
           <thead><tr><th>Date</th><th>Opération</th><th class="right">Débit</th><th class="right">Crédit</th><th class="right">Solde</th><th></th></tr></thead>
           <tbody>
             <tr class="rel-report">
-              <td class="muted">01/01/${d.annee}</td>
-              <td class="muted"><em>Report à nouveau</em></td>
+              <td class="muted">${dfr(d.exercice_debut)}</td>
+              <td class="muted"><em>Report à nouveau</em>${d.scelle ? ' <span class="badge reglee">exercice clôturé</span>' : ''}</td>
               <td></td><td></td>
               <td class="right"><strong>${eur(d.report_a_nouveau)}</strong></td><td></td>
             </tr>
@@ -1522,7 +1522,7 @@ window.chargerReleve = async (id, annee) => {
               <td class="right" data-l="Crédit" style="color:var(--sapin)">${l.credit ? eur(l.credit) : ''}</td>
               <td class="right" data-l="Solde"><strong>${eur(l.solde)}</strong></td>
               <td class="right">${l.facture_id ? `<button class="btn btn-ghost btn-sm" onclick="pdfFacture('${l.facture_id}')">PDF</button>` : ''}</td>
-            </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cette année.</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cet exercice.</td></tr>'}
           </tbody>
           <tfoot><tr class="rel-total">
             <td colspan="2"><strong>Total ${d.annee}</strong></td>
@@ -3075,6 +3075,8 @@ async function vueParametres() {
         <label class="full">Message e-mail (paragraphe ajouté au corps)<input name="message_email" value="${esc(fp.message_email || '')}"></label>
         <label>Expéditeur e-mail<input name="email_exp" type="email" value="${esc(fp.email || '')}"></label>
         <label>Envoi auto de la facture<select name="email_auto"><option value="true"${fp.email_auto === false ? '' : ' selected'}>Activé</option><option value="false"${fp.email_auto === false ? ' selected' : ''}>Désactivé</option></select></label>
+        <label>Début de l'exercice fiscal<select name="exercice_debut_mois">${['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => `<option value="${i + 1}"${Number(p.exercice_debut_mois || 1) === i + 1 ? ' selected' : ''}>1er ${m}</option>`).join('')}</select></label>
+        <p class="muted full" style="margin:0">L'exercice dure 12 mois à partir de ce mois. Les relevés de compte et les clôtures de soldes suivent cet exercice (pas l'année civile).</p>
         <div class="full"><button class="btn btn-primary">Enregistrer la facturation</button></div>
       </form>
     </div>
@@ -3675,11 +3677,73 @@ async function vueCompta() {
         <button class="btn btn-primary" onclick="telechargerExport('/api/compta/fec?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'FEC_' + $('#exp-fin').value + '.txt')">Export FEC</button>
         <button class="btn btn-ghost" onclick="telechargerExport('/api/compta/export.csv?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'ecritures_' + $('#exp-debut').value + '_' + $('#exp-fin').value + '.csv')">Écritures CSV</button>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-actions"><h2>Clôture d'exercice — soldes clients</h2></div>
+      <p class="muted">Report à nouveau : le solde de chaque client (dû ou crédit) est reporté à l'ouverture de l'exercice suivant. Clôturer scelle les soldes de l'exercice (non modifiables ensuite) et fige le report à nouveau.</p>
+      <div id="exercices-zone" style="margin-top:12px"><p class="muted">Chargement…</p></div>
     </div>`;
   majApercuCompte();
+  chargerExercices();
   $('#cc-racine').addEventListener('input', majApercuCompte);
   $('#cc-lng').addEventListener('input', majApercuCompte);
 }
+
+// --- Clôture des exercices : liste, aperçu des soldes, scellement, exports ---
+async function chargerExercices() {
+  const zone = $('#exercices-zone');
+  if (!zone) return;
+  try {
+    const { exercices } = await api('/api/exercices');
+    if (!exercices.length) { zone.innerHTML = '<p class="muted">Aucun exercice avec activité.</p>'; return; }
+    zone.innerHTML = `
+      <table><thead><tr><th>Exercice</th><th>Période</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${exercices.map((e) => `<tr>
+        <td><strong>${e.label}</strong>${e.courant ? ' <span class="badge emise">en cours</span>' : ''}</td>
+        <td class="muted">${dfr(e.debut)} → ${dfr(e.fin)}</td>
+        <td>${e.scelle ? `<span class="badge reglee">clôturé</span>${e.scellee_at ? ` <span class="muted" style="font-size:11.5px">${dfr(e.scellee_at)}</span>` : ''}` : '<span class="badge emise">ouvert</span>'}</td>
+        <td class="right" style="white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" onclick="voirSoldesExercice(${e.annee})">Soldes</button>
+          <button class="btn btn-ghost btn-sm" onclick="telechargerExport('/api/exercices/${e.annee}/soldes.csv','soldes_${e.label.replace('/', '-')}.csv')">CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="telechargerExport('/api/exercices/${e.annee}/soldes.pdf','soldes_${e.label.replace('/', '-')}.pdf')">PDF</button>
+          ${e.scelle ? '' : `<button class="btn btn-primary btn-sm" onclick="cloturerExercice(${e.annee},'${e.label}')">Clôturer</button>`}
+        </td></tr>`).join('')}</tbody></table>
+      <div id="soldes-detail" style="margin-top:14px"></div>`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+}
+
+window.voirSoldesExercice = async (annee) => {
+  const zone = $('#soldes-detail');
+  zone.innerHTML = '<p class="muted">Chargement…</p>';
+  try {
+    const { label, debut, fin, scelle, lignes, totaux } = await api('/api/exercices/' + annee + '/soldes');
+    if (!lignes.length) { zone.innerHTML = `<p class="muted">Aucun solde sur l'exercice ${esc(label)}.</p>`; return; }
+    const cls = (s) => Number(s) > 0.005 ? 'neg' : (Number(s) < -0.005 ? 'pos' : '');
+    zone.innerHTML = `
+      <h2 style="margin:6px 0">Soldes ${esc(label)} <span class="muted" style="font-weight:400;font-size:13px">${dfr(debut)} → ${dfr(fin)}${scelle ? ' · clôturé' : ''}</span></h2>
+      <table><thead><tr><th>Compte</th><th>Client</th><th class="right">Report</th><th class="right">Facturé</th><th class="right">Réglé</th><th class="right">Solde clôture</th></tr></thead>
+      <tbody>${lignes.map((l) => `<tr>
+        <td class="muted">${esc(l.compte_comptable || '—')}</td><td>${esc(l.nom)}</td>
+        <td class="right">${eur(l.report_ouverture)}</td><td class="right">${eur(l.facture)}</td><td class="right">${eur(l.regle)}</td>
+        <td class="right"><strong class="fiche-solde ${cls(l.solde_cloture)}">${eur(l.solde_cloture)}</strong></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td></td><td><strong>TOTAL</strong></td>
+        <td class="right"><strong>${eur(totaux.report_ouverture)}</strong></td>
+        <td class="right"><strong>${eur(totaux.facture)}</strong></td>
+        <td class="right"><strong>${eur(totaux.regle)}</strong></td>
+        <td class="right"><strong>${eur(totaux.solde_cloture)}</strong></td></tr></tfoot></table>`;
+  } catch (e) { zone.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.cloturerExercice = async (annee, label) => {
+  if (!await askConfirm(`Clôturer l'exercice ${label} ? Les soldes de clôture de chaque client seront scellés (non modifiables) et deviendront le report à nouveau de l'exercice suivant.`,
+    { titre: 'Clôturer l\'exercice', ok: 'Clôturer', danger: true })) return;
+  try {
+    const r = await api('/api/exercices/' + annee + '/cloturer', { method: 'POST' });
+    toast(`Exercice ${label} clôturé — ${r.residents} client(s) scellés`);
+    chargerExercices();
+  } catch (e) { toast(e.message, true); }
+};
 
 function majApercuCompte() {
   const r = ($('#cc-racine')?.value || '411').replace(/[^0-9A-Za-z]/g, '');
