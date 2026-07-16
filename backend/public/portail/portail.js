@@ -687,55 +687,58 @@ $('#sig-signer').addEventListener('click', async () => {
 })();
 
 /* ==================== NOTIFICATIONS PUSH (app locataire) ==================== */
-/* Plugin @capacitor-firebase/messaging : renvoie un vrai jeton FCM sur iOS ET Android.
-   (@capacitor/push-notifications renverrait le jeton APNs brut sur iOS, que FCM rejette.)
-   Sur le web, ce bloc ne fait rien. */
+/* Mode diagnostic : les étapes s'affichent à l'écran (toast) pour identifier
+   où ça bloque sans console. À alléger une fois le push fonctionnel. */
 (function () {
-  const FM = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseMessaging;
-  if (!FM) return;
+  const dbg = (m, err) => { try { toast('PUSH · ' + m, !!err); } catch { /* ignore */ } console.log('[push] ' + m); };
 
-  const plateforme = () => (window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : 'ios');
+  const CAP = window.Capacitor;
+  if (!CAP) return;                       // navigateur : aucun push natif, on sort en silence
+  const FM = CAP.Plugins && CAP.Plugins.FirebaseMessaging;
+  if (!FM) { setTimeout(() => dbg('plugin FirebaseMessaging introuvable (npx cap sync + rebuild ?)', true), 3000); return; }
+
+  const plateforme = () => (CAP.getPlatform ? CAP.getPlatform() : 'ios');
   let dejaFait = false;
   let monToken = null;
 
   async function envoyerToken(token) {
-    if (!token) return;
+    if (!token) { dbg('jeton vide renvoyé par Firebase', true); return; }
     monToken = token;
     try {
       await api('/api/portail/push/register', { method: 'POST', body: { token, platform: plateforme() } });
-      console.log('[push] appareil enregistré');
-    } catch (e) { console.error('[push] enregistrement refusé par le serveur :', e.message); }
+      dbg('OK — appareil enregistré');
+    } catch (e) { dbg('serveur refuse : ' + (e && e.message), true); }
   }
 
   async function enregistrer() {
-    if (dejaFait || !RTOKEN) return;
+    if (dejaFait) return;
+    if (!RTOKEN) { dbg('pas encore connecté, on attendra'); return; }
     dejaFait = true;
     try {
+      dbg('1/3 demande de permission…');
       const perm = await FM.requestPermissions();
-      if (perm.receive !== 'granted') { console.log('[push] permission refusée'); return; }
+      if (perm.receive !== 'granted') { dbg('permission refusée (' + perm.receive + ')', true); return; }
 
-      // Jeton renouvelé par Firebase (rare, mais il faut le suivre).
       FM.addListener('tokenReceived', (e) => envoyerToken(e && e.token));
-
-      // Notification reçue app au premier plan : on rafraîchit la cloche.
       FM.addListener('notificationReceived', () => {
         if (typeof chargerEspace === 'function') chargerEspace().catch(() => {});
       });
-
-      // L'utilisateur tape la notification.
       FM.addListener('notificationActionPerformed', (action) => {
         const d = (action && action.notification && action.notification.data) || {};
         const cible = d.type === 'nouveau_message' ? '#fil-messages' : '#liste-factures';
         setTimeout(() => { const el = $(cible); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 400);
       });
 
-      const { token } = await FM.getToken();
-      console.log('[push] jeton FCM obtenu');
-      await envoyerToken(token);
-    } catch (e) { console.error('[push] init :', e && e.message); dejaFait = false; }
+      dbg('2/3 demande du jeton FCM…');
+      const res = await FM.getToken();
+      dbg('3/3 jeton obtenu');
+      await envoyerToken(res && res.token);
+    } catch (e) {
+      dejaFait = false;
+      dbg('ERREUR : ' + (e && (e.message || e.errorMessage || JSON.stringify(e))), true);
+    }
   }
 
-  // Déconnexion : on retire le jeton de cet appareil.
   const _logout = window.logout || logout;
   window.logout = function () {
     if (monToken && RTOKEN) {
@@ -752,5 +755,5 @@ $('#sig-signer').addEventListener('click', async () => {
     // eslint-disable-next-line no-global-assign
     chargerEspace = async function () { const r = await _charger.apply(this, arguments); enregistrer(); return r; };
   }
-  setTimeout(enregistrer, 2500);
+  setTimeout(enregistrer, 3000);
 })();
