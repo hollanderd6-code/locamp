@@ -534,10 +534,11 @@ const snap = (v) => Math.round(v / SNAP) * SNAP;
 const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 async function vueCarte() {
-  const [{ emplacements }, imp, elemRes] = await Promise.all([
+  const [{ emplacements }, imp, elemRes, fondRes] = await Promise.all([
     api('/api/emplacements/carte'),
     api('/api/relances/impayes'),
     api('/api/carte-elements').catch(() => ({ elements: [], migration_manquante: true })),
+    api('/api/camping/carte-fond').catch(() => ({ url: null })),
   ]);
   const enRetard = new Set();
   for (const f of imp.impayes || []) if (f.en_retard) enRetard.add(f.resident_id);
@@ -551,6 +552,7 @@ async function vueCarte() {
     })),
     migrationManquante: !!elemRes.migration_manquante,
     enRetard,
+    fond: fondRes && fondRes.url ? { url: fondRes.url, opacite: fondRes.opacite ?? 0.6 } : { url: null },
     mode: 'view',
     dirty: new Map(),
     dirtyElems: new Map(),
@@ -668,6 +670,7 @@ function renderCarte() {
       <div>
         <div class="map-wrap${edit ? ' editing' : ''}">
           <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
+            ${st.fond && st.fond.url ? `<image href="${st.fond.url}" x="0" y="0" width="${CARTE_W}" height="${CARTE_H}" preserveAspectRatio="xMidYMid meet" opacity="${st.fond.opacite ?? 0.6}"></image>` : ''}
             <g class="layer-decor">${decor}</g>
             <g class="layer-pins">${pins}</g>
           </svg>
@@ -684,6 +687,20 @@ function renderCarte() {
 
       ${edit ? `<aside class="map-panel">
         <div id="map-props"></div>
+        <div class="map-panel-sec">
+          <h3>Plan de fond</h3>
+          ${st.fond && st.fond.url ? `
+            <img src="${st.fond.url}" alt="Plan de fond" style="width:100%;border-radius:8px;border:1px solid var(--hairline);display:block;margin-bottom:8px">
+            <label class="map-fond-lbl">Opacité</label>
+            <input type="range" min="0.1" max="1" step="0.05" value="${st.fond.opacite ?? 0.6}" oninput="setCarteFondOpacite(this.value)" class="map-fond-range">
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <label class="btn btn-ghost btn-sm" style="flex:1;text-align:center;cursor:pointer;margin:0">Remplacer<input type="file" accept="image/*" onchange="uploadCarteFond(this.files[0])" hidden></label>
+              <button class="btn btn-ghost btn-sm" onclick="removeCarteFond()">Retirer</button>
+            </div>`
+          : `
+            <p class="muted" style="font-size:12.5px;margin-bottom:8px;line-height:1.4">Téléverse un scan de ton plan papier, puis place simplement les emplacements par-dessus.</p>
+            <label class="btn btn-primary btn-sm" style="width:100%;text-align:center;cursor:pointer;margin:0">Téléverser un plan<input type="file" accept="image/*" onchange="uploadCarteFond(this.files[0])" hidden></label>`}
+        </div>
         <div class="map-panel-sec">
           <h3>Ajouter</h3>
           ${Object.entries(groupes).map(([g, items]) => `
@@ -939,6 +956,42 @@ function attacherHandle(h, svg) {
 }
 
 /* ------------------------------ actions ------------------------------ */
+
+// Plan de fond : upload du scan, opacité (avec aperçu immédiat), retrait.
+window.uploadCarteFond = async (file) => {
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { toast('Image trop lourde (4 Mo max).', true); return; }
+  const fd = new FormData(); fd.append('file', file);
+  toast('Téléversement du plan…');
+  try {
+    const r = await api('/api/camping/carte-fond', { method: 'POST', body: fd });
+    carteState.fond = { url: r.url, opacite: r.opacite ?? 0.6 };
+    renderCarte();
+    toast('Plan de fond ajouté');
+  } catch (e) { toast(e.message || 'Échec du téléversement', true); }
+};
+
+window.setCarteFondOpacite = (v) => {
+  if (!carteState.fond) return;
+  const op = Number(v);
+  carteState.fond.opacite = op;
+  const img = document.querySelector('.map-svg image');
+  if (img) img.setAttribute('opacity', op);           // aperçu immédiat, sans re-render
+  clearTimeout(carteState._opTimer);
+  carteState._opTimer = setTimeout(() => {
+    api('/api/camping/carte-fond', { method: 'PUT', body: { opacite: op } }).catch(() => {});
+  }, 400);                                             // enregistrement différé (anti-spam)
+};
+
+window.removeCarteFond = async () => {
+  if (!await askConfirm('Retirer le plan de fond de la carte ?', { titre: 'Retirer le plan', ok: 'Retirer', danger: true })) return;
+  try {
+    await api('/api/camping/carte-fond', { method: 'DELETE' });
+    carteState.fond = { url: null };
+    renderCarte();
+    toast('Plan de fond retiré');
+  } catch (e) { toast(e.message, true); }
+};
 
 window.toggleCarteEdit = () => {
   carteState.mode = 'edit';

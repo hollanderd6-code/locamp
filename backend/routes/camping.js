@@ -57,6 +57,70 @@ router.post('/logo', requireRole('admin'), upload.single('file'), async (req, re
   } catch (e) { console.error('[camping:logo]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// ---- Plan de fond de la carte (scan du plan papier du camping) ----
+// Stocké dans parametres.carte_fond = { path, w, h, opacite }. Pas de migration.
+// GET -> URL signée + opacité ; POST -> upload ; PUT -> opacité ; DELETE -> retrait.
+router.get('/carte-fond', async (req, res) => {
+  try {
+    const { data } = await supabase.from('campings').select('parametres').eq('id', req.activeCampingId).maybeSingle();
+    const f = (data?.parametres || {}).carte_fond || null;
+    if (!f?.path) return res.json({ url: null, opacite: null });
+    res.json({ url: await signedUrl(f.path, 3600), opacite: f.opacite ?? 0.6, w: f.w || null, h: f.h || null });
+  } catch (e) { console.error('[camping:carte-fond:get]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+router.post('/carte-fond', requireRole('admin', 'gestionnaire'), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Fichier manquant (champ "file")' });
+    let img; let meta;
+    try {
+      const s = sharp(req.file.buffer).rotate();               // respecte l'orientation EXIF des scans photo
+      meta = await s.metadata();
+      img = await s.resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
+        .flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer();
+    } catch (_) {
+      return res.status(400).json({ error: 'Image illisible. Utilise un PNG ou un JPEG.' });
+    }
+    const path = `plans/${req.activeCampingId}.jpg`;
+    const { error: upErr } = await supabase.storage.from(BUCKET)
+      .upload(path, img, { contentType: 'image/jpeg', upsert: true });
+    if (upErr) throw upErr;
+    const { data: c } = await supabase.from('campings').select('parametres').eq('id', req.activeCampingId).maybeSingle();
+    const parametres = { ...(c?.parametres || {}) };
+    const opacite = parametres.carte_fond?.opacite ?? 0.6;
+    parametres.carte_fond = { path, w: meta?.width || null, h: meta?.height || null, opacite };
+    await supabase.from('campings').update({ parametres }).eq('id', req.activeCampingId);
+    await writeAudit(req, { action: 'update', entite: 'campings', entite_id: req.activeCampingId, apres: { carte_fond: path } });
+    res.json({ ok: true, url: await signedUrl(path, 3600), opacite });
+  } catch (e) { console.error('[camping:carte-fond]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+router.put('/carte-fond', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const op = Math.max(0.1, Math.min(1, Number(req.body?.opacite)));
+    if (!Number.isFinite(op)) return res.status(400).json({ error: 'opacite invalide' });
+    const { data: c } = await supabase.from('campings').select('parametres').eq('id', req.activeCampingId).maybeSingle();
+    const parametres = { ...(c?.parametres || {}) };
+    if (!parametres.carte_fond?.path) return res.status(404).json({ error: 'Aucun plan de fond' });
+    parametres.carte_fond = { ...parametres.carte_fond, opacite: op };
+    await supabase.from('campings').update({ parametres }).eq('id', req.activeCampingId);
+    res.json({ ok: true, opacite: op });
+  } catch (e) { console.error('[camping:carte-fond:put]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+router.delete('/carte-fond', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: c } = await supabase.from('campings').select('parametres').eq('id', req.activeCampingId).maybeSingle();
+    const parametres = { ...(c?.parametres || {}) };
+    const path = parametres.carte_fond?.path;
+    if (path) { try { await supabase.storage.from(BUCKET).remove([path]); } catch (_) { /* best effort */ } }
+    delete parametres.carte_fond;
+    await supabase.from('campings').update({ parametres }).eq('id', req.activeCampingId);
+    await writeAudit(req, { action: 'update', entite: 'campings', entite_id: req.activeCampingId, apres: { carte_fond: null } });
+    res.json({ ok: true });
+  } catch (e) { console.error('[camping:carte-fond:del]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // POST /api/camping  -> crée un nouvel espace camping ; le créateur en devient admin.
 // Volontairement hors requireRole : il s'agit de créer un camping, pas d'agir sur l'actif.
 router.post('/', async (req, res) => {
