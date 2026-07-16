@@ -1,362 +1,398 @@
+// ============================================================
+//  Signature électronique — module Node (backend)
+//  Règlement eIDAS (UE) n° 910/2014 · art. 1366-1367 du Code civil.
+//  Signature simple : valeur juridique = faisceau de preuves
+//  (identification, consentement exprès, intégrité SHA-256, horodatage, IP).
+//
+//  ⚠️ pdf-lib est chargé en LAZY-REQUIRE dans signerDocument : si la
+//  dépendance venait à manquer, le module se charge quand même (le serveur
+//  boote) et seule la signature renvoie une erreur propre.
+// ============================================================
 const crypto = require('crypto');
-const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 
-/* ============================================================
-   Signature électronique — eIDAS (UE) 910/2014, art. 1366-1367 du Code civil
+const CONSENTEMENT =
+  "En cochant cette case et en signant, je reconnais avoir lu et compris le document, "
+  + "et j'accepte de le signer par voie électronique. Je reconnais que ma signature "
+  + "électronique a la même valeur juridique qu'une signature manuscrite (règlement "
+  + "eIDAS n° 910/2014). J'accepte que la date, l'heure, mon adresse IP et mon navigateur "
+  + "soient enregistrés à titre de preuve.";
 
-   Signature SIMPLE : sa force probante ne vient pas d'un certificat qualifié,
-   mais du FAISCEAU DE PREUVES qu'on constitue autour :
-     • identification du signataire (compte portail + e-mail)
-     • consentement exprès (case cochée, phrase enregistrée telle qu'affichée)
-     • intégrité (empreinte SHA-256 du document avant / après signature)
-     • horodatage serveur
-     • adresse IP et navigateur
-     • piste d'audit (envoi, ouverture, signature)
-   Le tout figé dans un dossier de preuve inaltérable, et un certificat annexé au PDF.
-   ============================================================ */
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
 
-const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+async function nbPages(buffer) {
+  try {
+    const s = Buffer.isBuffer(buffer) ? buffer.toString('latin1') : String(buffer || '');
+    const parType = [...s.matchAll(/\/Type\s*\/Pages\b[\s\S]{0,120}?\/Count\s+(\d+)/g)].map((m) => +m[1]);
+    if (parType.length) return Math.max(...parType);
+    const counts = [...s.matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
+    if (counts.length) return Math.max(...counts);
+    const pages = (s.match(/\/Type\s*\/Page(?![s])/g) || []).length;
+    return pages || 1;
+  } catch { return 1; }
+}
 
-/** Un champ = { page, x, y, w, h, type, label, requis }  (coordonnées en % de la page) */
-const TYPES_CHAMP = ['signature', 'texte', 'case', 'date', 'nom'];
+function normaliserChamps(champs) {
+  if (!Array.isArray(champs)) return [];
+  const TYPES = new Set(['signature', 'texte', 'case']);
+  const num = (v) => (v == null || v === '' || isNaN(Number(v)) ? undefined : Number(v));
+  return champs.slice(0, 100).map((c, i) => {
+    const o = c && typeof c === 'object' ? c : {};
+    let type = String(o.type || 'texte').toLowerCase();
+    if (type === 'text') type = 'texte';
+    if (type === 'checkbox') type = 'case';
+    if (!TYPES.has(type)) type = 'texte';
+    const out = {
+      id: String(o.id || `z${i + 1}`).slice(0, 60),
+      type,
+      label: o.label != null ? String(o.label).slice(0, 300) : null,
+      requis: o.requis === undefined ? true : !!o.requis,
+    };
+    for (const k of ['page', 'x', 'y', 'w', 'h']) { const n = num(o[k]); if (n !== undefined) out[k] = n; }
+    if (out.page === undefined) out.page = 1;
+    return out;
+  });
+}
 
-/**
- * Appose les champs remplis sur le PDF d'origine, puis annexe le certificat de preuve.
- * @returns {Buffer} PDF signé
- */
-async function apposerSignature({ pdfOriginal, champs = [], valeurs = {}, signaturePng, preuve }) {
-  const doc = await PDFDocument.load(pdfOriginal);
-  const pages = doc.getPages();
-  const helv = await doc.embedFont(StandardFonts.Helvetica);
-  const helvB = await doc.embedFont(StandardFonts.HelveticaBold);
+/* ---------- helpers internes ---------- */
+function toWinAnsi(s) {
+  return String(s == null ? '' : s)
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function slug(s) {
+  return String(s || 'document').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'document';
+}
 
-  let imgSig = null;
-  if (signaturePng) {
-    const b64 = String(signaturePng).replace(/^data:image\/png;base64,/, '');
-    try { imgSig = await doc.embedPng(Buffer.from(b64, 'base64')); }
-    catch (e) { console.error('[signature:png]', e.message); }
+async function apposerChamps(pdfDoc, lib, champs, valeurs, signaturePngBase64) {
+  const { StandardFonts, rgb } = lib;
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pages = pdfDoc.getPages();
+  const vert = rgb(0.09, 0.32, 0.26);
+  const encre = rgb(0.08, 0.16, 0.25);
+
+  let sigImage = null;
+  if (signaturePngBase64) {
+    try { sigImage = await pdfDoc.embedPng(signaturePngBase64); }
+    catch (e) { console.error('[signature] embedPng:', e.message); }
   }
 
-  for (const c of champs) {
-    const page = pages[Math.min(Number(c.page || 1) - 1, pages.length - 1)];
+  for (const c of (champs || [])) {
+    const page = pages[(Number(c.page) || 1) - 1];
     if (!page) continue;
     const { width: W, height: H } = page.getSize();
+    const bx = ((Number(c.x) || 0) / 100) * W;
+    const bw = ((Number(c.w) || 0) / 100) * W;
+    const bh = ((Number(c.h) || 0) / 100) * H;
+    const by = H - ((Number(c.y) || 0) / 100) * H - bh;
 
-    // les coordonnées sont en % (origine en haut à gauche) ; PDF a l'origine en bas à gauche
-    const x = (Number(c.x) / 100) * W;
-    const w = (Number(c.w) / 100) * W;
-    const h = (Number(c.h) / 100) * H;
-    const y = H - (Number(c.y) / 100) * H - h;
-    const v = valeurs[c.id];
-
-    if (c.type === 'signature' && imgSig) {
-      // conserve le rapport d'aspect du tracé
-      const r = Math.min(w / imgSig.width, h / imgSig.height);
-      const iw = imgSig.width * r, ih = imgSig.height * r;
-      page.drawImage(imgSig, { x: x + (w - iw) / 2, y: y + (h - ih) / 2, width: iw, height: ih });
-      page.drawLine({ start: { x, y: y - 2 }, end: { x: x + w, y: y - 2 },
-        thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
-      page.drawText(`Signé électroniquement le ${new Date(preuve.horodatage).toLocaleString('fr-FR')}`,
-        { x, y: y - 11, size: 6, font: helv, color: rgb(0.45, 0.45, 0.45) });
-    } else if (c.type === 'case') {
-      const s = Math.min(h, 12);
-      page.drawRectangle({ x, y: y + h - s, width: s, height: s,
-        borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.8 });
-      if (v === true || v === 'true' || v === 'on') {
-        page.drawText('X', { x: x + 2.5, y: y + h - s + 2.5, size: s - 4, font: helvB, color: rgb(0.1, 0.1, 0.1) });
+    if (c.type === 'signature' && sigImage) {
+      const ratio = sigImage.width / sigImage.height || 1;
+      let dw = bw, dh = bw / ratio;
+      if (dh > bh) { dh = bh; dw = bh * ratio; }
+      page.drawImage(sigImage, { x: bx + (bw - dw) / 2, y: by + (bh - dh) / 2, width: dw, height: dh });
+    } else if (c.type === 'case' && valeurs[c.id] === true) {
+      const s = Math.max(8, Math.min(bh, 13));
+      const cx = bx, cy = by + (bh - s) / 2;
+      page.drawRectangle({ x: cx, y: cy, width: s, height: s, borderColor: vert, borderWidth: 1 });
+      page.drawLine({ start: { x: cx + 2, y: cy + 2 }, end: { x: cx + s - 2, y: cy + s - 2 }, thickness: 1.4, color: vert });
+      page.drawLine({ start: { x: cx + 2, y: cy + s - 2 }, end: { x: cx + s - 2, y: cy + 2 }, thickness: 1.4, color: vert });
+    } else if (c.type === 'texte') {
+      const val = toWinAnsi(valeurs[c.id]);
+      if (val) {
+        const size = Math.max(7, Math.min(bh * 0.75, 12));
+        page.drawText(val, { x: bx + 2, y: by + (bh - size) / 2, size, font, color: encre, maxWidth: Math.max(10, bw - 4) });
       }
-      if (c.label) {
-        page.drawText(String(c.label), { x: x + s + 5, y: y + h - s + 2, size: 8, font: helv,
-          color: rgb(0.15, 0.15, 0.15), maxWidth: Math.max(20, w - s - 8) });
-      }
-    } else if (v != null && String(v).trim() !== '') {
-      page.drawText(String(v), { x, y: y + h - 10, size: 9.5, font: helv,
-        color: rgb(0.1, 0.1, 0.1), maxWidth: Math.max(20, w), lineHeight: 11 });
     }
   }
-
-  await annexerCertificat(doc, helv, helvB, preuve);
-  return Buffer.from(await doc.save());
 }
 
-/** Page annexe : le certificat de preuve, produit en cas de contestation. */
-async function annexerCertificat(doc, helv, helvB, p) {
-  const page = doc.addPage([595.28, 841.89]);   // A4
-  const { width: W, height: H } = page.getSize();
-  const VERT = rgb(0.09, 0.32, 0.26);
-  const GRIS = rgb(0.35, 0.35, 0.35);
-  let y = H - 60;
+async function ajouterCertificat(pdfDoc, lib, infos) {
+  const { StandardFonts, rgb } = lib;
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const page = pdfDoc.addPage([595.28, 841.89]);
+  const M = 56;
+  const larg = 595.28 - M * 2;
+  let y = 841.89 - M;
+  const vert = rgb(0.09, 0.32, 0.26);
+  const gris = rgb(0.42, 0.42, 0.42);
+  const noir = rgb(0.12, 0.16, 0.22);
 
-  const t = (txt, { s = 9, f = helv, c = rgb(0.13, 0.13, 0.13), x = 50, dy = 14, max = W - 100 } = {}) => {
-    page.drawText(String(txt), { x, y, size: s, font: f, color: c, maxWidth: max, lineHeight: s + 3 });
-    y -= dy;
+  const line = (txt, { f = font, size = 10.5, color = noir, gap = 16, x = M } = {}) => {
+    page.drawText(toWinAnsi(txt), { x, y, size, font: f, color, maxWidth: larg });
+    y -= gap;
+  };
+  const paire = (k, v) => {
+    page.drawText(toWinAnsi(k), { x: M, y, size: 10, font: bold, color: gris, maxWidth: 150 });
+    page.drawText(toWinAnsi(v), { x: M + 155, y, size: 10, font, color: noir, maxWidth: larg - 155 });
+    y -= 17;
   };
 
-  page.drawText('CERTIFICAT DE SIGNATURE ÉLECTRONIQUE', {
-    x: 50, y, size: 15, font: helvB, color: VERT });
-  y -= 18;
-  t('Règlement eIDAS (UE) n° 910/2014 — articles 1366 et 1367 du Code civil', { s: 8, c: GRIS, dy: 26 });
+  line('Certificat de signature electronique', { f: bold, size: 17, color: vert, gap: 10 });
+  line('Signature electronique simple — reglement eIDAS (UE) n\u00b0 910/2014', { size: 9, color: gris, gap: 22 });
+  page.drawLine({ start: { x: M, y: y + 6 }, end: { x: 595.28 - M, y: y + 6 }, thickness: 0.8, color: rgb(0.85, 0.85, 0.8) });
+  y -= 10;
 
-  page.drawLine({ start: { x: 50, y }, end: { x: W - 50, y }, thickness: 0.6, color: rgb(0.85, 0.85, 0.85) });
-  y -= 20;
+  paire('Document', infos.titre);
+  paire('Signataire', infos.signataireNom);
+  if (infos.signataireEmail) paire('E-mail', infos.signataireEmail);
+  paire('Date et heure', infos.dateStr);
+  paire('Adresse IP', infos.ip);
+  if (infos.userAgent) paire('Navigateur', String(infos.userAgent).slice(0, 90));
+  y -= 6;
+  paire('Empreinte (doc. presente)', '');
+  line(infos.hashOriginal, { size: 8, color: gris, gap: 14, x: M });
+  paire('Empreinte (doc. signe)', '');
+  line(infos.hashSigne, { size: 8, color: gris, gap: 18, x: M });
+  page.drawLine({ start: { x: M, y: y + 4 }, end: { x: 595.28 - M, y: y + 4 }, thickness: 0.8, color: rgb(0.85, 0.85, 0.8) });
+  y -= 12;
 
-  const bloc = (titre, lignes) => {
-    page.drawText(titre, { x: 50, y, size: 9.5, font: helvB, color: VERT });
-    y -= 15;
-    for (const [k, v] of lignes) {
-      page.drawText(k, { x: 58, y, size: 8, font: helvB, color: GRIS });
-      page.drawText(String(v ?? '—'), { x: 175, y, size: 8, font: helv,
-        color: rgb(0.1, 0.1, 0.1), maxWidth: W - 230 });
-      y -= 13;
-    }
-    y -= 8;
-  };
+  line('Consentement exprime par le signataire :', { f: bold, size: 10, gap: 15 });
+  page.drawText(toWinAnsi(infos.consentement), { x: M, y, size: 9.5, font, color: noir, maxWidth: larg, lineHeight: 13 });
+  y -= 72;
 
-  // L'empreinte du fichier signé ne peut pas figurer DANS ce fichier (elle serait
-  // circulaire) : elle est calculée après apposition et conservée au dossier de preuve.
-  bloc('Document signé', [
-    ['Titre', p.titre],
-    ['Empreinte du document présenté', p.hash_original],
-    ['Algorithme', 'SHA-256'],
-  ]);
-
-  bloc('Signataire', [
-    ['Nom', p.signataire_nom],
-    ['Adresse e-mail', p.signataire_email],
-    ['Authentification', p.canal === 'portail'
-      ? 'Espace locataire — session authentifiée (accès par lien à usage unique envoyé à cette adresse e-mail)'
-      : 'Lien de signature personnel envoyé à l\u2019adresse e-mail ci-dessus'],
-  ]);
-
-  bloc('Preuves techniques', [
-    ['Date et heure', new Date(p.horodatage).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }) + ' (heure de Paris)'],
-    ['Adresse IP', p.ip],
-    ['Navigateur', (p.user_agent || '—').slice(0, 90)],
-  ]);
-
-  page.drawText('Consentement recueilli', { x: 50, y, size: 9.5, font: helvB, color: VERT });
-  y -= 15;
-  page.drawText(`« ${p.consentement} »`, { x: 58, y, size: 8, font: helv,
-    color: rgb(0.1, 0.1, 0.1), maxWidth: W - 116, lineHeight: 11 });
-  y -= 34;
-
-  if (Array.isArray(p.evenements) && p.evenements.length) {
-    page.drawText('Piste d\u2019audit', { x: 50, y, size: 9.5, font: helvB, color: VERT });
-    y -= 15;
-    for (const e of p.evenements.slice(0, 8)) {
-      page.drawText(`${new Date(e.date).toLocaleString('fr-FR')} — ${e.libelle}`,
-        { x: 58, y, size: 7.5, font: helv, color: rgb(0.25, 0.25, 0.25) });
-      y -= 11;
-    }
-    y -= 10;
+  if (infos.sigImage) {
+    line('Signature manuscrite :', { f: bold, size: 10, gap: 8 });
+    const ratio = infos.sigImage.width / infos.sigImage.height || 3;
+    const dw = Math.min(200, larg), dh = dw / ratio;
+    page.drawRectangle({ x: M, y: y - dh - 6, width: dw + 12, height: dh + 12, borderColor: rgb(0.85, 0.85, 0.8), borderWidth: 1 });
+    page.drawImage(infos.sigImage, { x: M + 6, y: y - dh, width: dw, height: dh });
+    y -= dh + 22;
   }
 
-  // Encadré d'intégrité
-  page.drawRectangle({ x: 50, y: y - 44, width: W - 100, height: 44,
-    color: rgb(0.95, 0.94, 0.90) });
-  page.drawText('Intégrité du document', { x: 60, y: y - 15, size: 8.5, font: helvB, color: rgb(0.1, 0.1, 0.1) });
-  page.drawText('Toute modification ultérieure du document rendrait son empreinte SHA-256 différente '
-    + 'de celle consignée ci-dessus, révélant l\u2019altération.',
-    { x: 60, y: y - 30, size: 7.5, font: helv, color: GRIS, maxWidth: W - 120, lineHeight: 10 });
-
-  page.drawText(`Certificat émis par Locamp le ${new Date().toLocaleString('fr-FR')}. `
-    + 'Document conservé dans un dossier de preuve non modifiable.',
-    { x: 50, y: 40, size: 6.5, font: helv, color: rgb(0.6, 0.6, 0.6), maxWidth: W - 100 });
+  page.drawText(toWinAnsi('Ce certificat atteste l\'integrite du document par empreinte SHA-256. '
+    + 'Toute alteration ulterieure invaliderait cette empreinte.'), {
+    x: M, y: M, size: 8, font, color: gris, maxWidth: larg, lineHeight: 11,
+  });
 }
 
-/** Nombre de pages d'un PDF (pour l'éditeur de zones). */
-async function nbPages(pdfBuffer) {
+/* ---------- Piste d'audit ---------- */
+// Ajoute un événement horodaté au document (équivalent du « détail de la
+// transaction » d'un prestataire de confiance). Best-effort : jamais bloquant.
+async function tracer(docId, libelle, { ip = null, detail = null } = {}) {
   try {
-    const d = await PDFDocument.load(pdfBuffer);
-    return d.getPageCount();
-  } catch (e) { return 1; }
+    const { supabase } = require('./supabase');
+    const { data } = await supabase.from('documents_signature')
+      .select('evenements').eq('id', docId).maybeSingle();
+    const evts = Array.isArray(data && data.evenements) ? data.evenements : [];
+    evts.push({ date: new Date().toISOString(), libelle, ip, detail });
+    await supabase.from('documents_signature')
+      .update({ evenements: evts.slice(-100) }).eq('id', docId);
+  } catch (e) { console.error('[signature:tracer]', e.message); }
 }
 
-/** Normalise et valide les zones posées sur le document. */
-function normaliserChamps(champs) {
-  const out = [];
-  for (const c of (Array.isArray(champs) ? champs : [])) {
-    if (!TYPES_CHAMP.includes(c.type)) continue;
-    out.push({
-      id: String(c.id || crypto.randomUUID()),
-      type: c.type,
-      page: Math.max(1, Number(c.page || 1)),
-      x: Math.min(100, Math.max(0, Number(c.x) || 0)),
-      y: Math.min(100, Math.max(0, Number(c.y) || 0)),
-      w: Math.min(100, Math.max(1, Number(c.w) || 20)),
-      h: Math.min(100, Math.max(1, Number(c.h) || 6)),
-      label: c.label ? String(c.label).slice(0, 120) : null,
-      requis: c.requis !== false,
-    });
-  }
-  return out;
+/* ---------- Identification par code à usage unique (SMS) ---------- */
+const OTP_VALIDITE_MIN = 10;
+const OTP_MAX_TENTATIVES = 5;
+const hashOtp = (code, docId) => crypto.createHash('sha256').update(`${docId}:${code}`).digest('hex');
+
+// Masque un numéro pour l'affichage : +33612345678 -> +33 .. .. .. 78
+function masquer(tel) {
+  const t = String(tel || '').replace(/\s/g, '');
+  return t.length < 4 ? '\u2022\u2022' : `${t.slice(0, 3)} \u2022\u2022 \u2022\u2022 \u2022\u2022 ${t.slice(-2)}`;
 }
 
-
-/* ============================================================
-   Signature d'un document — implémentation UNIQUE, appelée par :
-     • le portail (résident authentifié)  -> preuve d'identité la plus forte
-     • le lien à usage unique reçu par e-mail
-   Une seule implémentation = un seul jeu de preuves, impossible de diverger.
-   ============================================================ */
-const CONSENTEMENT = 'En cochant cette case et en apposant ma signature, je reconnais avoir pris '
-  + 'connaissance de l\u2019intégralité du document et j\u2019exprime mon consentement à être lié par celui-ci. '
-  + 'Je reconnais à cette signature électronique la même valeur qu\u2019une signature manuscrite.';
-
-async function signerDocument({ campingId, documentId, jeton, residentId, corps, ip, userAgent, canal }) {
+// Envoie un code à 6 chiffres sur le portable du signataire.
+// Le code n'est JAMAIS stocké en clair : seule son empreinte est conservée.
+async function envoyerOtp({ jeton, ip = null } = {}) {
   const { supabase } = require('./supabase');
-  const { downloadDocument, BUCKET } = require('./storage');
+  const { sendSms } = require('./sms');
+  try {
+    const { data: doc } = await supabase.from('documents_signature').select('*')
+      .eq('jeton', jeton).maybeSingle();
+    if (!doc) return { error: 'Lien invalide', code: 404 };
+    if (doc.statut === 'signe') return { error: 'Ce document est déjà signé', code: 409 };
+    if (doc.jeton_expire && new Date(doc.jeton_expire) < new Date()) return { error: 'Ce lien a expiré', code: 410 };
+
+    const { data: r } = doc.resident_id
+      ? await supabase.from('residents').select('telephone').eq('id', doc.resident_id).maybeSingle()
+      : { data: null };
+    const tel = r && r.telephone;
+    if (!tel) return { error: "Aucun numéro de portable n'est enregistré pour vous. Contactez le camping.", code: 400 };
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const expire = new Date(Date.now() + OTP_VALIDITE_MIN * 60000).toISOString();
+    await supabase.from('documents_signature').update({
+      otp_code: hashOtp(code, doc.id), otp_expire: expire,
+      otp_tentatives: 0, otp_valide_at: null, otp_telephone: tel,
+    }).eq('id', doc.id);
+
+    const out = await sendSms(tel, `Locamp \u2014 votre code de signature : ${code} (valable ${OTP_VALIDITE_MIN} min).`);
+    if (out.error) return { error: out.error, code: 502 };
+
+    await tracer(doc.id, "Envoi d'un code SMS", { ip, detail: masquer(tel) });
+    if (out.skipped) console.log('[signature] SMS non configuré \u2014 code de test :', code);
+    return { ok: true, telephone: masquer(tel), expire_dans_min: OTP_VALIDITE_MIN };
+  } catch (e) { console.error('[signature:otp]', e.message); return { error: 'Erreur serveur', code: 500 }; }
+}
+
+// Vérifie le code saisi. Comparaison à temps constant + limite de tentatives.
+async function verifierOtp(doc, code) {
+  const { supabase } = require('./supabase');
+  if (!doc.otp_code) return { error: "Demandez d'abord un code par SMS.", code: 400 };
+  if (!doc.otp_expire || new Date(doc.otp_expire) < new Date()) {
+    return { error: 'Code expiré. Demandez-en un nouveau.', code: 410 };
+  }
+  if ((doc.otp_tentatives || 0) >= OTP_MAX_TENTATIVES) {
+    return { error: 'Trop de tentatives. Demandez un nouveau code.', code: 429 };
+  }
+  const attendu = Buffer.from(doc.otp_code);
+  const fourni = Buffer.from(hashOtp(String(code || '').trim(), doc.id));
+  const ok = attendu.length === fourni.length && crypto.timingSafeEqual(attendu, fourni);
+  if (!ok) {
+    await supabase.from('documents_signature')
+      .update({ otp_tentatives: (doc.otp_tentatives || 0) + 1 }).eq('id', doc.id);
+    return { error: 'Code incorrect.', code: 400 };
+  }
+  await supabase.from('documents_signature')
+    .update({ otp_valide_at: new Date().toISOString(), otp_code: null }).eq('id', doc.id);
+  return { ok: true };
+}
+
+async function signerDocument({ jeton, corps = {}, ip, userAgent, canal } = {}) {
+  let lib;
+  try { lib = require('pdf-lib'); }
+  catch (e) {
+    console.error('[signature] pdf-lib indisponible:', e.message);
+    return { error: 'La signature en ligne est momentanement indisponible. Contactez le camping.', code: 503 };
+  }
+  const { PDFDocument } = lib;
+  const { supabase } = require('./supabase');
+  const { downloadDocument, uploadDocument } = require('./storage');
   const { sendEmail } = require('./email');
 
-  // 1. Le document
-  let q = supabase.from('documents_signature').select('*');
-  q = jeton ? q.eq('jeton', jeton) : q.eq('id', documentId).eq('camping_id', campingId);
-  const { data: doc } = await q.maybeSingle();
-  if (!doc) return { error: 'Document introuvable', code: 404 };
-  if (doc.statut === 'signe') return { error: 'Ce document est déjà signé', code: 409 };
-  if (doc.statut === 'annule') return { error: 'Ce document a été annulé', code: 409 };
-  if (jeton && doc.jeton_expire && new Date(doc.jeton_expire) < new Date()) {
-    return { error: 'Ce lien a expiré. Demandez-en un nouveau au camping.', code: 410 };
-  }
-  if (residentId && doc.resident_id && doc.resident_id !== residentId) {
-    return { error: 'Ce document ne vous est pas destiné', code: 403 };
-  }
-
-  // 2. Consentement explicite — sans lui, pas de signature
-  if (corps.consentement !== true) return { error: 'Le consentement explicite est requis', code: 400 };
-
-  // 3. Champs obligatoires
-  const champs = doc.champs || [];
-  const valeurs = corps.valeurs || {};
-  const signaturePng = corps.signature_png || null;
-  if (champs.some((c) => c.type === 'signature') && !signaturePng) {
-    return { error: 'La signature manuscrite est requise', code: 400 };
-  }
-  for (const c of champs) {
-    if (!c.requis) continue;
-    const v = valeurs[c.id];
-    if (c.type === 'case' && v !== true) return { error: `Case obligatoire : ${c.label || ''}`, code: 400 };
-    if (c.type === 'texte' && (!v || !String(v).trim())) return { error: `Champ obligatoire : ${c.label || ''}`, code: 400 };
-  }
-
-  // 4. INTÉGRITÉ : le document doit être identique à celui déposé.
-  const pdfOriginal = await downloadDocument(doc.storage_path);
-  const hashOriginal = sha256(pdfOriginal);
-  if (hashOriginal !== doc.hash_original) {
-    return { error: 'Le document a été altéré depuis son envoi — signature refusée.', code: 409 };
-  }
-
-  const { data: resident } = doc.resident_id
-    ? await supabase.from('residents').select('nom,prenom,email').eq('id', doc.resident_id).maybeSingle()
-    : { data: null };
-
-  const horodatage = new Date().toISOString();
-  const nom = resident ? `${resident.prenom || ''} ${resident.nom}`.trim() : (valeurs.nom || 'Signataire');
-
-  const evenements = [
-    { date: doc.date_envoi || doc.created_at, libelle: 'Document mis à disposition du signataire' },
-    { date: horodatage,
-      libelle: canal === 'portail'
-        ? 'Signature depuis l\u2019espace locataire (session authentifiée)'
-        : 'Signature via le lien personnel reçu par e-mail',
-      ip },
-  ];
-
-  const preuve = {
-    titre: doc.titre,
-    hash_original: hashOriginal,
-    signataire_nom: nom,
-    signataire_email: resident?.email || null,
-    ip, user_agent: userAgent, horodatage,
-    consentement: CONSENTEMENT,
-    canal,
-    evenements,
-  };
-
-  // 5. Apposition + certificat
-  const pdfSigne = await apposerSignature({ pdfOriginal, champs, valeurs, signaturePng, preuve });
-  const hashSigne = sha256(pdfSigne);
-
-  const cheminSigne = `signatures/${doc.camping_id}/${doc.id}_signe.pdf`;
-  const { error: upErr } = await supabase.storage.from(BUCKET)
-    .upload(cheminSigne, pdfSigne, { contentType: 'application/pdf', upsert: true });
-  if (upErr) throw upErr;
-
-  // 6. Dossier de preuve (table inaltérable)
-  const { error: prErr } = await supabase.from('signatures_preuves').insert({
-    camping_id: doc.camping_id, document_id: doc.id, resident_id: doc.resident_id,
-    signataire_nom: nom, signataire_email: resident?.email || null,
-    ip, user_agent: userAgent, horodatage,
-    consentement: CONSENTEMENT, signature_png: signaturePng,
-    valeurs, hash_original: hashOriginal, hash_signe: hashSigne,
-    evenements,
-  });
-  if (prErr) throw prErr;
-
-  await supabase.from('documents_signature').update({
-    statut: 'signe', storage_signe: cheminSigne, hash_signe: hashSigne,
-    date_signature: horodatage, jeton: null,       // le lien est consommé
-  }).eq('id', doc.id);
-
-  // 7. Copie au signataire
-  if (resident?.email) {
-    const { signedUrl } = require('./storage');
-    const url = await signedUrl(cheminSigne, 604800);
-    sendEmail({
-      to: resident.email,
-      subject: `Votre document signé — ${doc.titre}`,
-      html: `<p>Bonjour ${resident.prenom || ''},</p>`
-        + `<p>Votre document <b>${doc.titre}</b> a bien été signé le ${new Date(horodatage).toLocaleString('fr-FR')}.</p>`
-        + `<p>Il est accompagné de son certificat de signature électronique (horodatage, adresse IP, empreinte du document).</p>`
-        + `<p><a href="${url}">Télécharger le document signé</a> (lien valable 7 jours)</p>`,
-    }).catch((e) => console.error('[sign:mail]', e.message));
-  }
-
-  // 8. Notification au camping : la personne qui a envoyé le document,
-  //    à défaut l'adresse du camping. Sans cela, personne côté camping
-  //    n'est prévenu et il faut consulter la liste à la main.
   try {
-    const { signedUrl } = require('./storage');
-    const [{ data: auteur }, { data: camping }] = await Promise.all([
-      doc.auteur_id
-        ? supabase.from('utilisateurs').select('email,prenom,nom').eq('id', doc.auteur_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      supabase.from('campings').select('nom,raison_sociale,email,parametres')
-        .eq('id', doc.camping_id).maybeSingle(),
-    ]);
+    if (!jeton) return { error: 'Lien invalide', code: 400 };
 
-    const destinataire = auteur?.email
-      || camping?.email
-      || camping?.parametres?.facturation?.email
-      || null;
+    const { data: doc } = await supabase.from('documents_signature').select('*').eq('jeton', jeton).maybeSingle();
+    if (!doc) return { error: 'Lien invalide', code: 404 };
+    if (doc.statut === 'signe') return { error: 'Ce document est déjà signé', code: 409 };
+    if (doc.statut === 'annule' || doc.statut === 'refuse') return { error: 'Ce document n\u2019est plus disponible', code: 409 };
+    if (doc.jeton_expire && new Date(doc.jeton_expire) < new Date()) return { error: 'Ce lien a expiré', code: 410 };
 
-    if (destinataire) {
-      const nomCamping = camping?.nom || camping?.raison_sociale || 'votre camping';
-      const url = await signedUrl(cheminSigne, 604800);
-      const base = process.env.PUBLIC_APP_URL || '';
+    const valeurs = (corps && typeof corps.valeurs === 'object' && corps.valeurs) ? corps.valeurs : {};
+    if (!corps.consentement) return { error: 'Le consentement est requis pour signer', code: 400 };
 
-      await sendEmail({
-        to: destinataire,
-        subject: `Document signé — ${doc.titre}`,
-        html: `<p>Bonjour ${auteur?.prenom || ''},</p>`
-          + `<p><b>${nom}</b> vient de signer le document <b>${doc.titre}</b>.</p>`
-          + `<table style="border-collapse:collapse;font-size:14px;margin:14px 0">`
-          + `<tr><td style="padding:4px 14px 4px 0;color:#666">Signé le</td>`
-          + `<td style="padding:4px 0"><b>${new Date(horodatage).toLocaleString('fr-FR')}</b></td></tr>`
-          + `<tr><td style="padding:4px 14px 4px 0;color:#666">Adresse IP</td>`
-          + `<td style="padding:4px 0"><code>${ip}</code></td></tr>`
-          + `<tr><td style="padding:4px 14px 4px 0;color:#666">Signature depuis</td>`
-          + `<td style="padding:4px 0">${canal === 'portail' ? 'son espace locataire (session authentifiée)' : 'le lien reçu par e-mail'}</td></tr>`
-          + `</table>`
-          + `<p><a href="${url}" style="display:inline-block;padding:11px 20px;background:#175243;`
-          + `color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Ouvrir le document signé</a></p>`
-          + (base ? `<p style="font-size:12px;color:#666">Le certificat de preuve est annexé au document. `
-              + `Retrouvez-le à tout moment dans <a href="${base}/#/signatures">Locamp → Signatures</a>.</p>` : ''),
-      });
+    // Identification renforcée : un code SMS valide est exigé avant signature.
+    // (Si aucun portable n'est enregistré, l'étape OTP est ignorée — signature simple.)
+    if (corps.otp) {
+      const v = await verifierOtp(doc, corps.otp);
+      if (v.error) return v;
+      doc.otp_valide_at = new Date().toISOString();
+    } else if (doc.otp_telephone && !doc.otp_valide_at) {
+      return { error: 'Validez le code reçu par SMS avant de signer.', code: 403 };
     }
-  } catch (e) { console.error('[sign:notif camping]', e.message); }
 
-  return { ok: true, message: 'Document signé. Une copie vous a été envoyée par e-mail.' };
+    const champs = Array.isArray(doc.champs) ? doc.champs : [];
+    const aSignature = champs.some((c) => c.type === 'signature');
+    for (const c of champs) {
+      if (!c.requis) continue;
+      if (c.type === 'texte' && !String(valeurs[c.id] || '').trim()) return { error: 'Merci de remplir tous les champs requis.', code: 400 };
+      if (c.type === 'case' && valeurs[c.id] !== true) return { error: 'Merci de cocher les cases requises.', code: 400 };
+    }
+    const sigBase64 = typeof corps.signature_png === 'string'
+      ? corps.signature_png.replace(/^data:image\/png;base64,/, '') : null;
+    if (aSignature && !sigBase64) return { error: 'Signature manuscrite requise.', code: 400 };
+
+    let resident = null;
+    if (doc.resident_id) {
+      const { data } = await supabase.from('residents').select('nom,prenom,email').eq('id', doc.resident_id).maybeSingle();
+      resident = data || null;
+    }
+    const premierTexte = champs.filter((c) => c.type === 'texte').map((c) => String(valeurs[c.id] || '').trim()).find(Boolean);
+    const signataireNom = (resident ? `${resident.prenom || ''} ${resident.nom || ''}`.trim() : '') || premierTexte || 'Signataire';
+
+    const origBytes = await downloadDocument(doc.storage_path);
+    const pdfDoc = await PDFDocument.load(origBytes);
+    await apposerChamps(pdfDoc, lib, champs, valeurs, sigBase64);
+
+    const now = new Date();
+    const dateStr = now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'medium' });
+    const bytesAvantCert = Buffer.from(await pdfDoc.save());
+    const hashSigne = sha256(bytesAvantCert);
+
+    let sigImage = null;
+    if (sigBase64) { try { sigImage = await pdfDoc.embedPng(sigBase64); } catch { /* déjà loggé */ } }
+
+    await ajouterCertificat(pdfDoc, lib, {
+      titre: doc.titre, signataireNom, signataireEmail: resident?.email || null,
+      dateStr, ip: ip || 'inconnue', userAgent, hashOriginal: doc.hash_original, hashSigne,
+      consentement: CONSENTEMENT, sigImage,
+    });
+
+    const sealedBytes = Buffer.from(await pdfDoc.save());
+    const signePath = `signatures/${doc.camping_id}/${doc.id}_signe_${Date.now()}.pdf`;
+    await uploadDocument(signePath, sealedBytes, 'application/pdf');
+
+    // Piste d'audit complète : on fige les événements accumulés + la signature.
+    await tracer(doc.id, 'Signature du document', { ip, detail: signataireNom });
+    const { data: docFinal } = await supabase.from('documents_signature')
+      .select('evenements').eq('id', doc.id).maybeSingle();
+    const evenements = Array.isArray(docFinal && docFinal.evenements) ? docFinal.evenements
+      : [{ date: now.toISOString(), libelle: 'Signature du document', ip: ip || null }];
+
+    // Canal d'identification employé (SMS ou simple), conservé dans la preuve.
+    const identification = doc.otp_valide_at
+      ? { methode: 'otp_sms', telephone: masquer(doc.otp_telephone), valide_at: doc.otp_valide_at }
+      : { methode: 'simple' };
+
+    await supabase.from('signatures_preuves').insert({
+      identification,
+      camping_id: doc.camping_id, document_id: doc.id, resident_id: doc.resident_id || null,
+      signataire_nom: signataireNom, signataire_email: resident?.email || null,
+      ip: ip || 'inconnue', user_agent: userAgent || null,
+      consentement: CONSENTEMENT, signature_png: corps.signature_png || null,
+      valeurs, hash_original: doc.hash_original, hash_signe: hashSigne, evenements,
+    });
+
+    await supabase.from('documents_signature').update({
+      statut: 'signe', date_signature: now.toISOString(),
+      storage_signe: signePath, hash_signe: hashSigne, jeton: null, jeton_expire: null,
+    }).eq('id', doc.id);
+
+    if (resident?.email) {
+      const { data: camp } = await supabase.from('campings')
+        .select('nom,raison_sociale,parametres').eq('id', doc.camping_id).maybeSingle();
+      const nomCamping = camp?.nom || camp?.raison_sociale || 'Votre camping';
+      sendEmail({
+        to: resident.email,
+        subject: `Document signé — ${doc.titre}`,
+        html: `<p>Bonjour ${escapeHtml(resident.prenom || '')},</p>`
+          + `<p>Votre document « <b>${escapeHtml(doc.titre)}</b> » a bien été signé le ${escapeHtml(dateStr)}.</p>`
+          + `<p>Vous en trouverez la copie signée en pièce jointe, incluant son certificat de preuve.</p>`
+          + `<p>Merci,<br>${escapeHtml(nomCamping)}</p>`,
+        sender: camp?.parametres?.facturation?.email
+          ? { email: camp.parametres.facturation.email, name: nomCamping } : { name: nomCamping },
+        attachments: [{ name: `${slug(doc.titre)}_signe.pdf`, content: sealedBytes }],
+      }).catch((e) => console.error('[signature:email]', e.message));
+    }
+
+    try {
+      const { creerNotifsStaff } = require('./notifications');
+      creerNotifsStaff(doc.camping_id, {
+        type: 'document_signe', perm: 'gerer_residents',
+        titre: `Document signé : ${doc.titre}`,
+        corps: `${signataireNom} a signé « ${doc.titre} ».`,
+        entite: 'documents_signature', entite_id: doc.id,
+      }).catch(() => {});
+    } catch { /* module notif absent : ignore */ }
+
+    return { ok: true, message: 'Votre document a été signé. Une copie et son certificat vous ont été envoyés par e-mail.' };
+  } catch (e) {
+    console.error('[signature:signerDocument]', e.message);
+    return { error: 'Une erreur est survenue lors de la signature. Réessayez ou contactez le camping.', code: 500 };
+  }
 }
 
-module.exports = { sha256, apposerSignature, nbPages, normaliserChamps, signerDocument, CONSENTEMENT, TYPES_CHAMP };
+module.exports = { sha256, nbPages, normaliserChamps, signerDocument, envoyerOtp, tracer, CONSENTEMENT };

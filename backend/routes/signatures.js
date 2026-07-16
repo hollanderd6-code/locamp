@@ -5,7 +5,7 @@ const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
 const { sendEmail } = require('../lib/email');
 const { uploadDocument, signedUrl } = require('../lib/storage');
-const { sha256, nbPages, normaliserChamps, signerDocument, CONSENTEMENT } = require('../lib/signature');
+const { sha256, nbPages, normaliserChamps, signerDocument, envoyerOtp, tracer, CONSENTEMENT } = require('../lib/signature');
 const { auth, campingScope, requirePerm } = require('../middleware/auth');
 
 const router = express.Router();
@@ -18,11 +18,6 @@ const upload = multer({
 // Adresse IP réelle derrière le proxy Render
 const ipDe = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
   || req.ip || req.socket?.remoteAddress || 'inconnue';
-
-const ajouterEvenement = (evts, libelle, ip) => [
-  ...(evts || []),
-  { date: new Date().toISOString(), libelle, ip: ip || null },
-];
 
 /* =====================  PARTIE PUBLIQUE (signataire)  ===================== */
 /* Placée AVANT les middlewares d'authentification admin : le signataire n'a
@@ -42,13 +37,14 @@ router.get('/signer/:jeton', async (req, res) => {
 
     const [{ data: resident }, { data: camping }] = await Promise.all([
       doc.resident_id
-        ? supabase.from('residents').select('nom,prenom,civilite,email').eq('id', doc.resident_id).maybeSingle()
+        ? supabase.from('residents').select('nom,prenom,civilite,email,telephone').eq('id', doc.resident_id).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('campings').select('nom,raison_sociale').eq('id', doc.camping_id).maybeSingle(),
     ]);
 
-    // piste d'audit : ouverture du lien
-    await supabase.from('documents_signature').update({}).eq('id', doc.id).then(() => {}, () => {});
+    // Piste d'audit : connexion à la page de signature puis affichage du document.
+    await tracer(doc.id, "Connexion à la page d'action", { ip: ipDe(req), detail: req.headers['user-agent'] || null });
+    await tracer(doc.id, 'Affichage du document', { ip: ipDe(req), detail: `SHA-256 : ${doc.hash_original}` });
     const url = await signedUrl(doc.storage_path, 1800);
 
     res.json({
@@ -60,8 +56,19 @@ router.get('/signer/:jeton', async (req, res) => {
       consentement: CONSENTEMENT,
       signataire: resident ? `${resident.prenom || ''} ${resident.nom}`.trim() : null,
       camping: camping?.nom || camping?.raison_sociale || 'Le camping',
+      otp_requis: !!(resident && resident.telephone),   // identification par SMS si un portable est connu
+      otp_valide: !!doc.otp_valide_at,
     });
   } catch (e) { console.error('[sign:get]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/signatures/signer/:jeton/otp  -> envoie un code à 6 chiffres par SMS
+router.post('/signer/:jeton/otp', async (req, res) => {
+  try {
+    const out = await envoyerOtp({ jeton: req.params.jeton, ip: ipDe(req) });
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    res.json(out);
+  } catch (e) { console.error('[sign:otp]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // POST /api/signatures/signer/:jeton  -> signature via le lien reçu par e-mail
@@ -129,6 +136,7 @@ router.post('/', requirePerm('gerer_residents'), upload.single('file'), async (r
     }).select().single();
     if (error) throw error;
 
+    await tracer(data.id, 'Transaction créée', { ip: ipDe(req), detail: `${req.user.email || ''} — ${titre}` });
     await writeAudit(req, { action: 'create', entite: 'documents_signature', entite_id: data.id,
       apres: { titre, hash: data.hash_original } });
     res.status(201).json({ document: data });
@@ -212,6 +220,7 @@ router.post('/:id/envoyer', requirePerm('gerer_residents'), async (req, res) => 
         + `La signature électronique a la même valeur qu\u2019une signature manuscrite (règlement eIDAS).</p>`,
     });
 
+    await tracer(doc.id, "Envoi de l'invitation", { ip: ipDe(req), detail: `à ${resident.email} par email` });
     await writeAudit(req, { action: 'email', entite: 'documents_signature', entite_id: doc.id,
       apres: { envoye_a: resident.email } });
 
