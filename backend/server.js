@@ -55,6 +55,11 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://js.stripe.com'],
       scriptSrcAttr: ["'unsafe-inline'"],
+      // pdf.js crée son worker depuis un blob: — sans worker-src, il retombe sur
+      // script-src (qui refuse blob:) et bascule en « fake worker » dégradé,
+      // ce qui casse l'éditeur de zones de signature.
+      workerSrc: ["'self'", 'blob:'],
+      childSrc: ["'self'", 'blob:'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:', SUPABASE].filter(Boolean),
