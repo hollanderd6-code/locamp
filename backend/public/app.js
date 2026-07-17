@@ -1121,10 +1121,13 @@ async function vueFicheClient(id) {
         <div class="muted" style="margin-top:4px">
           ${emplacement ? `Empl. <strong>${esc(emplacement.numero)}</strong>${emplacement.secteur ? ' · ' + esc(emplacement.secteur) : ''}` : 'Aucun emplacement'}
           ${r.compte_comptable ? ` · Compte <strong>${esc(r.compte_comptable)}</strong>` : ''}
-          ${r.email ? ' · ' + esc(r.email) : ''}${r.telephone ? ' · ' + esc(r.telephone) : ''}
+          ${r.email ? ' · ' + esc(r.email) : ''}
+          ${r.telephone ? ' · ' + esc(r.telephone) : ' · <span style="color:var(--rouge)">téléphone manquant</span>'}
         </div>
+        ${r.adresse ? `<div class="muted" style="margin-top:2px">${esc(r.adresse)}</div>` : ''}
       </div>
       <div class="toolbar">
+        <button class="btn btn-ghost" onclick="formResident('${id}')">Modifier</button>
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
       </div>
     </div>
@@ -1775,27 +1778,46 @@ window.voirDoc = async (id) => {
   catch (e) { toast(e.message, true); }
 };
 
-window.formResident = async () => {
-  const { emplacements } = await api('/api/emplacements');
-  const libres = emplacements.filter((e) => e.statut === 'libre');
+/* Création ET modification d'un résident (un seul formulaire).
+   Le téléphone est requis : il sert à l'identification par code SMS à la signature. */
+window.formResident = async (id = null) => {
+  const [{ emplacements }, r] = await Promise.all([
+    api('/api/emplacements'),
+    id ? api('/api/residents/' + id).then((d) => d.resident) : Promise.resolve(null),
+  ]);
+  // à la modification, on garde l'emplacement actuel dans la liste (il n'est plus « libre »)
+  const dispo = emplacements.filter((e) => e.statut === 'libre' || (r && e.id === r.emplacement_id));
+  const v = (k) => esc((r && r[k]) || '');
   openDrawer(`
-    <h2>Nouveau résident</h2>
+    <h2>${r ? 'Modifier le résident' : 'Nouveau résident'}</h2>
     <form id="f-res" class="form-grid" style="margin-top:14px">
-      <label>Civilité<select name="civilite"><option value="">—</option><option>M.</option><option>Mme</option></select></label>
-      <label>Nom *<input name="nom" required></label>
-      <label>Prénom<input name="prenom"></label>
-      <label>E-mail<input name="email" type="email"></label>
-      <label>Téléphone<input name="telephone"></label>
-      <label>Emplacement<select name="emplacement_id"><option value="">— aucun —</option>${libres.map((e) => `<option value="${e.id}">${esc(e.numero)} (${esc(e.secteur || '')})</option>`).join('')}</select></label>
-      <label class="full">Adresse<input name="adresse"></label>
-      <div class="full"><button class="btn btn-primary btn-block">Créer le résident</button></div>
+      <label>Civilité<select name="civilite">
+        <option value="">—</option>
+        <option ${r && r.civilite === 'M.' ? 'selected' : ''}>M.</option>
+        <option ${r && r.civilite === 'Mme' ? 'selected' : ''}>Mme</option></select></label>
+      <label>Nom *<input name="nom" required value="${v('nom')}"></label>
+      <label>Prénom<input name="prenom" value="${v('prenom')}"></label>
+      <label>E-mail<input name="email" type="email" value="${v('email')}"></label>
+      <label>Téléphone *<input name="telephone" type="tel" required placeholder="06 12 34 56 78" value="${v('telephone')}"></label>
+      <label>Emplacement<select name="emplacement_id"><option value="">— aucun —</option>${dispo.map((e) => `<option value="${e.id}" ${r && r.emplacement_id === e.id ? 'selected' : ''}>${esc(e.numero)} (${esc(e.secteur || '')})</option>`).join('')}</select></label>
+      <label class="full">Adresse<input name="adresse" value="${v('adresse')}"></label>
+      <label>Date de naissance<input name="date_naissance" type="date" value="${v('date_naissance')}"></label>
+      <label>Nationalité<input name="nationalite" value="${v('nationalite')}"></label>
+      <label class="full">Notes internes<input name="notes_internes" value="${v('notes_internes')}"></label>
+      <p class="muted full" style="margin:-4px 0 2px;font-size:12.5px">Le téléphone permet d'envoyer le code de sécurité par SMS lors des signatures.</p>
+      <div class="full"><button class="btn btn-primary btn-block">${r ? 'Enregistrer' : 'Créer le résident'}</button></div>
     </form>`);
   $('#f-res').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
-    for (const k in body) if (body[k] === '') delete body[k];
-    try { await api('/api/residents', { method: 'POST', body }); closeDrawer(); toast('Résident créé'); route(); }
-    catch (err) { toast(err.message, true); }
+    // en modification, un champ vidé doit être effacé -> on n'élague qu'à la création
+    if (!r) { for (const k in body) if (body[k] === '') delete body[k]; }
+    else { for (const k in body) if (body[k] === '') body[k] = null; }
+    try {
+      if (r) await api('/api/residents/' + id, { method: 'PUT', body });
+      else await api('/api/residents', { method: 'POST', body });
+      closeDrawer(); toast(r ? 'Résident modifié' : 'Résident créé'); route();
+    } catch (err) { toast(err.message, true); }
   });
 };
 
