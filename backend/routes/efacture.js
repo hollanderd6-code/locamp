@@ -67,4 +67,45 @@ router.delete('/connexion', requireRole('admin'), async (req, res) => {
   } catch (e) { console.error('[efacture:connexion:delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+/* ---------- E-reporting (données de transaction B2C) ---------- */
+
+// GET /api/efacture/ereporting?periode=AAAA-MM&type=transaction  -> aperçu (rien n'est transmis)
+router.get('/ereporting', requirePerm('compta'), async (req, res) => {
+  try {
+    const { calculer } = require('../lib/efacture/ereporting');
+    const periode = req.query.periode || new Date().toISOString().slice(0, 7);
+    const out = await calculer(req.activeCampingId, periode, req.query.type || 'transaction');
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    res.json({ lot: out });
+  } catch (e) {
+    console.error('[efacture:erep-preview]', e.message);
+    res.status(500).json({ error: 'Erreur serveur — la migration db/22_ereporting.sql a-t-elle été exécutée ?' });
+  }
+});
+
+// GET /api/efacture/ereporting/historique  -> lots déjà transmis (justificatif)
+router.get('/ereporting/historique', requirePerm('compta'), async (req, res) => {
+  try {
+    const { historique } = require('../lib/efacture/ereporting');
+    res.json({ lots: await historique(req.activeCampingId) });
+  } catch (e) {
+    console.error('[efacture:erep-histo]', e.message);
+    res.json({ lots: [] });
+  }
+});
+
+// POST /api/efacture/ereporting  { periode, type }  -> transmet à la Plateforme Agréée
+router.post('/ereporting', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { transmettre } = require('../lib/efacture/ereporting');
+    const { periode, type } = req.body || {};
+    if (!periode) return res.status(400).json({ error: 'periode requise (AAAA-MM)' });
+    const out = await transmettre(req.activeCampingId, periode, type || 'transaction');
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    await writeAudit(req, { action: 'create', entite: 'ereporting_lots', entite_id: out.lot.id,
+      apres: { periode, type: type || 'transaction', nb: out.lot.nb_operations, total_ttc: out.lot.total_ttc } });
+    res.json(out);
+  } catch (e) { console.error('[efacture:erep-post]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;
