@@ -17,6 +17,8 @@ router.get('/', async (req, res) => {
     for (const f of ['resident_id', 'contrat_id', 'statut', 'periode']) {
       if (req.query[f]) q = q.eq(f, req.query[f]);
     }
+    if (req.query.debut) q = q.gte('date_emission', req.query.debut);   // plage exercice (facultatif)
+    if (req.query.fin) q = q.lte('date_emission', req.query.fin);
     const { data, error } = await q.order('date_emission', { ascending: false });
     if (error) throw error;
     res.json({ factures: data });

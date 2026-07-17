@@ -42,6 +42,8 @@ router.get('/', async (req, res) => {
   try {
     let q = supabase.from('reglements').select('*').eq('camping_id', req.activeCampingId);
     if (req.query.resident_id) q = q.eq('resident_id', req.query.resident_id);
+    if (req.query.debut) q = q.gte('date_reglement', req.query.debut);   // plage exercice (facultatif)
+    if (req.query.fin) q = q.lte('date_reglement', req.query.fin);
     const { data, error } = await q.order('date_reglement', { ascending: false });
     if (error) throw error;
     res.json({ reglements: data });

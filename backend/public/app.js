@@ -2172,10 +2172,11 @@ window.formEmplacement = () => {
 
 /* ---------- Factures ---------- */
 async function vueFactures() {
-  const { factures } = await api('/api/factures');
+  const ex = exerciceActif();
+  const { factures } = await api(`/api/factures?debut=${ex.debut}&fin=${ex.fin}`);
   const mois = new Date().toISOString().slice(0, 7);
   $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
+    <div class="page-head"><div><div class="eyebrow">Facturation · exercice ${ex.label}</div><h1>Factures</h1></div>
       <div class="toolbar">
         <select id="fac-periode">${moisOptions(mois)}</select>
         <button class="btn btn-ghost" onclick="formFacture()">Nouvelle facture</button>
@@ -3509,8 +3510,9 @@ window.faireAvoir = async (id) => {
 
 /* ---------- Règlements ---------- */
 async function vueReglements() {
+  const ex = exerciceActif();
   const [{ reglements }, { residents }, moyRes] = await Promise.all([
-    api('/api/reglements'), api('/api/residents'),
+    api(`/api/reglements?debut=${ex.debut}&fin=${ex.fin}`), api('/api/residents'),
     api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
   ]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
@@ -3520,7 +3522,7 @@ async function vueReglements() {
   const debutMois = auj.slice(0, 8) + '01';
 
   $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
+    <div class="page-head"><div><div class="eyebrow">Encaissements · exercice ${ex.label}</div><h1>Règlements</h1></div></div>
 
     <div class="card">
       <div class="card-actions"><h2>Journal des encaissements</h2>
