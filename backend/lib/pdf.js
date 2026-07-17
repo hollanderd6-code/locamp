@@ -594,7 +594,141 @@ function buildRelevePdf({ camping = {}, resident = {}, annee, report_a_nouveau =
   });
 }
 
-module.exports = { buildContratPdf, buildFacturePdf, buildRelevePdf, buildRemisePdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
+/* ============================================================
+   RÉCAPITULATIF DE TRANSACTION — dossier de preuve d'une signature
+   Reprend la structure d'un prestataire de services de confiance :
+   émetteur · signataire · détail chronologique horodaté · empreintes.
+   ============================================================ */
+function buildRecapPdf({ camping = {}, resident = {}, document = {}, preuve = null }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 46 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const L = 46;
+      const W = 595.28 - L * 2;
+      const nomCamping = camping.raison_sociale || camping.nom || 'Camping';
+      const signataire = preuve?.signataire_nom
+        || `${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim()
+        || '—';
+      const dt = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return `${d.toLocaleDateString('fr-FR')} — ${d.toLocaleTimeString('fr-FR', { hour12: false })}`;
+      };
+
+      // ---- En-tête ----
+      doc.rect(0, 0, 595.28, 4).fill(SAPIN);
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(17)
+        .text('RÉCAPITULATIF DE TRANSACTION', L, 40);
+      doc.fillColor(GRIS).font('Helvetica').fontSize(8.5)
+        .text('Dossier de preuve — signature électronique (règlement eIDAS UE n° 910/2014)', L, doc.y + 2);
+      let y = doc.y + 16;
+
+      const paire = (k, v, opts = {}) => {
+        doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(8.5).text(k, L, y, { width: 150 });
+        doc.fillColor(opts.color || INK).font(opts.mono ? 'Courier' : 'Helvetica').fontSize(opts.size || 9)
+          .text(String(v == null ? '—' : v), L + 155, y, { width: W - 155 });
+        y = Math.max(doc.y, y + 13) + 2;
+      };
+      const titre = (t) => {
+        y += 6;
+        doc.fillColor(SAPIN).font('Helvetica-Bold').fontSize(9)
+          .text(t.toUpperCase(), L, y, { characterSpacing: 0.8 });
+        y = doc.y + 4;
+        doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.7).stroke(HAIR);
+        y += 8;
+      };
+
+      paire('Transaction', document.id || '—', { mono: true, size: 8 });
+      paire('Document', document.titre);
+      paire('Statut', document.statut === 'signe' ? 'Signé' : (document.statut || '—'));
+      paire('Créée le', dt(document.created_at));
+      paire('Envoyée le', dt(document.date_envoi));
+      if (document.date_signature) paire('Signée le', dt(document.date_signature));
+
+      titre('Émetteur');
+      paire('Espace de travail', nomCamping);
+      if (camping.adresse) paire('Adresse', camping.adresse);
+      if (camping.email) paire('E-mail', camping.email);
+      if (camping.siret) paire('SIRET', camping.siret);
+
+      titre('Signataire');
+      paire('Nom complet', signataire);
+      paire('E-mail', preuve?.signataire_email || resident.email || '—');
+      paire('Action', 'Signature');
+      const ident = preuve?.identification || {};
+      paire('Niveau de signature', 'Signature électronique simple');
+      paire('Identification', ident.methode === 'otp_sms'
+        ? `Code à usage unique par SMS — ${ident.telephone || ''}`
+        : 'Lien personnel reçu par e-mail');
+      if (preuve?.ip) paire('Adresse IP', preuve.ip);
+      if (preuve?.user_agent) paire('Navigateur', String(preuve.user_agent).slice(0, 90), { size: 8 });
+
+      // ---- Détail chronologique ----
+      titre('Détail de la transaction');
+      const evts = Array.isArray(document.evenements) ? document.evenements : [];
+      if (!evts.length) {
+        doc.fillColor(GRIS).font('Helvetica-Oblique').fontSize(9)
+          .text('Aucun événement enregistré pour cette transaction.', L, y, { width: W });
+        y = doc.y + 6;
+      }
+      for (const e of evts) {
+        if (y > 720) { doc.addPage(); y = 50; }
+        const yLigne = y;
+        doc.fillColor(GRIS).font('Helvetica').fontSize(7.5)
+          .text(dt(e.date), L, y, { width: 118 });
+        if (e.ip) doc.fillColor(GRIS).fontSize(7).text(`IP ${e.ip}`, L, doc.y, { width: 118 });
+        doc.fillColor(INK).font('Helvetica-Bold').fontSize(9)
+          .text(e.libelle || '—', L + 126, yLigne, { width: W - 126 });
+        if (e.detail) {
+          doc.fillColor(GRIS).font('Helvetica').fontSize(7.5)
+            .text(String(e.detail), L + 126, doc.y + 1, { width: W - 126 });
+        }
+        y = Math.max(doc.y, yLigne + 18) + 7;
+        doc.moveTo(L, y - 4).lineTo(L + W, y - 4).lineWidth(0.4).stroke('#F0ECE2');
+      }
+
+      // ---- Empreintes ----
+      if (y > 640) { doc.addPage(); y = 50; }
+      titre('Intégrité du document');
+      doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(8).text('Empreinte du document présenté (SHA-256)', L, y);
+      y = doc.y + 2;
+      doc.fillColor(INK).font('Courier').fontSize(7.5)
+        .text(document.hash_original || '—', L, y, { width: W });
+      y = doc.y + 8;
+      if (document.hash_signe) {
+        doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(8).text('Empreinte du document signé (SHA-256)', L, y);
+        y = doc.y + 2;
+        doc.fillColor(INK).font('Courier').fontSize(7.5).text(document.hash_signe, L, y, { width: W });
+        y = doc.y + 8;
+      }
+
+      if (preuve?.consentement) {
+        titre('Consentement recueilli');
+        doc.fillColor(INK).font('Helvetica').fontSize(8).text(preuve.consentement, L, y, { width: W, lineHeight: 11 });
+        y = doc.y + 6;
+      }
+
+      // ---- Pied de page ----
+      const pied = 'Ce récapitulatif est extrait des journaux techniques de la plateforme Locamp. Il atteste des '
+        + "événements survenus pendant la session de signature et de l'intégrité du document par empreinte SHA-256. "
+        + 'La signature électronique simple tire sa valeur juridique du faisceau de preuves réuni ici '
+        + '(art. 1366 et 1367 du Code civil).';
+      const range = doc.bufferedPageRange ? doc.bufferedPageRange() : { start: 0, count: 1 };
+      doc.fillColor(GRIS).font('Helvetica').fontSize(6.5)
+        .text(pied, L, 780, { width: W, lineHeight: 8 });
+      doc.text(`${nomCamping}${camping.siret ? ' — SIRET ' + camping.siret : ''}`, L, 806, { width: W, align: 'center' });
+
+      doc.end();
+    } catch (e) { reject(e); }
+  });
+}
+
+module.exports = { buildContratPdf, buildFacturePdf, buildRelevePdf, buildRemisePdf, buildRecapPdf, mergeClauses, fmtDate, fmtEur, canEmbedImage };
 
 // Vérifie qu'une image est décodable par le moteur PDF (PNG/JPEG standard, non-CMYK).
 function canEmbedImage(buffer) {

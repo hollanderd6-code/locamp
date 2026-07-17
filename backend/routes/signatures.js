@@ -158,6 +158,37 @@ router.get('/:id', async (req, res) => {
   } catch (e) { console.error('[sign:detail]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// GET /api/signatures/:id/recap  -> PDF « Récapitulatif de transaction » (dossier de preuve)
+router.get('/:id/recap', async (req, res) => {
+  try {
+    const { data: doc } = await supabase.from('documents_signature').select('*')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!doc) return res.status(404).json({ error: 'Document introuvable' });
+
+    const [{ data: camping }, { data: resident }, { data: preuve }] = await Promise.all([
+      supabase.from('campings').select('nom,raison_sociale,adresse,email,siret').eq('id', req.activeCampingId).maybeSingle(),
+      doc.resident_id
+        ? supabase.from('residents').select('civilite,nom,prenom,email').eq('id', doc.resident_id).maybeSingle()
+        : Promise.resolve({ data: {} }),
+      supabase.from('signatures_preuves').select('*').eq('document_id', doc.id).maybeSingle(),
+    ]);
+
+    const { buildRecapPdf } = require('../lib/pdf');
+    const pdf = await buildRecapPdf({
+      camping: camping || {}, resident: resident || {}, document: doc, preuve: preuve || null,
+    });
+
+    await writeAudit(req, { action: 'access', entite: 'documents_signature', entite_id: doc.id,
+      apres: { recap: true, titre: doc.titre } });
+
+    const nom = String(doc.titre || 'document').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="recap_${nom}.pdf"`);
+    res.send(pdf);
+  } catch (e) { console.error('[sign:recap]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // PUT /api/signatures/:id/champs  { champs: [...] }
 router.put('/:id/champs', requirePerm('gerer_residents'), async (req, res) => {
   try {

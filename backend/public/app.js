@@ -2475,7 +2475,8 @@ async function vueSignatures() {
           <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR') : '—'}</td>
           <td class="right">
             ${d.statut === 'signe'
-              ? `<button class="btn btn-ghost btn-sm" onclick="voirSignature('${d.id}')">Preuve</button>`
+              ? `<button class="btn btn-ghost btn-sm" onclick="recapSignature('${d.id}')" title="Récapitulatif de transaction (dossier de preuve)">Récapitulatif</button>
+                 <button class="btn btn-ghost btn-sm" onclick="voirSignature('${d.id}')">Preuve</button>`
               : d.statut === 'annule'
                 ? '<span class="muted">—</span>'
                 : `<button class="btn btn-ghost btn-sm" onclick="editeurZones('${d.id}')">Zones</button>
@@ -2671,6 +2672,19 @@ window.annulerDocSignature = async (id) => {
   if (!await askConfirm('Annuler ce document ?')) return;
   try { await api(`/api/signatures/${id}`, { method: 'DELETE' }); toast('Document annulé'); route(); }
   catch (e) { toast(e.message, true); }
+};
+
+/* Récapitulatif de transaction (PDF façon prestataire de confiance) */
+window.recapSignature = async (id) => {
+  try {
+    const headers = { Authorization: 'Bearer ' + TOKEN };
+    if (ACTIVE_CAMPING) headers['x-camping-id'] = ACTIVE_CAMPING;
+    const r = await fetch(API + `/api/signatures/${id}/recap`, { headers });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Récapitulatif indisponible'); }
+    const url = URL.createObjectURL(await r.blob());
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { toast(e.message, true); }
 };
 
 window.voirSignature = async (id) => {
@@ -3426,9 +3440,10 @@ boot();
 })();
 
 /* ==================== NOTIFICATIONS PUSH (app gestion) ==================== */
-/* Mode diagnostic : les étapes s'affichent en toast pour identifier où ça bloque. */
+/* Plugin @capacitor-firebase/messaging : jeton FCM sur iOS et Android.
+   Diagnostic via la console uniquement (rien n'est affiché à l'utilisateur). */
 (function () {
-  const dbg = (m, err) => { try { toast('PUSH · ' + m, !!err); } catch { /* ignore */ } console.log('[push] ' + m); };
+  const dbg = (m, err) => (err ? console.error('[push] ' + m) : console.log('[push] ' + m));
 
   const CAP = window.Capacitor;
   if (!CAP) return;                       // navigateur : aucun push natif
@@ -3453,7 +3468,7 @@ boot();
     monToken = token;
     try {
       await api('/api/push/register', { method: 'POST', body: { token, platform: plateforme() } });
-      dbg('OK — appareil enregistré');
+      dbg('appareil enregistré');
     } catch (e) { dbg('serveur refuse : ' + (e && e.message), true); }
   }
 
@@ -3462,7 +3477,6 @@ boot();
     if (!TOKEN || !ACTIVE_CAMPING) return;   // il faut une session + un camping actif
     dejaFait = true;
     try {
-      dbg('1/3 demande de permission…');
       const perm = await FM.requestPermissions();
       if (perm.receive !== 'granted') { dbg('permission refusée (' + perm.receive + ')', true); return; }
 
@@ -3477,9 +3491,7 @@ boot();
         }, 300);
       });
 
-      dbg('2/3 demande du jeton FCM…');
       const res = await FM.getToken();
-      dbg('3/3 jeton obtenu');
       await envoyerToken(res && res.token);
     } catch (e) {
       dejaFait = false;
