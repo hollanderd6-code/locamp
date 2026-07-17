@@ -10,7 +10,8 @@ router.use(auth, campingScope);
 // GET /api/relances/impayes  -> factures impayées + balance âgée
 router.get('/impayes', async (req, res) => {
   try {
-    const data = await listImpayes(req.activeCampingId);
+    const range = (req.query.debut && req.query.fin) ? { debut: req.query.debut, fin: req.query.fin } : null;
+    const data = await listImpayes(req.activeCampingId, range);
     res.json(data);
   } catch (e) { console.error('[relances:impayes]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });

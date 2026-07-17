@@ -9,14 +9,16 @@ function joursRetard(dateEmission, delai) {
 }
 
 // Liste les factures impayées d'un camping avec reste dû, retard et balance âgée.
-async function listImpayes(campingId) {
+async function listImpayes(campingId, range) {
   const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
   const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
   const delai = Number(camp?.parametres?.facturation?.delai_paiement ?? 30);
+  let factQ = supabase.from('factures')
+    .select('id,numero,resident_id,total_ttc,montant_regle,date_emission,statut')
+    .eq('camping_id', campingId).in('statut', ['emise', 'partielle', 'en_retard']);
+  if (range && range.debut && range.fin) factQ = factQ.gte('date_emission', range.debut).lte('date_emission', range.fin);
   const [{ data: factures }, { data: regs }] = await Promise.all([
-    supabase.from('factures')
-      .select('id,numero,resident_id,total_ttc,montant_regle,date_emission,statut')
-      .eq('camping_id', campingId).in('statut', ['emise', 'partielle', 'en_retard']),
+    factQ,
     supabase.from('reglements').select('resident_id,montant,affectations').eq('camping_id', campingId),
   ]);
 
