@@ -38,6 +38,12 @@ router.get('/', async (req, res) => {
     if (req.query.resident_id) q = q.eq('resident_id', req.query.resident_id);
     if (req.query.statut) q = q.eq('statut', req.query.statut);
     if (req.query.type) q = q.eq('type', req.query.type);
+    // Cadrage exercice (facultatif) : par date de prestation ; les prestations sans date
+    // (charges ponctuelles) sont rattachées à leur date de saisie.
+    if (req.query.debut && req.query.fin) {
+      const d = req.query.debut, f = req.query.fin;
+      q = q.or(`and(date_debut.gte.${d},date_debut.lte.${f}),and(date_debut.is.null,created_at.gte.${d},created_at.lte.${f}T23:59:59)`);
+    }
     const { data, error } = await q.order('date_debut', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
     if (error) throw error;

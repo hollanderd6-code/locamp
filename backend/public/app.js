@@ -1348,11 +1348,13 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
+  const ex = exerciceActif();
+  const exq = `&debut=${ex.debut}&fin=${ex.fin}`;
   const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes, moyRes] = await Promise.all([
     api('/api/residents/' + id),
-    api('/api/factures?resident_id=' + id),
-    api('/api/reglements?resident_id=' + id),
-    api('/api/prestations?resident_id=' + id).catch(() => ({ prestations: null })),
+    api('/api/factures?resident_id=' + id + exq),
+    api('/api/reglements?resident_id=' + id + exq),
+    api('/api/prestations?resident_id=' + id + exq).catch(() => ({ prestations: null })),
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
     api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
@@ -2928,15 +2930,16 @@ window.retirerAcces = async (id, nom) => {
 const SIG_STATUT = { brouillon: 'brouillon', envoye: 'envoyé — en attente', signe: 'signé', refuse: 'refusé', annule: 'annulé' };
 
 async function vueSignatures() {
+  const ex = exerciceActif();
   const [{ documents }, { residents }] = await Promise.all([
-    api('/api/signatures'),
+    api(`/api/signatures?debut=${ex.debut}&fin=${ex.fin}`),
     api('/api/residents'),
   ]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
 
   $('#main').innerHTML = `
     <div class="page-head">
-      <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
+      <div><div class="eyebrow">Documents · exercice ${ex.label}</div><h1>Signature électronique</h1></div>
       <button class="btn btn-primary" onclick="formDocSignature()">Déposer un document</button>
     </div>
     <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
