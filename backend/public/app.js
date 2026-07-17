@@ -564,6 +564,44 @@ const ELEM_DEFS = {
 const snap = (v) => Math.round(v / SNAP) * SNAP;
 const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+window.imprimerCarte = () => {
+  const svg = document.querySelector('.map-svg');
+  if (!svg) { toast('Ouvre la carte avant d\u2019imprimer', true); return; }
+  const legend = document.querySelector('.map-legend');
+  const nom = (CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) || {}).nom || 'Camping';
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+  const w = window.open('', '_blank', 'width=1200,height=850');
+  if (!w) { toast('Autorise les pop-ups pour imprimer le plan', true); return; }
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Plan \u2014 ${esc(nom)}</title>
+    <style>
+      @page{size:A4 landscape;margin:8mm}
+      *{box-sizing:border-box}
+      body{margin:0;padding:14px;font-family:system-ui,-apple-system,sans-serif;color:#2b2b26}
+      .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+      .hd h1{font-size:17px;margin:0}
+      .hd .dt{font-size:12px;color:#777}
+      svg{width:100%;height:auto;border:1px solid #e3ddcf;border-radius:8px}
+      .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin-top:12px;color:#444}
+      .legend>span{display:inline-flex;align-items:center}
+      .legend .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px}
+      @media print{body{padding:0}.legend{margin-top:8px}}
+    </style></head><body>
+    <div class="hd"><h1>${esc(nom)} \u2014 plan du camping</h1><span class="dt">${dateStr}</span></div>
+    ${svg.outerHTML}
+    ${legend ? `<div class="legend">${legend.innerHTML}</div>` : ''}
+  </body></html>`);
+  w.document.close();
+  const go = () => { try { w.focus(); w.print(); } catch (_) { /* ignore */ } };
+  const img = w.document.querySelector('svg image');
+  if (img) {
+    let done = false; const once = () => { if (done) return; done = true; go(); };
+    img.addEventListener('load', once); img.addEventListener('error', once);
+    setTimeout(once, 1500);
+  } else {
+    w.onload = go;
+  }
+};
+
 async function vueCarte() {
   const [{ emplacements }, imp, elemRes] = await Promise.all([
     api('/api/emplacements/carte'),
@@ -687,10 +725,14 @@ function renderCarte() {
       <div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
       ${edit ? `<div class="map-tools">
           <span class="map-dirty ${n ? '' : 'hidden'}">${n} modif.</span>
+          <button class="btn btn-ghost btn-sm" onclick="imprimerCarte()">Imprimer</button>
           <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
           <button class="btn btn-primary btn-sm" onclick="saveCarte()" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
         </div>`
-        : `<button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>`}
+        : `<div class="map-tools">
+          <button class="btn btn-ghost btn-sm" onclick="imprimerCarte()">Imprimer</button>
+          <button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>
+        </div>`}
     </div>
     ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
     ${edit ? '' : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
@@ -1146,6 +1188,17 @@ async function vueFicheClient(id) {
   const prestations = presRes.prestations;
   const syn = synRes.synthese;
   const facNum = {}; factures.forEach((f) => { facNum[f.id] = f.numero; });
+  // Détail des paiements imputés à chaque facture (sous-lignes).
+  const _modeLib = { especes: 'Espèces', cheque: 'Chèque', cb: 'CB', virement: 'Virement', prelevement: 'Prélèvement', stripe: 'CB' };
+  const payParFacture = {};
+  (reglements || []).forEach((g) => {
+    (g.affectations || []).forEach((a) => {
+      if (!a || !a.facture_id) return;
+      (payParFacture[a.facture_id] ||= []).push({
+        mode: _modeLib[g.mode] || g.mode, montant: Number(a.montant || 0), date: g.date_reglement, reference: g.reference || null,
+      });
+    });
+  });
 
   const PTYPE = { sejour: 'Séjour', vente: 'Vente', charge: 'Charge', caution: 'Caution' };
   const etatBadge = (p) => {
@@ -1240,7 +1293,7 @@ async function vueFicheClient(id) {
           <h2 style="margin:0">Factures</h2>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" onclick="genererFactureMois('${id}')" title="Loyer + lignes récurrentes + taxe de séjour">Générer la facture du mois</button>
-            <button class="btn btn-ghost btn-sm" onclick="lettrerCredit('${id}')" title="Appliquer le crédit d'avance (trop-perçu) aux factures impayées">Lettrer le crédit</button>
+            ${syn && syn.credit_a_affecter > 0 ? `<button class="btn btn-ghost btn-sm" onclick="lettrerCredit('${id}')" title="Affecter les paiements non lettrés aux factures ouvertes, des plus anciennes aux plus récentes">Affecter les paiements (${eur(syn.credit_a_affecter)})</button>` : ''}
           </div>
         </div>
         <table style="margin-top:12px"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
@@ -1268,7 +1321,10 @@ async function vueFicheClient(id) {
                 <button class="btn btn-primary btn-sm" onclick="emettreFacture('${f.id}')">Émettre</button>` : ''}
               ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
             </td>
-          </tr>`;
+          </tr>
+          ${!brouillon && (payParFacture[f.id] || []).length ? `<tr class="pay-detail"><td colspan="7" style="padding:2px 8px 8px">
+            ${payParFacture[f.id].map((pp) => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--brume,#8a8778)"><span>↳ Paiement · ${esc(pp.mode)}${pp.reference ? ' · ' + esc(pp.reference) : ''} · ${dfr(pp.date)}</span><span>${eur(pp.montant)}</span></div>`).join('')}
+          </td></tr>` : ''}`;
         }).join('') || '<tr><td colspan="7" class="muted">Aucune facture pour ce résident.</td></tr>'}</tbody></table>
       </div>
 
@@ -1901,6 +1957,8 @@ window.formResident = async (id = null) => {
 /* ---------- Emplacements ---------- */
 async function vueEmplacements() {
   const { emplacements } = await api('/api/emplacements');
+  // Tri naturel : après 99 vient 100 (et non 1 → 10 → 100).
+  emplacements.sort((a, b) => String(a.numero || '').localeCompare(String(b.numero || ''), undefined, { numeric: true, sensitivity: 'base' }));
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Parcelles</div><h1>Emplacements</h1></div>
       <button class="btn btn-primary" onclick="formEmplacement()">Nouvel emplacement</button></div>
