@@ -3179,6 +3179,60 @@ window.voirSignature = async (id) => {
     <button class="btn btn-primary btn-block" style="margin-top:18px" onclick="window.open('${url}','_blank')">Ouvrir le document signé</button>`);
 };
 
+/* ---------- Facturation électronique : connecteur Plateforme Agréée (OD) ---------- */
+function renderEfactureCard(cx, plateformes) {
+  const platNom = (code) => (plateformes.find((p) => p.code === code) || {}).nom || code;
+  const intro = `<p class="muted" style="margin-top:4px">Locamp pilote vos flux ; la transmission réglementaire passe par votre <strong>plateforme agréée</strong> (PA). Réforme : réception obligatoire au 1ᵉʳ sept. 2026, émission/e-reporting au 1ᵉʳ sept. 2027 pour les TPE/PME.</p>`;
+  if (cx && cx.statut === 'connecte') {
+    return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-actions"><h2 style="margin:0">Facturation électronique</h2>
+        <span class="badge reglee">Connectée — ${esc(platNom(cx.pa_code))}</span></div>
+      ${intro}
+      <div class="stat" style="margin-top:10px"><span class="k">Adresse de routage</span><span class="v">${esc(cx.adresse_routage || '—')}</span></div>
+      ${cx.message ? `<p class="muted">${esc(cx.message)}</p>` : ''}
+      <div class="card-actions" style="margin-top:10px">
+        <button class="btn btn-ghost btn-sm" onclick="deconnecterPA()">Déconnecter</button></div>
+    </div>`;
+  }
+  const opts = plateformes.map((p) => `<option value="${esc(p.code)}">${esc(p.nom)}</option>`).join('');
+  return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-actions"><h2 style="margin:0">Facturation électronique</h2>
+        <span class="badge en_retard">Non connectée</span></div>
+      ${intro}
+      <div class="form-grid" style="margin-top:12px">
+        <label>Plateforme agréée
+          <select id="ef-pa" onchange="efRenderChamps()">${opts || '<option value="">Aucune disponible</option>'}</select></label>
+        <div id="ef-champs" class="full"></div>
+        <div class="full"><button class="btn btn-primary btn-sm" onclick="connecterPA()">Connecter</button></div>
+      </div>
+    </div>`;
+}
+window.efRenderChamps = () => {
+  const sel = $('#ef-pa'); const zone = $('#ef-champs');
+  if (!sel || !zone) return;
+  const plat = (window._efPlats || []).find((p) => p.code === sel.value);
+  const champs = (plat && plat.champs_config) || [];
+  zone.innerHTML = champs.length
+    ? champs.map((ch) => `<label>${esc(ch.libelle)}${ch.requis ? ' *' : ''}<input data-ef="${esc(ch.cle)}" type="${ch.secret ? 'password' : 'text'}" autocomplete="off"></label>`).join('')
+    : '<p class="muted">Aucun paramètre requis pour cette plateforme.</p>';
+};
+window.connecterPA = async () => {
+  const sel = $('#ef-pa'); if (!sel || !sel.value) return;
+  const config = {};
+  document.querySelectorAll('#ef-champs [data-ef]').forEach((i) => { if (i.value) config[i.dataset.ef] = i.value; });
+  try {
+    const r = await api('/api/efacture/connexion', { method: 'POST', body: { pa_code: sel.value, config } });
+    toast(r.message || 'Plateforme connectée'); route();
+  } catch (e) { toast(e.message || 'Échec de la connexion', true); }
+};
+window.deconnecterPA = async () => {
+  if (!await askConfirm("Déconnecter la plateforme agréée ? Les flux ne seront plus transmis tant qu'une plateforme n'est pas reconnectée.", { ok: 'Déconnecter', danger: true })) return;
+  try { await api('/api/efacture/connexion', { method: 'DELETE' }); toast('Plateforme déconnectée'); route(); }
+  catch (e) { toast(e.message || 'Erreur', true); }
+};
+
 async function vueParametres() {
   const { camping: c } = await api('/api/camping');
   const p = c.parametres || {};
@@ -3188,6 +3242,10 @@ async function vueParametres() {
   const rl = p.relances || {};
   const { articles } = await api('/api/articles?inclure_inactifs=1').catch(() => ({ articles: [] }));
   const { url: logoUrl } = await api('/api/camping/logo').catch(() => ({ url: null }));
+  const efRes = await api('/api/efacture/connexion').catch(() => ({ connexion: null }));
+  const efPlats = await api('/api/efacture/plateformes').catch(() => ({ plateformes: [] }));
+  window._efPlats = efPlats.plateformes || [];
+  const efCard = renderEfactureCard(efRes.connexion, window._efPlats);
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Configuration</div><h1>Paramètres du camping</h1></div>
       <span class="muted">${esc(c.nom || '')}</span></div>
@@ -3205,6 +3263,8 @@ async function vueParametres() {
         <div class="full"><button class="btn btn-primary">Enregistrer l'identité</button></div>
       </form>
     </div>
+
+    ${efCard}
 
     <div class="card" style="margin-top:16px">
       <h2>Logo</h2>
@@ -3329,6 +3389,8 @@ async function vueParametres() {
       renderArts(list); e.target.reset(); toast('Article ajouté');
     } catch (err) { toast(err.message, true); }
   });
+
+  if ($('#ef-pa')) efRenderChamps();
 
   $('#f-ident').addEventListener('submit', async (e) => {
     e.preventDefault();

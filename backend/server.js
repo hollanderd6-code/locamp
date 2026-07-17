@@ -21,7 +21,6 @@ const articlesRoutes = require('./routes/articles');
 const prestationsRoutes = require('./routes/prestations');
 const messagesRoutes = require('./routes/messages');
 const notificationsRoutes = require('./routes/notifications');
-const pushRoutes = require('./routes/push');
 const adminRoutes = require('./routes/admin');
 const fiscalRoutes = require('./routes/fiscal');
 const exercicesRoutes = require('./routes/exercices');
@@ -30,6 +29,7 @@ const signaturesRoutes = require('./routes/signatures');
 const carteElementsRoutes = require('./routes/carte-elements');
 const compteursRoutes = require('./routes/compteurs');
 const portailRoutes = require('./routes/portail');
+const efactureRoutes = require('./routes/efacture');
 const cronRoutes = require('./routes/cron');
 const { stripeWebhook } = require('./routes/webhooks');
 
@@ -55,11 +55,6 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://js.stripe.com'],
       scriptSrcAttr: ["'unsafe-inline'"],
-      // pdf.js crée son worker depuis un blob: — sans worker-src, il retombe sur
-      // script-src (qui refuse blob:) et bascule en « fake worker » dégradé,
-      // ce qui casse l'éditeur de zones de signature.
-      workerSrc: ["'self'", 'blob:'],
-      childSrc: ["'self'", 'blob:'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:', SUPABASE].filter(Boolean),
@@ -120,13 +115,6 @@ app.use('/api/portail/activation', limiteur(12, 15,
   'Trop de tentatives. Réessayez plus tard.'));
 app.use('/api/portail/mdp-reinit', limiteur(10, 15,
   'Trop de tentatives. Réessayez plus tard.'));
-
-// Envoi du code SMS de signature : chaque SMS a un coût réel et dérange le
-// signataire — on limite fortement (quelqu'un ayant le lien pourrait en abuser).
-const limiteurOtp = limiteur(5, 15, 'Trop de demandes de code. Réessayez dans 15 minutes.');
-app.use('/api/signatures/signer', (req, res, next) => (
-  req.path.endsWith('/otp') ? limiteurOtp(req, res, next) : next()
-));
 
 // Signature électronique (page publique).
 app.use('/api/signatures/signer', limiteur(30, 15, 'Trop de requêtes. Réessayez plus tard.'));
@@ -201,10 +189,10 @@ app.use('/api/articles', articlesRoutes);
 app.use('/api/prestations', prestationsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/notifications', notificationsRoutes);
-app.use('/api/push', pushRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/fiscal', fiscalRoutes);
 app.use('/api/exercices', exercicesRoutes);
+app.use('/api/efacture', efactureRoutes);
 app.use('/api/rgpd', rgpdRoutes);
 app.use('/api/signatures', signaturesRoutes);
 app.use('/api/carte-elements', carteElementsRoutes);
