@@ -1622,9 +1622,10 @@ window.switchFicheTab = (key) => {
 window.chargerReleve = async (id, annee) => {
   const zone = $('#releve-zone');
   if (!zone) return;
+  if (!annee) annee = exerciceActif().year;   // par défaut, le relevé suit l'exercice global
   zone.innerHTML = '<p class="muted">Chargement du relevé…</p>';
   try {
-    const d = await api(`/api/residents/${id}/releve${annee ? '?annee=' + annee : ''}`);
+    const d = await api(`/api/residents/${id}/releve?annee=${annee}`);
     const du = d.solde_total > 0.004;
     const credit = d.solde_total < -0.004;
 
