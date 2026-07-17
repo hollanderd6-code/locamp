@@ -2898,6 +2898,13 @@ function renderEfactureCard(cx, plateformes) {
         <h3 style="margin:16px 0 6px;font-size:14px">Periodes deja transmises</h3>
         <div id="erep-histo" class="muted">Chargement&hellip;</div>
       </div>
+
+      <div style="border-top:1px solid var(--trait,#E4DCC8);margin-top:16px;padding-top:12px">
+        <div class="card-actions"><h3 style="margin:0;font-size:15px">Factures fournisseurs reçues</h3>
+          <button class="btn btn-ghost btn-sm" onclick="efRecuesSync()">Synchroniser</button></div>
+        <p class="muted" style="margin:2px 0 8px;font-size:12px">Les factures que vos fournisseurs vous adressent via la plateforme. À accepter ou refuser (statut renvoyé à l'émetteur).</p>
+        <div id="recues-zone" class="muted">Chargement&hellip;</div>
+      </div>
     </div>`;
   }
   const opts = plateformes.map((x) => `<option value="${esc(x.code)}">${esc(x.nom)}</option>`).join('');
@@ -2973,6 +2980,47 @@ window.efHistorique = async () => {
       lots.map((l) => `<tr><td>${esc(l.periode)}</td><td>${esc(l.type)}</td><td class="right">${eur(l.total_ttc || (l.donnees && l.donnees.total_ttc))}</td><td class="muted">${l.transmis_at ? dfr(l.transmis_at) : '&mdash;'}</td><td class="muted">${esc(l.doc_externe_id || '&mdash;')}</td></tr>`).join('')
     }</tbody></table>`;
   } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
+};
+window.efRecuesSync = async () => {
+  const zone = $('#recues-zone'); if (zone) zone.innerHTML = '<span class="muted">Synchronisation&hellip;</span>';
+  try {
+    const r = await api('/api/efacture/recues/sync', { method: 'POST' });
+    toast(r.importees ? `${r.importees} facture(s) fournisseur importée(s)` : 'Aucune nouvelle facture');
+    efRecuesLoad();
+  } catch (e) { toast(e.message || 'Échec de la synchronisation', true); efRecuesLoad(); }
+};
+const EF_RECUE_STATUT = { recue: 'reçue', acceptee: 'acceptée', refusee: 'refusée', litige: 'en litige', comptabilisee: 'comptabilisée' };
+const EF_RECUE_BADGE = { recue: 'en_retard', acceptee: 'reglee', refusee: 'annulee', litige: 'partielle', comptabilisee: 'reglee' };
+window.efRecuesLoad = async () => {
+  const zone = $('#recues-zone'); if (!zone) return;
+  try {
+    const { recues } = await api('/api/efacture/recues');
+    if (!recues || !recues.length) { zone.innerHTML = '<span class="muted">Aucune facture reçue. Cliquez « Synchroniser ».</span>'; return; }
+    zone.innerHTML = `<table><thead><tr><th>Émetteur</th><th>N°</th><th>Date</th><th class="right">TTC</th><th>Statut</th><th></th></tr></thead><tbody>${
+      recues.map((f) => `<tr>
+        <td>${esc(f.emetteur_nom || '—')}${f.emetteur_siren ? `<br><span class="muted" style="font-size:11px">SIREN ${esc(f.emetteur_siren)}</span>` : ''}</td>
+        <td>${esc(f.numero || '—')}</td>
+        <td class="muted">${f.date_facture ? dfr(f.date_facture) : '—'}</td>
+        <td class="right">${eur(f.total_ttc)}</td>
+        <td><span class="badge ${EF_RECUE_BADGE[f.statut] || ''}">${EF_RECUE_STATUT[f.statut] || esc(f.statut)}</span>${f.motif ? `<br><span class="muted" style="font-size:11px">${esc(f.motif)}</span>` : ''}</td>
+        <td class="right">${f.statut === 'recue'
+          ? `<button class="btn btn-ghost btn-sm" onclick="efRecueStatut('${f.id}','acceptee')">Accepter</button>
+             <button class="btn btn-ghost btn-sm" onclick="efRecueStatut('${f.id}','refusee')">Refuser</button>`
+          : (f.statut === 'acceptee' ? `<button class="btn btn-ghost btn-sm" onclick="efRecueStatut('${f.id}','comptabilisee')">Marquer comptabilisée</button>` : '')}</td>
+      </tr>`).join('')
+    }</tbody></table>`;
+  } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
+};
+window.efRecueStatut = async (id, statut) => {
+  let motif = null;
+  if (statut === 'refusee') {
+    motif = await askPrompt('Motif du refus', '', { titre: 'Refuser la facture', placeholder: 'ex. montant erroné, prestation non reçue…' });
+    if (motif == null) return;
+  }
+  try {
+    await api(`/api/efacture/recues/${id}/statut`, { method: 'POST', body: { statut, motif } });
+    toast('Statut mis à jour'); efRecuesLoad();
+  } catch (e) { toast(e.message || 'Erreur', true); }
 };
 function dfrTaux(t) { const n = Number(t || 0); return Number.isInteger(n) ? String(n) : String(n).replace('.', ','); }
 
@@ -3106,6 +3154,7 @@ async function vueParametres() {
 
   if ($('#ef-pa')) efRenderChamps();
   if ($('#erep-histo')) efHistorique();
+  if ($('#recues-zone')) efRecuesLoad();
 
   $('#f-ident').addEventListener('submit', async (e) => {
     e.preventDefault();

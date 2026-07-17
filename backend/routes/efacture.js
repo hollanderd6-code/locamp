@@ -108,4 +108,37 @@ router.post('/ereporting', requireRole('admin', 'gestionnaire'), async (req, res
   } catch (e) { console.error('[efacture:erep-post]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// ---- Réception des factures fournisseurs ----
+const reception = require('../lib/efacture/reception');
+
+// GET /api/efacture/recues?statut=...  -> liste des factures reçues
+router.get('/recues', requirePerm('compta'), async (req, res) => {
+  try {
+    res.json({ recues: await reception.lister(req.activeCampingId, req.query.statut || null) });
+  } catch (e) {
+    console.error('[efacture:recues:list]', e.message);
+    res.status(500).json({ error: 'Erreur serveur — la migration db/23_efacture_recues.sql a-t-elle été exécutée ?' });
+  }
+});
+
+// POST /api/efacture/recues/sync  -> interroge la PA et importe les nouvelles
+router.post('/recues/sync', requirePerm('compta'), async (req, res) => {
+  try {
+    const out = await reception.synchroniser(req.activeCampingId);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    writeAudit(req, { action: 'efacture.reception.sync', entite: 'efacture_recues', apres: out });
+    res.json(out);
+  } catch (e) { console.error('[efacture:recues:sync]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/efacture/recues/:id/statut  { statut, motif }  -> pose un statut (cycle de vie acheteur)
+router.post('/recues/:id/statut', requirePerm('compta'), async (req, res) => {
+  try {
+    const out = await reception.changerStatut(req.activeCampingId, req.params.id, req.body && req.body.statut, req.body && req.body.motif);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    writeAudit(req, { action: 'efacture.reception.statut', entite: 'efacture_recues', entite_id: req.params.id, apres: { statut: req.body && req.body.statut } });
+    res.json(out);
+  } catch (e) { console.error('[efacture:recues:statut]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;

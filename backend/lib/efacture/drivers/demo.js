@@ -62,8 +62,26 @@ module.exports = {
   },
 
   async recevoir(/* ctx */) {
-    return []; // en démo, pas de factures fournisseurs entrantes
+    // En démo : deux factures fournisseurs d'exemple (ids stables → ré-sync idempotent),
+    // clairement marquées, pour tester le parcours de réception dans Locamp.
+    return [
+      {
+        doc_externe_id: 'demo-recue-001', emetteur_nom: 'DÉMO — Énergie Verte SAS', emetteur_siren: '552100554',
+        numero: 'EV-2026-0453', date_facture: new Date().toISOString().slice(0, 10),
+        total_ht: 250, total_tva: 50, total_ttc: 300, devise: 'EUR', format: 'factur-x',
+        payload: { demo: true, objet: 'Électricité — parties communes' },
+      },
+      {
+        doc_externe_id: 'demo-recue-002', emetteur_nom: 'DÉMO — Blanchisserie du Lac', emetteur_siren: '493782451',
+        numero: 'BL-1188', date_facture: new Date().toISOString().slice(0, 10),
+        total_ht: 120, total_tva: 24, total_ttc: 144, devise: 'EUR', format: 'ubl',
+        payload: { demo: true, objet: 'Location linge' },
+      },
+    ];
   },
+
+  // Renvoie à l'émetteur le statut posé côté acheteur (démo : no-op).
+  async notifierStatut(/* ctx, doc */) { /* démo : rien à transmettre */ },
 
   async ereporting(ctx, lot = {}) {
     return {
