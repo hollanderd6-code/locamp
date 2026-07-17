@@ -614,10 +614,13 @@ function buildRecapPdf({ camping = {}, resident = {}, document = {}, preuve = nu
       const signataire = preuve?.signataire_nom
         || `${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim()
         || '—';
+      // Le serveur tourne en UTC : sans fuseau explicite, les horodatages seraient
+      // affichés avec 1 à 2 h de décalage selon la saison.
+      const TZ = { timeZone: 'Europe/Paris' };
       const dt = (iso) => {
         if (!iso) return '—';
         const d = new Date(iso);
-        return `${d.toLocaleDateString('fr-FR')} — ${d.toLocaleTimeString('fr-FR', { hour12: false })}`;
+        return `${d.toLocaleDateString('fr-FR', TZ)} — ${d.toLocaleTimeString('fr-FR', { ...TZ, hour12: false })}`;
       };
 
       // ---- En-tête ----

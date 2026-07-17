@@ -2677,7 +2677,10 @@ window.enregistrerZones = async () => {
   try {
     await api(`/api/signatures/${zonesState.id}/champs`, { method: 'PUT', body: { champs: zonesState.champs } });
     toast('Zones enregistrées');
-    location.hash = '#/signatures';
+    // L'éditeur s'affiche sous le hash #/signatures : le réassigner ne déclenche
+    // aucun hashchange, donc aucun rafraîchissement. On rend la vue directement.
+    if (location.hash.replace(/^#\/?/, '') === 'signatures') route();
+    else location.hash = '#/signatures';
   } catch (e) { toast(e.message, true); }
 };
 
