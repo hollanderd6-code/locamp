@@ -10,7 +10,9 @@ const router = express.Router();
 router.use(auth, campingScope);
 
 const RES_FIELDS = ['emplacement_id', 'civilite', 'nom', 'prenom', 'date_naissance', 'nationalite',
-  'email', 'telephone', 'adresse', 'foyer', 'notes_internes', 'actif'];
+  'email', 'telephone', 'adresse', 'foyer', 'notes_internes', 'actif',
+  // Client entreprise (B2B) : requis pour produire une facture Factur-X.
+  'raison_sociale', 'siret', 'tva_intra', 'adresse_cp', 'adresse_ville', 'adresse_pays'];
 
 function pick(body, fields) {
   const out = {};

@@ -384,6 +384,35 @@ router.post('/:id/email', requireRole('admin', 'gestionnaire'), async (req, res)
   } catch (e) { console.error('[factures:email]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// GET /api/factures/:id/facturx  -> facture au format Factur-X (PDF + XML EN 16931)
+// Réservé aux clients ENTREPRISE : Factur-X est un flux B2B. Les ventes aux
+// particuliers relèvent de l'e-reporting, pas de la facture électronique.
+router.get('/:id/facturx', async (req, res) => {
+  try {
+    const { genererFacturx } = require('../lib/efacture/facturx');
+    const out = await genererFacturx(req.activeCampingId, req.params.id);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error, b2c: !!out.b2c });
+
+    await writeAudit(req, { action: 'access', entite: 'factures', entite_id: req.params.id,
+      apres: { facturx: true, numero: out.numero } });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${out.numero}_facturx.pdf"`);
+    res.send(out.buffer);
+  } catch (e) { console.error('[factures:facturx]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/factures/:id/facturx.xml  -> le XML seul (contrôle / dépannage)
+router.get('/:id/facturx.xml', async (req, res) => {
+  try {
+    const { genererFacturx } = require('../lib/efacture/facturx');
+    const out = await genererFacturx(req.activeCampingId, req.params.id);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error, b2c: !!out.b2c });
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.send(out.xml);
+  } catch (e) { console.error('[factures:facturx-xml]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // GET /api/factures/:id/pdf  (régénère toujours : logo + identité à jour)
 router.get('/:id/pdf', async (req, res) => {
   try {
