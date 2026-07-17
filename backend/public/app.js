@@ -2133,6 +2133,8 @@ async function vueEmplacements() {
   ]);
   const modeles = (campRes.camping && campRes.camping.parametres && campRes.camping.parametres.factures_types) || [];
   const modNom = {}; modeles.forEach((m) => { modNom[m.id] = m.nom; });
+  // Tri naturel : après 99 vient 100 (et pas 1 → 10 → 100).
+  emplacements.sort((a, b) => String(a.numero || '').localeCompare(String(b.numero || ''), undefined, { numeric: true, sensitivity: 'base' }));
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Parcelles</div><h1>Emplacements</h1></div>
       <button class="btn btn-primary" onclick="formEmplacement()">Nouvel emplacement</button></div>
