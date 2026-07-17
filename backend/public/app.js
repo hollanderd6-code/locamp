@@ -3,6 +3,8 @@ const API = window.LOCAMP_API || '';   // '' en web (relatif) ; URL Render absol
 let TOKEN = localStorage.getItem('lc_token') || null;
 let CAMPINGS = [];
 let ACTIVE_CAMPING = localStorage.getItem('lc_camping') || null;
+let ACTIVE_EXERCICE = null;                 // annee de debut de l'exercice affiche (global)
+let EX_DM = 1;                              // mois de debut d'exercice (parametres.exercice_debut_mois)
 let USER = null;
 let MES_DROITS = {};
 
@@ -193,6 +195,7 @@ function startApp() {
   $('#app').classList.remove('hidden');
   $('#user-name').textContent = `${USER.prenom || ''} ${USER.nom || ''}`.trim() || USER.email;
   renderCampingSwitch();
+  initExerciceSelector();
   const navAdmin = $('#nav-admin');
   if (navAdmin) navAdmin.classList.toggle('hidden', !MES_DROITS.admin);
   if (!location.hash) location.hash = '#/dashboard';
@@ -218,6 +221,52 @@ function renderCampingSwitch() {
     changerCamping(sel.value);
   };
   $('#camping-switch').classList.remove('hidden');
+}
+
+/* ---------- Exercice fiscal global (bascule d'annee) ---------- */
+function exBornesAn(year, dm) {
+  dm = Math.min(Math.max(Number(dm || 1), 1), 12);
+  const debut = `${year}-${String(dm).padStart(2, '0')}-01`;
+  const finYear = dm === 1 ? year : year + 1;
+  const finMonth = dm === 1 ? 12 : dm - 1;
+  const fd = new Date(finYear, finMonth, 0);
+  const fin = `${fd.getFullYear()}-${String(fd.getMonth() + 1).padStart(2, '0')}-${String(fd.getDate()).padStart(2, '0')}`;
+  return { debut, fin };
+}
+function exLabelAn(year, dm) {
+  dm = Math.min(Math.max(Number(dm || 1), 1), 12);
+  return dm === 1 ? String(year) : `${year}/${String((year + 1) % 100).padStart(2, '0')}`;
+}
+function exAnCourant(dm) {
+  dm = Math.min(Math.max(Number(dm || 1), 1), 12);
+  const now = new Date();
+  let y = now.getFullYear();
+  if (now.getMonth() + 1 < dm) y -= 1;
+  return y;
+}
+function exerciceActif() {
+  const y = Number(ACTIVE_EXERCICE) || exAnCourant(EX_DM);
+  return { year: y, label: exLabelAn(y, EX_DM), ...exBornesAn(y, EX_DM) };
+}
+function exQS() { const e = exerciceActif(); return `?debut=${e.debut}&fin=${e.fin}`; }
+function exQSand() { const e = exerciceActif(); return `&debut=${e.debut}&fin=${e.fin}`; }
+async function initExerciceSelector() {
+  try {
+    const { camping } = await api('/api/camping');
+    EX_DM = Math.min(Math.max(Number((camping && camping.parametres && camping.parametres.exercice_debut_mois) || 1), 1), 12);
+  } catch (_) { EX_DM = 1; }
+  const cur = exAnCourant(EX_DM);
+  if (!ACTIVE_EXERCICE) ACTIVE_EXERCICE = cur;
+  const sel = document.getElementById('exercice-select');
+  const wrap = document.getElementById('exercice-switch');
+  if (!sel || !wrap) return;
+  const annees = [];
+  for (let a = cur + 1; a >= cur - 5; a--) annees.push(a);
+  sel.innerHTML = annees.map((a) =>
+    `<option value="${a}">Exercice ${exLabelAn(a, EX_DM)}</option>`).join('');
+  sel.value = String(ACTIVE_EXERCICE);
+  sel.onchange = () => { ACTIVE_EXERCICE = Number(sel.value); route(); };
+  wrap.classList.remove('hidden');
 }
 
 // Bascule d'espace : on repart du tableau de bord, état local vidé.
@@ -349,8 +398,8 @@ window.addEventListener('hashchange', route);
 
 async function vueDashboard() {
   const [d, imp, presRes, msgRes, { residents }] = await Promise.all([
-    api('/api/dashboard'),
-    api('/api/relances/impayes').catch(() => null),
+    api('/api/dashboard' + exQS()),
+    api('/api/relances/impayes' + exQS()).catch(() => null),
     api('/api/prestations?statut=en_cours').catch(() => ({ prestations: [] })),
     api('/api/messages/non-lus').catch(() => ({ total: 0 })),
     api('/api/residents').catch(() => ({ residents: [] })),
@@ -1030,7 +1079,7 @@ window.ficheEmplacement = async (id) => {
   const r = residents[0];
   let facturesHtml = '';
   if (r) {
-    const { factures } = await api('/api/factures?resident_id=' + r.id);
+    const { factures } = await api('/api/factures?resident_id=' + r.id + exQSand());
     const dues = factures.filter((f) => ['emise', 'partielle', 'en_retard'].includes(f.statut));
     facturesHtml = `<h2 style="margin-top:18px">Factures en cours</h2>
       ${dues.length ? `<ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${lib(f.statut)}</span></span><span>${eur(f.total_ttc - f.montant_regle)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture en attente.</p>'}`;
@@ -1082,9 +1131,9 @@ async function vueResidents() {
 async function vueFicheClient(id) {
   const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes] = await Promise.all([
     api('/api/residents/' + id),
-    api('/api/factures?resident_id=' + id),
-    api('/api/reglements?resident_id=' + id),
-    api('/api/prestations?resident_id=' + id).catch(() => ({ prestations: null })),
+    api('/api/factures?resident_id=' + id + exQSand()),
+    api('/api/reglements?resident_id=' + id + exQSand()),
+    api('/api/prestations?resident_id=' + id + exQSand()).catch(() => ({ prestations: null })),
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
     api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
@@ -1327,7 +1376,7 @@ window.chargerReleve = async (id, annee) => {
   if (!zone) return;
   zone.innerHTML = '<p class="muted">Chargement du relevé…</p>';
   try {
-    const d = await api(`/api/residents/${id}/releve${annee ? '?annee=' + annee : ''}`);
+    const d = await api(`/api/residents/${id}/releve?annee=${annee || exerciceActif().year}`);
     const du = d.solde_total > 0.004;
     const credit = d.solde_total < -0.004;
 
@@ -1889,7 +1938,7 @@ window.formEmplacement = () => {
 
 /* ---------- Factures ---------- */
 async function vueFactures() {
-  const { factures } = await api('/api/factures');
+  const { factures } = await api('/api/factures' + exQS());
   const mois = new Date().toISOString().slice(0, 7);
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
@@ -2502,7 +2551,7 @@ const SIG_STATUT = { brouillon: 'brouillon', envoye: 'envoyé — en attente', s
 
 async function vueSignatures() {
   const [{ documents }, { residents }] = await Promise.all([
-    api('/api/signatures'),
+    api('/api/signatures' + exQS()),
     api('/api/residents'),
   ]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
@@ -2763,6 +2812,112 @@ window.voirSignature = async (id) => {
     <button class="btn btn-primary btn-block" style="margin-top:18px" onclick="window.open('${url}','_blank')">Ouvrir le document signé</button>`);
 };
 
+/* ---------- Facturation electronique : connecteur Plateforme Agreee (OD) ---------- */
+function renderEfactureCard(cx, plateformes) {
+  const platNom = (code) => (plateformes.find((x) => x.code === code) || {}).nom || code;
+  const intro = `<p class="muted" style="margin-top:4px">Locamp pilote vos flux ; la transmission reglementaire passe par votre <strong>plateforme agreee</strong> (PA). Reforme : reception obligatoire au 1er sept. 2026, emission/e-reporting au 1er sept. 2027 pour les TPE/PME.</p>`;
+  const connecte = cx && (cx.statut === 'connecte' || cx.statut === 'connectee');
+  if (connecte) {
+    return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-actions"><h2 style="margin:0">Facturation electronique</h2>
+        <span class="badge reglee">Connectee &mdash; ${esc(platNom(cx.pa_code))}</span></div>
+      ${intro}
+      <div class="stat" style="margin-top:10px"><span class="k">Adresse de routage</span><span class="v">${esc(cx.adresse_routage || '&mdash;')}</span></div>
+      ${cx.message ? `<p class="muted">${esc(cx.message)}</p>` : ''}
+      <div class="card-actions" style="margin-top:10px">
+        <button class="btn btn-ghost btn-sm" onclick="deconnecterPA()">Deconnecter</button></div>
+
+      <div style="border-top:1px solid var(--trait,#E4DCC8);margin-top:16px;padding-top:12px">
+        <h3 style="margin:0 0 2px;font-size:15px">E-reporting (ventes aux particuliers)</h3>
+        <p class="muted" style="margin:0 0 10px;font-size:12px">Vos ventes B2C ne partent pas en Factur-X : on transmet leurs donnees agregees a la PA. Les clients entreprise en sont exclus (ils partent en Factur-X).</p>
+        <div class="form-grid">
+          <label>Periode<input type="month" id="erep-periode" value="${new Date().toISOString().slice(0, 7)}"></label>
+          <label>Type<select id="erep-type"><option value="transaction">Transactions (ventes)</option><option value="encaissement">Encaissements (paiements recus)</option></select></label>
+          <div class="full"><button class="btn btn-primary btn-sm" onclick="efApercu()">Apercu de la periode</button></div>
+        </div>
+        <div id="erep-apercu" style="margin-top:10px"></div>
+        <h3 style="margin:16px 0 6px;font-size:14px">Periodes deja transmises</h3>
+        <div id="erep-histo" class="muted">Chargement&hellip;</div>
+      </div>
+    </div>`;
+  }
+  const opts = plateformes.map((x) => `<option value="${esc(x.code)}">${esc(x.nom)}</option>`).join('');
+  return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-actions"><h2 style="margin:0">Facturation electronique</h2>
+        <span class="badge en_retard">Non connectee</span></div>
+      ${intro}
+      <div class="form-grid" style="margin-top:12px">
+        <label>Plateforme agreee
+          <select id="ef-pa" onchange="efRenderChamps()">${opts || '<option value="">Aucune disponible</option>'}</select></label>
+        <div id="ef-champs" class="full"></div>
+        <div class="full"><button class="btn btn-primary btn-sm" onclick="connecterPA()">Connecter</button></div>
+      </div>
+    </div>`;
+}
+window.efRenderChamps = () => {
+  const sel = $('#ef-pa'); const zone = $('#ef-champs');
+  if (!sel || !zone) return;
+  const plat = (window._efPlats || []).find((x) => x.code === sel.value);
+  const champs = (plat && plat.champs_config) || [];
+  zone.innerHTML = champs.length
+    ? champs.map((ch) => `<label>${esc(ch.libelle)}${ch.requis ? ' *' : ''}<input data-ef="${esc(ch.cle)}" type="${ch.secret ? 'password' : 'text'}" autocomplete="off"></label>`).join('')
+    : '<p class="muted">Aucun parametre requis pour cette plateforme.</p>';
+};
+window.connecterPA = async () => {
+  const sel = $('#ef-pa'); if (!sel || !sel.value) return;
+  const config = {};
+  document.querySelectorAll('#ef-champs [data-ef]').forEach((i) => { if (i.value) config[i.dataset.ef] = i.value; });
+  try {
+    const r = await api('/api/efacture/connexion', { method: 'POST', body: { pa_code: sel.value, config } });
+    toast(r.message || 'Plateforme connectee'); route();
+  } catch (e) { toast(e.message || 'Echec de la connexion', true); }
+};
+window.deconnecterPA = async () => {
+  if (!await askConfirm("Deconnecter la plateforme agreee ? Les flux ne seront plus transmis tant qu'une plateforme n'est pas reconnectee.", { ok: 'Deconnecter', danger: true })) return;
+  try { await api('/api/efacture/connexion', { method: 'DELETE' }); toast('Plateforme deconnectee'); route(); }
+  catch (e) { toast(e.message || 'Erreur', true); }
+};
+window.efApercu = async () => {
+  const per = ($('#erep-periode') || {}).value; const type = ($('#erep-type') || {}).value || 'transaction';
+  const zone = $('#erep-apercu'); if (!zone) return;
+  if (!per) { zone.innerHTML = '<p class="muted">Choisissez une periode.</p>'; return; }
+  zone.innerHTML = '<p class="muted">Calcul&hellip;</p>';
+  try {
+    const lot = await api(`/api/efacture/ereporting?periode=${per}&type=${type}`);
+    const vent = (lot.ventilation_tva || []).map((v) =>
+      `<tr><td>${dfrTaux(v.taux)} %</td><td class="right">${eur(v.base_ht)}</td><td class="right">${eur(v.montant_tva)}</td></tr>`).join('');
+    const exclues = (lot.exclues_b2b || []).length;
+    zone.innerHTML = `
+      <div class="stat"><span class="k">Operations B2C</span><span class="v">${lot.nb_operations || 0}</span></div>
+      <div class="stat"><span class="k">Total TTC</span><span class="v">${eur(lot.total_ttc)}</span></div>
+      ${type === 'transaction' ? `<table style="margin-top:8px"><thead><tr><th>Taux</th><th class="right">Base HT</th><th class="right">TVA</th></tr></thead><tbody>${vent || '<tr><td colspan="3" class="muted">Aucune vente sur la periode.</td></tr>'}</tbody></table>` : ''}
+      ${exclues ? `<p class="muted" style="margin-top:6px">${exclues} facture(s) entreprise exclue(s) (transmises en Factur-X).</p>` : ''}
+      <div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="efTransmettre()">Transmettre cette periode a la PA</button></div>`;
+  } catch (e) { zone.innerHTML = `<p class="bad">${esc(e.message || 'Erreur')}</p>`; }
+};
+window.efTransmettre = async () => {
+  const per = ($('#erep-periode') || {}).value; const type = ($('#erep-type') || {}).value || 'transaction';
+  if (!await askConfirm(`Transmettre l'e-reporting ${type} de ${per} ? Une periode transmise est figee.`, { ok: 'Transmettre' })) return;
+  try {
+    const r = await api('/api/efacture/ereporting', { method: 'POST', body: { periode: per, type } });
+    toast(r.message || `Periode ${per} transmise` + (r.doc_externe_id ? ` (ref. ${r.doc_externe_id})` : ''));
+    efHistorique();
+  } catch (e) { toast(e.message || 'Echec de la transmission', true); }
+};
+window.efHistorique = async () => {
+  const zone = $('#erep-histo'); if (!zone) return;
+  try {
+    const { lots } = await api('/api/efacture/ereporting/historique');
+    if (!lots || !lots.length) { zone.innerHTML = '<span class="muted">Aucune periode transmise pour le moment.</span>'; return; }
+    zone.innerHTML = `<table><thead><tr><th>Periode</th><th>Type</th><th class="right">TTC</th><th>Transmis le</th><th>Ref. PA</th></tr></thead><tbody>${
+      lots.map((l) => `<tr><td>${esc(l.periode)}</td><td>${esc(l.type)}</td><td class="right">${eur(l.total_ttc || (l.donnees && l.donnees.total_ttc))}</td><td class="muted">${l.transmis_at ? dfr(l.transmis_at) : '&mdash;'}</td><td class="muted">${esc(l.doc_externe_id || '&mdash;')}</td></tr>`).join('')
+    }</tbody></table>`;
+  } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
+};
+function dfrTaux(t) { const n = Number(t || 0); return Number.isInteger(n) ? String(n) : String(n).replace('.', ','); }
+
 async function vueParametres() {
   const { camping: c } = await api('/api/camping');
   const p = c.parametres || {};
@@ -2772,6 +2927,10 @@ async function vueParametres() {
   const rl = p.relances || {};
   const { articles } = await api('/api/articles?inclure_inactifs=1').catch(() => ({ articles: [] }));
   const { url: logoUrl } = await api('/api/camping/logo').catch(() => ({ url: null }));
+  const efRes = await api('/api/efacture/connexion').catch(() => ({ connexion: null }));
+  const efPlats = await api('/api/efacture/plateformes').catch(() => ({ plateformes: [] }));
+  window._efPlats = efPlats.plateformes || [];
+  const efCard = renderEfactureCard(efRes.connexion, window._efPlats);
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Configuration</div><h1>Paramètres du camping</h1></div>
       <span class="muted">${esc(c.nom || '')}</span></div>
@@ -2789,6 +2948,8 @@ async function vueParametres() {
         <div class="full"><button class="btn btn-primary">Enregistrer l'identité</button></div>
       </form>
     </div>
+
+    ${efCard}
 
     <div class="card" style="margin-top:16px">
       <h2>Logo</h2>
@@ -2884,6 +3045,9 @@ async function vueParametres() {
       renderArts(list); e.target.reset(); toast('Article ajouté');
     } catch (err) { toast(err.message, true); }
   });
+
+  if ($('#ef-pa')) efRenderChamps();
+  if ($('#erep-histo')) efHistorique();
 
   $('#f-ident').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3072,7 +3236,7 @@ window.faireAvoir = async (id) => {
 /* ---------- Règlements ---------- */
 async function vueReglements() {
   const [{ reglements }, { residents }, moyRes] = await Promise.all([
-    api('/api/reglements'), api('/api/residents'),
+    api('/api/reglements' + exQS()), api('/api/residents'),
     api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
   ]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
@@ -3213,7 +3377,7 @@ window.annulerRemise = async (id, numero, etaitEncaissee) => {
 
 /* ---------- Impayés ---------- */
 async function vueImpayes() {
-  const [imp, { residents }] = await Promise.all([api('/api/relances/impayes'), api('/api/residents')]);
+  const [imp, { residents }] = await Promise.all([api('/api/relances/impayes' + exQS()), api('/api/residents')]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const a = imp.aging;
   $('#main').innerHTML = `

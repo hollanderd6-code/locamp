@@ -129,7 +129,7 @@ async function transmettre(campingId, periode, type = 'transaction') {
   const { contexte, getDriver } = require('./index');
 
   const ctx = await contexte(campingId);
-  if (!ctx.connexion || ctx.connexion.statut !== 'connectee') {
+  if (!ctx.connexion || ctx.connexion.statut !== 'connecte' && ctx.connexion.statut !== 'connectee') {
     return { error: 'Aucune plateforme connectée. Paramètres → Facturation électronique.', code: 400 };
   }
   const driver = getDriver(ctx.connexion.pa_code);
