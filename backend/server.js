@@ -121,6 +121,13 @@ app.use('/api/portail/activation', limiteur(12, 15,
 app.use('/api/portail/mdp-reinit', limiteur(10, 15,
   'Trop de tentatives. Réessayez plus tard.'));
 
+// Envoi du code SMS de signature : chaque SMS a un coût réel et dérange le
+// signataire — on limite fortement (quelqu'un ayant le lien pourrait en abuser).
+const limiteurOtp = limiteur(5, 15, 'Trop de demandes de code. Réessayez dans 15 minutes.');
+app.use('/api/signatures/signer', (req, res, next) => (
+  req.path.endsWith('/otp') ? limiteurOtp(req, res, next) : next()
+));
+
 // Signature électronique (page publique).
 app.use('/api/signatures/signer', limiteur(30, 15, 'Trop de requêtes. Réessayez plus tard.'));
 

@@ -5,6 +5,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const JETON = new URLSearchParams(location.search).get('jeton');
 let DOC = null;
 let aSigne = false;   // le tracé manuscrit a-t-il été commencé ?
+let otpRequis = false;   // une identification par SMS est-elle exigée ?
+let otpEnvoye = false;
 
 /* ---------- chargement ---------- */
 async function charger() {
@@ -26,6 +28,7 @@ async function charger() {
     await afficherPdf(d.url);
     construireChamps(d.champs || []);
     initPad();
+    construireOtp(d);
     majBouton();
   } catch (e) {
     erreur('Impossible de charger le document. Réessayez plus tard.');
@@ -153,6 +156,61 @@ function initPad() {
   });
 }
 
+/* ---------- identification par code SMS ---------- */
+function construireOtp(d) {
+  otpRequis = !!d.otp_requis && !d.otp_valide;
+  if (!otpRequis) return;
+
+  const html = `
+    <div id="otp-bloc" style="margin:16px 0;padding:16px;background:#FDFBF7;border:1px solid var(--hairline);
+      border-left:3px solid var(--sapin);border-radius:11px">
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+        color:var(--brume);margin-bottom:8px">Vérification de votre identité</div>
+      <p class="note" style="margin:0 0 12px">Pour signer, saisissez le code à 6 chiffres que nous envoyons
+        sur votre téléphone portable.</p>
+      <button type="button" class="btn btn-ghost btn-sm" id="otp-envoyer">Recevoir le code par SMS</button>
+      <div id="otp-saisie" class="hidden" style="margin-top:12px">
+        <input id="otp-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+          placeholder="000000" style="width:100%;text-align:center;font-size:26px;letter-spacing:.42em;
+          font-weight:600;padding:12px;border:1px solid var(--hairline);border-radius:10px;background:#fff">
+      </div>
+      <p id="otp-info" class="note hidden" style="margin-top:9px"></p>
+    </div>`;
+  $('#signer').insertAdjacentHTML('beforebegin', html);
+
+  $('#otp-envoyer').addEventListener('click', envoyerOtp);
+  $('#otp-code').addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+    majBouton();
+  });
+}
+
+async function envoyerOtp() {
+  const btn = $('#otp-envoyer');
+  const info = $('#otp-info');
+  btn.disabled = true;
+  btn.textContent = 'Envoi…';
+  try {
+    const r = await fetch(`/api/signatures/signer/${JETON}/otp`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Envoi impossible');
+    otpEnvoye = true;
+    $('#otp-saisie').classList.remove('hidden');
+    $('#otp-code').focus();
+    info.textContent = `Code envoyé au ${d.telephone} — valable ${d.expire_dans_min} minutes.`;
+    info.classList.remove('hidden');
+    info.style.color = '';
+    btn.textContent = 'Renvoyer le code';
+  } catch (e) {
+    info.textContent = e.message;
+    info.style.color = 'var(--rouge)';
+    info.classList.remove('hidden');
+    btn.textContent = 'Recevoir le code par SMS';
+  }
+  btn.disabled = false;
+  majBouton();
+}
+
 /* ---------- validation ---------- */
 function majBouton() {
   const consent = $('#consent').checked;
@@ -163,7 +221,8 @@ function majBouton() {
     if (i.type === 'checkbox' ? !i.checked : !i.value.trim()) complets = false;
   });
 
-  $('#signer').disabled = !(consent && complets && (!besoinSig || aSigne));
+  const otpOk = !otpRequis || (otpEnvoye && ($('#otp-code')?.value || '').length === 6);
+  $('#signer').disabled = !(consent && complets && (!besoinSig || aSigne) && otpOk);
 }
 $('#consent').addEventListener('change', majBouton);
 
@@ -186,7 +245,7 @@ $('#signer').addEventListener('click', async () => {
     const r = await fetch(`/api/signatures/signer/${JETON}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ valeurs, signature_png, consentement: true }),
+      body: JSON.stringify({ valeurs, signature_png, consentement: true, otp: otpRequis ? $('#otp-code').value : undefined }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Signature refusée');
