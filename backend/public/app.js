@@ -381,6 +381,18 @@ function route() {
   const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
   fn().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
   majBadgeMessagerie();
+  majBadgeImpayes();
+}
+
+async function majBadgeImpayes() {
+  try {
+    const { impayes } = await api('/api/relances/impayes' + (typeof exQS === 'function' ? exQS() : ''));
+    const b = $('#nav-imp-badge');
+    if (!b) return;
+    const n = (impayes || []).length;
+    b.textContent = n;
+    b.classList.toggle('hidden', !n);
+  } catch { /* pas de badge en cas d'erreur */ }
 }
 
 async function majBadgeMessagerie() {

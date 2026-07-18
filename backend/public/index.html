@@ -60,26 +60,24 @@
     </div>
 
     <nav class="nav" id="nav-scroll">
-      <a href="#" id="nav-recherche" onclick="ouvrirPalette();return false" title="Rechercher partout (Ctrl+K)">Rechercher…<span class="kbd-hint">⌘K</span></a>
-
       <div class="nav-grp">Exploitation</div>
-      <a href="#/dashboard" data-nav="dashboard">Tableau de bord</a>
-      <a href="#/carte" data-nav="carte">Carte du camping</a>
-      <a href="#/emplacements" data-nav="emplacements">Emplacements</a>
-      <a href="#/residents" data-nav="residents">Résidents</a>
-      <a href="#/signatures" data-nav="signatures">Signatures</a>
-      <a href="#/messagerie" data-nav="messagerie">Messagerie <span id="nav-msg-badge" class="hidden"></span></a>
-      <a href="#/compteurs" data-nav="compteurs">Compteurs</a>
+      <a href="#/dashboard" data-nav="dashboard"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Tableau de bord</span></a>
+      <a href="#/carte" data-nav="carte"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg><span>Carte du camping</span></a>
+      <a href="#/emplacements" data-nav="emplacements"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 9v12"/><path d="M15 9v12"/></svg><span>Emplacements</span></a>
+      <a href="#/residents" data-nav="residents"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.6-3.4 2.8-5.2 5.5-5.2s4.9 1.8 5.5 5.2"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.6c2.7.1 4.4 1.7 5 4.6"/></svg><span>Résidents</span></a>
+      <a href="#/signatures" data-nav="signatures"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4.5 19.5 9.5 8.5 20.5H3.5v-5z"/><path d="M12.5 6.5l5 5"/></svg><span>Signatures</span></a>
+      <a href="#/messagerie" data-nav="messagerie"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.8A8 8 0 1 1 21 12z"/></svg><span>Messagerie</span> <span id="nav-msg-badge" class="hidden"></span></a>
+      <a href="#/compteurs" data-nav="compteurs"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5"/><path d="M9 3.5h6"/></svg><span>Compteurs</span></a>
 
       <div class="nav-grp">Facturation</div>
-      <a href="#/factures" data-nav="factures">Factures</a>
-      <a href="#/reglements" data-nav="reglements">Règlements</a>
-      <a href="#/impayes" data-nav="impayes">Impayés</a>
-      <a href="#/compta" data-nav="compta">Comptabilité</a>
+      <a href="#/factures" data-nav="factures"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M9 12h7"/><path d="M9 16h7"/></svg><span>Factures</span></a>
+      <a href="#/reglements" data-nav="reglements"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2.2"/><path d="M2.5 10h19"/><path d="M6.5 14.7h4"/></svg><span>Règlements</span></a>
+      <a href="#/impayes" data-nav="impayes"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V13"/><circle cx="12" cy="16.6" r=".4" fill="currentColor"/></svg><span>Impayés</span> <span id="nav-imp-badge" class="hidden"></span></a>
+      <a href="#/compta" data-nav="compta"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M8 6.5h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 14.5h.01M12 14.5h.01M16 14.5h.01M8 18h.01M12 18h.01M16 18h.01"/></svg><span>Comptabilité</span></a>
 
       <div class="nav-grp">Configuration</div>
-      <a href="#/parametres" data-nav="parametres">Paramètres</a>
-      <a href="#/administration" data-nav="administration" id="nav-admin">Administration</a>
+      <a href="#/parametres" data-nav="parametres"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg><span>Paramètres</span></a>
+      <a href="#/administration" data-nav="administration" id="nav-admin"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 20 6v6c0 5-3.4 8.3-8 9.5C7.4 20.3 4 17 4 12V6z"/><path d="M9 12l2 2 4-4.5"/></svg><span>Administration</span></a>
     </nav>
 
     <div class="sidebar-foot">
