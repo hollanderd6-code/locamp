@@ -1445,7 +1445,7 @@ async function vueFicheClient(id) {
           const reste = Math.round((Number(f.total_ttc) - Number(f.montant_regle || 0)) * 100) / 100;
           const brouillon = f.statut === 'brouillon';
           const payable = !brouillon && !['avoir', 'annulee'].includes(f.statut) && reste > 0.004;
-          return `<tr${brouillon ? ' style="background:#FDFBF4"' : ''}>
+          return `<tr${brouillon ? ' style="background:#FDFBF4"' : ` class="row-click" onclick="apercuFacture('${f.id}', event, '${esc(f.numero)}')" title="Voir la facture"`}>
             <td data-l="N°">${brouillon
               ? '<em class="muted">à émettre</em>'
               : `<strong>${esc(f.numero)}</strong>`}</td>
@@ -2167,7 +2167,7 @@ async function vueFactures() {
       </div></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th></th></tr></thead>
     <tbody>${factures.map((f) => `
-      <tr>
+      <tr class="row-click" onclick="apercuFacture('${f.id}', event, '${esc(f.numero)}')" title="Voir la facture">
         <td><strong>${esc(f.numero)}</strong></td><td class="muted">${esc(f.periode || '—')}</td>
         <td class="muted">${dfr(f.date_emission)}</td><td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
@@ -3715,6 +3715,41 @@ window.pdfFacture = async (id) => {
   try { const { url } = await api(`/api/factures/${id}/pdf`); window.open(url, '_blank'); }
   catch (e) { toast(e.message, true); }
 };
+
+/* Aperçu intégré : clic sur une ligne de facture -> visionneuse PDF en overlay.
+   `ev` permet d'ignorer les clics sur les boutons d'action de la ligne. */
+window.apercuFacture = async (id, ev, numero = '') => {
+  if (ev && ev.target.closest('button, a, input, select')) return;
+  try {
+    const { url } = await api(`/api/factures/${id}/pdf`);
+    const ov = document.createElement('div');
+    ov.className = 'apercu';
+    ov.innerHTML = `
+      <div class="apercu-bar">
+        <div class="apercu-titre"></div>
+        <div class="apercu-actions">
+          <button class="btn btn-ghost btn-sm" data-ap-print>Imprimer</button>
+          <button class="btn btn-ghost btn-sm" data-ap-open>Ouvrir dans un onglet</button>
+          <button class="btn btn-primary btn-sm" data-ap-close>Fermer</button>
+        </div>
+      </div>
+      <div class="apercu-corps"><iframe title="Aperçu de la facture"></iframe></div>`;
+    ov.querySelector('.apercu-titre').textContent = numero ? `Facture ${numero}` : 'Aperçu de la facture';
+    ov.querySelector('iframe').src = url;
+    document.body.appendChild(ov);
+    const fermer = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') fermer(); };
+    document.addEventListener('keydown', onKey);
+    ov.querySelector('[data-ap-close]').addEventListener('click', fermer);
+    ov.querySelector('[data-ap-open]').addEventListener('click', () => window.open(url, '_blank'));
+    ov.querySelector('[data-ap-print]').addEventListener('click', () => {
+      const fr = ov.querySelector('iframe');
+      try { fr.contentWindow.print(); }               // même origine : impression directe
+      catch { window.open(url, '_blank'); }           // sinon : onglet (le lecteur PDF imprime)
+    });
+    ov.addEventListener('click', (e) => { if (e.target === ov) fermer(); });
+  } catch (e) { toast(e.message, true); }
+};
 window.emailFacture = async (id) => {
   try {
     const r = await api(`/api/factures/${id}/email`, { method: 'POST' });
@@ -3886,7 +3921,7 @@ async function vueImpayes() {
     </div>
     <div class="card"><table><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th></tr></thead>
     <tbody>${imp.impayes.map((f) => `
-      <tr><td><strong>${esc(f.numero)}</strong></td><td>${esc(rmap[f.resident_id] || '—')}</td>
+      <tr class="row-click" onclick="apercuFacture('${f.facture_id || f.id}', event, '${esc(f.numero)}')" title="Voir la facture"><td><strong>${esc(f.numero)}</strong></td><td>${esc(rmap[f.resident_id] || '—')}</td>
       <td class="right">${eur(f.reste)}</td>
       <td class="right">${f.en_retard ? `<span class="badge en_retard">${f.jours_retard} j</span>` : '<span class="badge reglee">à échoir</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun impayé — tout est réglé.</td></tr>'}</tbody></table></div>`;
 }

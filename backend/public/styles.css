@@ -752,3 +752,21 @@ th.triable.desc::after{content:"↓";opacity:1;color:var(--sapin)}
   display:flex;align-items:center;justify-content:center}
 #ptr.visible{transform:translate(-50%,52px)}
 #ptr .spin{width:17px;height:17px;border-width:2.5px}
+
+/* ---------------- Aperçu de facture (visionneuse PDF) ---------------- */
+.apercu{position:fixed;inset:0;z-index:70;display:flex;flex-direction:column;
+  background:rgba(12,25,20,.55);backdrop-filter:blur(4px);animation:fadeIn .18s var(--ease)}
+.apercu-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:calc(10px + env(safe-area-inset-top)) 18px 10px;flex-wrap:wrap}
+.apercu-titre{color:#F2EEE3;font-family:"Fraunces",serif;font-size:16px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.apercu-actions{display:flex;gap:8px;flex:none}
+.apercu-actions .btn-ghost{color:#E8EFEA;border-color:rgba(255,255,255,.28)}
+.apercu-actions .btn-ghost:hover{background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.45)}
+.apercu-corps{flex:1;margin:0 18px calc(18px + env(safe-area-inset-bottom));
+  border-radius:14px;overflow:hidden;background:#fff;box-shadow:var(--shadow-l);
+  animation:viewIn .22s var(--ease)}
+.apercu-corps iframe{width:100%;height:100%;border:none;display:block}
+@media (max-width:880px){.apercu-corps{margin:0 8px calc(10px + env(safe-area-inset-bottom))}
+  .apercu-bar{padding-left:12px;padding-right:12px}}
+@media print{.apercu{display:none!important}}
