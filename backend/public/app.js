@@ -144,6 +144,12 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
 
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 const CHARGE = '<div class="chargement"><span class="spin"></span>Chargement…</div>';
+/* Skeleton de page : préfigure titre + KPI + deux cartes, en shimmer ivoire. */
+const SKEL_PAGE = `<div class="skel">
+  <div class="sk sk-titre"></div>
+  <div class="sk-kpis"><div class="sk sk-kpi"></div><div class="sk sk-kpi"></div><div class="sk sk-kpi"></div><div class="sk sk-kpi"></div></div>
+  <div class="sk sk-card"></div><div class="sk sk-card" style="height:150px"></div>
+</div>`;
 
 /* Libellés lisibles : jamais de code technique à l'écran. */
 const STATUT_LIB = {
@@ -293,7 +299,7 @@ window.formNouveauCamping = () => {
   openDrawer(`
     <h2>Nouvel espace camping</h2>
     <p class="muted" style="margin-top:4px">Un espace séparé, avec ses propres résidents, emplacements et factures. Tu en seras administrateur.</p>
-    <form id="f-newcamp" class="form-grid" style="margin-top:14px">
+    <form id="f-newcamp" class="form-grid mt-2">
       <label class="full">Nom *<input name="nom" required placeholder="Camping des Princes"></label>
       <label class="full">Raison sociale<input name="raison_sociale"></label>
       <label>SIRET<input name="siret"></label>
@@ -382,7 +388,7 @@ function route() {
   }
   _hashPrec = location.hash;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
-  ($('#main').innerHTML = CHARGE);
+  ($('#main').innerHTML = SKEL_PAGE);
   const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
   fn().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
   majBadgeMessagerie();
@@ -447,7 +453,7 @@ async function vueDashboard() {
     ${imp && enRetard.length ? `
     <div class="card">
       <h2>Factures en retard</h2>
-      <table style="margin-top:8px"><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th><th></th></tr></thead>
+      <table class="mt-1"><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th><th></th></tr></thead>
       <tbody>${enRetard.slice(0, 8).map((f) => `
         <tr>
           <td><strong>${esc(f.numero)}</strong></td>
@@ -456,14 +462,14 @@ async function vueDashboard() {
           <td class="right" data-l="Retard"><span class="badge en_retard">${f.jours_retard} j</span></td>
           <td class="right">${f.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${f.resident_id}')">Écrire</button>` : ''}</td>
         </tr>`).join('')}</tbody></table>
-      ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
+      ${enRetard.length > 8 ? `<p class="muted mt-1"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
     </div>` : ''}
 
     ${echeances.length ? `
     <div class="card">
       <div class="card-actions"><h2>Échéances — assurances &amp; contrats</h2>
         <button class="btn btn-ghost btn-sm" onclick="echRappels()" title="Notifie le staff et écrit aux résidents concernés (paliers 60/30/7/0 j, jamais deux fois le même rappel)">Envoyer les rappels</button></div>
-      <table style="margin-top:8px"><thead><tr><th>Type</th><th>Résident</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
+      <table class="mt-1"><thead><tr><th>Type</th><th>Résident</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
       <tbody>${echeances.slice(0, 10).map((x) => `
         <tr>
           <td>${x.type === 'assurance' ? 'Assurance' : x.type === 'document' ? `Doc. ${esc((x.titre || '').slice(0, 28))}${!x.signe ? ' <span class="muted">(non signé)</span>' : ''}` : `Contrat ${esc(x.contrat_numero || '')}`}</td>
@@ -478,7 +484,7 @@ async function vueDashboard() {
             ? `<button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'" title="Déposer la nouvelle version à signer">Voir / refaire</button>`
             : (x.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${x.resident_id}')">Écrire</button>` : '')}</td>
         </tr>`).join('')}</tbody></table>
-      ${echeances.length > 10 ? `<p class="muted" style="margin-top:8px">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
+      ${echeances.length > 10 ? `<p class="muted mt-1">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
     </div>` : ''}
 
     <div class="card">
@@ -534,9 +540,9 @@ window.messageGroupe = () => {
   openDrawer(`
     <h2>Message à tous les résidents</h2>
     <p class="muted" style="margin-top:4px">Envoyé sur le portail de chaque résident actif, avec notification e-mail.</p>
-    <form id="f-groupe" style="margin-top:14px">
+    <form id="f-groupe" class="mt-2">
       <textarea name="corps" required rows="5" placeholder="Ex. : Coupure d'eau prévue mardi de 9h à 12h…" style="width:100%;resize:vertical"></textarea>
-      <button class="btn btn-primary btn-block" style="margin-top:12px">Envoyer à tous</button>
+      <button class="btn btn-primary btn-block mt-2">Envoyer à tous</button>
     </form>`);
   $('#f-groupe').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -561,7 +567,7 @@ window.messageRapide = async (presetResidentId) => {
   };
   openDrawer(`
     <h2>Message rapide</h2>
-    <form id="f-rapide" class="form-grid" style="margin-top:14px">
+    <form id="f-rapide" class="form-grid mt-2">
       <label class="full">Résident *
         <select name="resident_id" required>
           <option value="">— choisir —</option>
@@ -806,7 +812,7 @@ function renderCarte() {
             <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
           </div>
         </div>
-        ${!edit && unplaced.length ? `<p class="muted" style="margin-top:12px">Sans position : ${unplaced.map((e) => esc(e.numero)).join(', ')} — passer en mode édition pour les placer.</p>` : ''}
+        ${!edit && unplaced.length ? `<p class="muted mt-2">Sans position : ${unplaced.map((e) => esc(e.numero)).join(', ')} — passer en mode édition pour les placer.</p>` : ''}
       </div>
 
       ${edit ? `<aside class="map-panel">
@@ -1191,7 +1197,7 @@ window.ficheEmplacement = async (id) => {
         <li><span>${esc(r.prenom || '')} ${esc(r.nom)}</span><span class="fiche-solde ${Number(r.solde) < 0 ? 'neg' : 'pos'}"></span></li>
         ${r.email ? `<li><span>E-mail</span><span>${esc(r.email)}</span></li>` : ''}
         ${r.telephone ? `<li><span>Téléphone</span><span>${esc(r.telephone)}</span></li>` : ''}
-      </ul>${facturesHtml}` : '<p class="muted" style="margin-top:14px">Aucun résident rattaché.</p>'}
+      </ul>${facturesHtml}` : '<p class="muted mt-2">Aucun résident rattaché.</p>'}
   `);
 };
 
@@ -1336,8 +1342,8 @@ async function vueFicheClient(id) {
           </div>
         </div>
         ${migrationManquante
-          ? '<p class="form-error" style="margin-top:12px">Table « prestations » absente — exécute la migration db/09_prestations.sql dans Supabase.</p>'
-          : `<table style="margin-top:12px"><thead><tr><th style="width:30px"></th><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
+          ? '<p class="form-error mt-2">Table « prestations » absente — exécute la migration db/09_prestations.sql dans Supabase.</p>'
+          : `<table class="mt-2"><thead><tr><th style="width:30px"></th><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
         <tbody>${(prestations || []).map((p) => `
           <tr>
             <td>${p.statut === 'en_cours' ? `<input type="checkbox" class="presta-check" data-pid="${p.id}" data-type="${p.type}" data-ttc="${p.montant_ttc}" onchange="majSelectionPresta('${id}')">` : ''}</td>
@@ -1368,7 +1374,7 @@ async function vueFicheClient(id) {
             ${syn && syn.credit_a_affecter > 0 ? `<button class="btn btn-ghost btn-sm" onclick="lettrerCredit('${id}')" title="Affecter les paiements non lettrés aux factures ouvertes, des plus anciennes aux plus récentes">Affecter les paiements (${eur(syn.credit_a_affecter)})</button>` : ''}
           </div>
         </div>
-        <table style="margin-top:12px"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
+        <table class="mt-2"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
         <tbody>${(factures || []).map((f) => {
           const reste = Math.round((Number(f.total_ttc) - Number(f.montant_regle || 0)) * 100) / 100;
           const brouillon = f.statut === 'brouillon';
@@ -1402,7 +1408,7 @@ async function vueFicheClient(id) {
         }).join('') || '<tr><td colspan="7" class="muted">Aucune facture pour ce résident.</td></tr>'}</tbody></table>
       </div>
 
-      <div class="card" style="margin-top:14px">
+      <div class="card mt-2">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <h2 style="margin:0">Facturation récurrente</h2>
@@ -1411,7 +1417,7 @@ async function vueFicheClient(id) {
           <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">Configurer</button>
         </div>
         ${aConfig ? `
-          <table style="margin-top:12px"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
+          <table class="mt-2"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
           <tbody>
             ${Number(fact.loyer_mensuel || 0) > 0 ? `<tr>
               <td data-l="Désignation"><strong>Loyer emplacement</strong></td>
@@ -1429,7 +1435,7 @@ async function vueFicheClient(id) {
               <td data-l="Prorata">${l.prorata ? '<span class="badge emise">au prorata</span>' : '<span class="muted">fixe</span>'}</td>
             </tr>`).join('')}
           </tbody></table>`
-          : '<p class="muted" style="margin-top:10px">Aucun montant configuré. Cliquez sur « Configurer » pour saisir le loyer et les lignes qui reviennent chaque mois (forfait, redevance OM…).</p>'}
+          : '<p class="muted mt-1">Aucun montant configuré. Cliquez sur « Configurer » pour saisir le loyer et les lignes qui reviennent chaque mois (forfait, redevance OM…).</p>'}
       </div>
     </section>
 
@@ -1441,7 +1447,7 @@ async function vueFicheClient(id) {
       <div class="card">
         <h2>Messages</h2>
         ${messages === null
-          ? '<p class="form-error" style="margin-top:12px">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
+          ? '<p class="form-error mt-2">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
           : `<div id="fil-messages" class="msg-fil">
           ${(messages || []).map((m) => `
             <div class="msg-row ${m.auteur === 'camping' ? 'me' : 'them'}">
@@ -1470,7 +1476,7 @@ async function vueFicheClient(id) {
           </div>
         </div>
       </div>
-      <div class="card" style="margin-top:16px">
+      <div class="card mt-3">
         <h2>Documents</h2>
         ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
       </div>
@@ -1525,7 +1531,7 @@ window.chargerReleve = async (id, annee) => {
           </div>
         </div>
 
-        <div class="kpis" style="margin-top:14px">
+        <div class="kpis mt-2">
           <div class="kpi"><div class="v">${eur(d.report_a_nouveau)}</div><div class="l">Report au 1ᵉʳ janvier</div></div>
           <div class="kpi"><div class="v">${eur(d.totaux.facture)}</div><div class="l">Facturé en ${d.annee}</div></div>
           <div class="kpi"><div class="v">${eur(d.totaux.regle)}</div><div class="l">Réglé en ${d.annee}</div></div>
@@ -1533,7 +1539,7 @@ window.chargerReleve = async (id, annee) => {
             <div class="l">${du ? 'Reste dû aujourd\u2019hui' : credit ? 'Avoir en sa faveur' : 'Compte soldé ✓'}</div></div>
         </div>
 
-        <table style="margin-top:14px">
+        <table class="mt-2">
           <thead><tr><th>Date</th><th>Opération</th><th class="right">Débit</th><th class="right">Crédit</th><th class="right">Solde</th><th></th></tr></thead>
           <tbody>
             <tr class="rel-report">
@@ -1568,7 +1574,7 @@ window.chargerReleve = async (id, annee) => {
       ${Object.keys(d.par_annee).length > 1 ? `
       <div class="card">
         <h2>Situation par année</h2>
-        <table style="margin-top:10px"><thead><tr><th>Année</th><th class="right">Facturé</th><th class="right">Réglé</th><th class="right">Solde fin d'année</th></tr></thead>
+        <table class="mt-1"><thead><tr><th>Année</th><th class="right">Facturé</th><th class="right">Réglé</th><th class="right">Solde fin d'année</th></tr></thead>
         <tbody>${Object.keys(d.par_annee).sort().reverse().map((a) => {
           const v = d.par_annee[a];
           return `<tr class="row-click" onclick="chargerReleve('${id}','${a}')">
@@ -1645,7 +1651,7 @@ window.formPrestation = async (residentId, type) => {
   const lbl = 'display:flex;flex-direction:column;gap:3px';
   openDrawer(`
     <h2>${TITRES[type]}</h2>
-    <form id="f-presta" class="form-grid" style="margin-top:14px">
+    <form id="f-presta" class="form-grid mt-2">
       ${type === 'vente' && articles.length ? `
         <label class="full">Article du catalogue
           <select id="presta-article"><option value="">— saisie libre —</option>
@@ -1724,7 +1730,7 @@ window.encaisserClient = async (id) => {
   const { moyens } = await api('/api/moyens-paiement').catch(() => ({ moyens: [] }));
   openDrawer(`
     <h2>Encaisser un paiement</h2>
-    <form id="f-enc" class="form-grid" style="margin-top:14px">
+    <form id="f-enc" class="form-grid mt-2">
       <label>Moyen de paiement<select name="mode">${
         moyens.length ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
                       : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'
@@ -1760,7 +1766,7 @@ window.formFacturation = async (residentId) => {
     <p class="muted" style="margin-top:4px">Ce qui est facturé chaque mois à ce résident. Indépendant du contrat :
       vous pouvez réviser les tarifs ici sans refaire le contrat signé.</p>
 
-    <form id="f-fact" style="margin-top:16px">
+    <form id="f-fact" class="mt-3">
       <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:14px;margin-bottom:16px">
         <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:10px">Loyer emplacement</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1774,7 +1780,7 @@ window.formFacturation = async (residentId) => {
       <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:8px">Lignes récurrentes</div>
       <div id="rec-lignes">${(f.lignes || []).map(ligne).join('') || ligne()}</div>
       <button type="button" class="btn btn-ghost btn-sm" id="rec-add">+ Ajouter une ligne</button>
-      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Enregistrer</button></div>
+      <div class="mt-3"><button class="btn btn-primary btn-block">Enregistrer</button></div>
     </form>`);
   $('#rec-add').addEventListener('click', () => $('#rec-lignes').insertAdjacentHTML('beforeend', ligne()));
   $('#f-fact').addEventListener('submit', async (e) => {
@@ -1817,10 +1823,10 @@ window.editerLignesFacture = async (factureId) => {
     <h2>Modifier le brouillon</h2>
     <p class="muted" style="margin-top:4px">Ajustez les lignes avant émission. Une fois émise, la facture est figée
       (elle ne se corrige plus que par un avoir).</p>
-    <form id="f-lignes" style="margin-top:14px">
+    <form id="f-lignes" class="mt-2">
       <div id="fl-lignes">${(facture.lignes || []).map((l) => ligne(enTtc(l))).join('')}</div>
       <button type="button" class="btn btn-ghost btn-sm" id="fl-add">+ Ajouter une ligne</button>
-      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Enregistrer le brouillon</button></div>
+      <div class="mt-3"><button class="btn btn-primary btn-block">Enregistrer le brouillon</button></div>
     </form>`);
   $('#fl-add').addEventListener('click', () => $('#fl-lignes').insertAdjacentHTML('beforeend', ligne()));
   $('#f-lignes').addEventListener('submit', async (e) => {
@@ -1849,7 +1855,7 @@ window.ajouterPrestationsFacture = async (factureId, residentId) => {
   openDrawer(`
     <h2>Ajouter des prestations</h2>
     <p class="muted" style="margin-top:4px">Cochez ce que vous voulez ajouter à ce brouillon.</p>
-    <form id="f-addp" style="margin-top:14px">
+    <form id="f-addp" class="mt-2">
       ${dispo.map((p) => `
         <label style="display:flex;gap:10px;align-items:center;padding:11px 2px;border-bottom:1px solid #F1EDE2;
           text-transform:none;letter-spacing:0;font-weight:400;font-size:14px">
@@ -1860,7 +1866,7 @@ window.ajouterPrestationsFacture = async (factureId, residentId) => {
           </span>
           <strong style="white-space:nowrap">${eur(Number(p.pu_ttc || 0) * Number(p.quantite || 1))}</strong>
         </label>`).join('')}
-      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Ajouter au brouillon</button></div>
+      <div class="mt-3"><button class="btn btn-primary btn-block">Ajouter au brouillon</button></div>
     </form>`);
   $('#f-addp').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1953,10 +1959,10 @@ window.encaisserFacture = async (factureId, residentId, reste) => {
   openDrawer(`
     <h2>Encaisser sur la facture</h2>
     <p class="muted" style="margin-top:4px">Reste dû : <strong>${eur(reste)}</strong></p>
-    <form id="f-encf" style="margin-top:12px">
+    <form id="f-encf" class="mt-2">
       <div id="enc-lignes">${ligne(reste != null ? Number(reste).toFixed(2) : '')}</div>
       <button type="button" class="btn btn-ghost btn-sm" id="enc-add">+ Ajouter un règlement (paiement mixte)</button>
-      <div style="margin-top:16px"><button class="btn btn-primary btn-block">Encaisser sur cette facture</button></div>
+      <div class="mt-3"><button class="btn btn-primary btn-block">Encaisser sur cette facture</button></div>
     </form>`);
   $('#enc-add').addEventListener('click', () => $('#enc-lignes').insertAdjacentHTML('beforeend', ligne()));
   $('#f-encf').addEventListener('submit', async (e) => {
@@ -1995,7 +2001,7 @@ window.formResident = async (id = null) => {
   const v = (k) => esc((r && r[k]) || '');
   openDrawer(`
     <h2>${r ? 'Modifier le résident' : 'Nouveau résident'}</h2>
-    <form id="f-res" class="form-grid" style="margin-top:14px">
+    <form id="f-res" class="form-grid mt-2">
       <label>Civilité<select name="civilite">
         <option value="">—</option>
         <option ${r && r.civilite === 'M.' ? 'selected' : ''}>M.</option>
@@ -2063,7 +2069,7 @@ async function vueEmplacements() {
 window.formEmplacement = () => {
   openDrawer(`
     <h2>Nouvel emplacement</h2>
-    <form id="f-emp" class="form-grid" style="margin-top:14px">
+    <form id="f-emp" class="form-grid mt-2">
       <label>Numéro *<input name="numero" required></label>
       <label>Secteur<input name="secteur"></label>
       <label>Type<select name="type"><option value="">—</option><option>mobil-home</option><option>chalet</option><option>caravane</option><option>parcelle nue</option></select></label>
@@ -2161,7 +2167,7 @@ async function vueCompteurs() {
         <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
         <td class="right"><button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
       </tr>`).join('') || `<tr><td colspan="6"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3.5 17h17z"/><path d="M12 9v8"/></svg></div><h3>Aucun emplacement</h3><p>Ajoutez vos emplacements pour suivre l\u2019occupation et les rattacher aux résidents.</p></div></td></tr>`}</tbody></table></div>
-    <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix kWh) — à facturer depuis sa fiche.</p>`;
+    <p class="muted mt-2">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix kWh) — à facturer depuis sa fiche.</p>`;
 }
 
 window.releverCompteur = async (empId) => {
@@ -2257,7 +2263,7 @@ async function vueAdministration() {
           </div>
           <button class="btn btn-primary btn-sm" onclick="formMoyen()">Ajouter un moyen</button>
         </div>
-        <div id="moyens-body" style="margin-top:12px"></div>
+        <div id="moyens-body" class="mt-2"></div>
       </div>
     </section>
 
@@ -2265,7 +2271,7 @@ async function vueAdministration() {
       <div class="card">
         <h2>Accès à cet espace</h2>
         <p class="muted" style="margin-top:2px">Les droits ci-dessous ne valent que pour le camping actif. Un même compte peut avoir des droits différents sur un autre camping.</p>
-        <table style="margin-top:12px"><thead><tr><th>Compte</th><th>Rôle</th><th>Droits</th><th></th></tr></thead>
+        <table class="mt-2"><thead><tr><th>Compte</th><th>Rôle</th><th>Droits</th><th></th></tr></thead>
         <tbody>${utilisateurs.map((u) => `
           <tr>
             <td><strong>${esc((u.prenom || '') + ' ' + (u.nom || ''))}</strong>${u.est_moi ? ' <span class="badge reglee">vous</span>' : ''}
@@ -2301,7 +2307,7 @@ async function vueAdministration() {
             <button class="btn btn-primary btn-sm" onclick="exportJournal()">Export fisc (CSV)</button>
           </div>
         </div>
-        <div id="journal-body" style="margin-top:14px"></div>
+        <div id="journal-body" class="mt-2"></div>
       </div>
     </section>`;
 }
@@ -2347,7 +2353,7 @@ window.formMoyen = async (id) => {
   openDrawer(`
     <h2>${m ? 'Modifier le moyen' : 'Nouveau moyen de paiement'}</h2>
     ${m ? `<p class="muted" style="margin-top:4px">Code <code>${esc(m.code)}</code> — non modifiable (il est inscrit dans l'historique des règlements).</p>` : ''}
-    <form id="f-moyen" class="form-grid" style="margin-top:14px">
+    <form id="f-moyen" class="form-grid mt-2">
       <label class="full">Libellé *<input name="libelle" required value="${esc(m?.libelle || '')}" placeholder="Chèques-vacances ANCV"></label>
       <label>Type
         <select name="type">${Object.entries(TYPES_MOYEN).map(([k, v]) => `<option value="${k}"${m?.type === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
@@ -2405,7 +2411,7 @@ window.chargerRgpd = async () => {
           </div>
           <button class="btn btn-primary btn-sm" onclick="registreRgpd()">Registre des traitements</button>
         </div>
-        <div class="kpis" style="margin-top:14px">
+        <div class="kpis mt-2">
           <div class="kpi"><div class="v">${d.anonymises}</div><div class="l">Résidents anonymisés</div></div>
           <div class="kpi ${d.candidats_purge.length ? 'warn' : ''}"><div class="v">${d.candidats_purge.length}</div><div class="l">À anonymiser (conservation dépassée)</div></div>
           <div class="kpi"><div class="v">${d.demandes.length}</div><div class="l">Demandes de droits</div></div>
@@ -2416,13 +2422,13 @@ window.chargerRgpd = async () => {
       <div class="card">
         <h2>Durée de conservation dépassée</h2>
         <p class="muted" style="margin-top:2px">Résidents inactifs depuis plus de ${d.durees.resident_inactif_ans} ans (avant le ${dfr(d.seuil_purge)}). Le RGPD impose de ne pas conserver les données au-delà du nécessaire.</p>
-        ${d.candidats_purge.length ? `<table style="margin-top:12px"><thead><tr><th>Résident</th><th>Inactif depuis</th><th></th></tr></thead>
+        ${d.candidats_purge.length ? `<table class="mt-2"><thead><tr><th>Résident</th><th>Inactif depuis</th><th></th></tr></thead>
         <tbody>${d.candidats_purge.map((r) => `<tr>
           <td><strong>${esc(r.nom)}</strong></td>
           <td class="muted">${dfr(r.inactif_depuis)}</td>
           <td class="right"><button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${r.id}','${esc(r.nom)}')">Anonymiser</button></td>
         </tr>`).join('')}</tbody></table>`
-        : '<p class="muted" style="margin-top:10px">Aucun résident à anonymiser. ✓</p>'}
+        : '<p class="muted mt-1">Aucun résident à anonymiser. ✓</p>'}
       </div>
 
       <div class="card">
@@ -2433,7 +2439,7 @@ window.chargerRgpd = async () => {
           </div>
           <button class="btn btn-ghost btn-sm" onclick="formViolation()">Déclarer une violation</button>
         </div>
-        ${d.violations.length ? `<table style="margin-top:12px"><thead><tr><th>Date</th><th>Nature</th><th>Description</th><th class="right">Personnes</th><th>CNIL</th></tr></thead>
+        ${d.violations.length ? `<table class="mt-2"><thead><tr><th>Date</th><th>Nature</th><th>Description</th><th class="right">Personnes</th><th>CNIL</th></tr></thead>
         <tbody>${d.violations.map((v) => `<tr>
           <td class="muted">${dfr(v.date_incident)}</td>
           <td>${esc(v.nature)}</td>
@@ -2441,12 +2447,12 @@ window.chargerRgpd = async () => {
           <td class="right">${v.personnes_touchees ?? '—'}</td>
           <td>${v.cnil_notifiee ? '<span class="badge reglee">notifiée</span>' : '<span class="badge en_retard">non notifiée</span>'}</td>
         </tr>`).join('')}</tbody></table>`
-        : '<p class="muted" style="margin-top:10px">Aucune violation enregistrée.</p>'}
+        : '<p class="muted mt-1">Aucune violation enregistrée.</p>'}
       </div>
 
       ${d.demandes.length ? `<div class="card">
         <h2>Demandes d'exercice de droits</h2>
-        <table style="margin-top:10px"><thead><tr><th>Date</th><th>Type</th><th>Origine</th><th>Statut</th></tr></thead>
+        <table class="mt-1"><thead><tr><th>Date</th><th>Type</th><th>Origine</th><th>Statut</th></tr></thead>
         <tbody>${d.demandes.map((x) => `<tr>
           <td class="muted">${new Date(x.created_at).toLocaleString('fr-FR')}</td>
           <td>${esc(x.type)}</td><td class="muted">${esc(x.origine)}</td>
@@ -2481,7 +2487,7 @@ window.formViolation = () => {
   openDrawer(`
     <h2>Déclarer une violation de données</h2>
     <p class="muted" style="margin-top:4px">Perte, vol, accès non autorisé, divulgation, destruction… À notifier à la CNIL sous 72 h si risque pour les personnes.</p>
-    <form id="f-viol" class="form-grid" style="margin-top:14px">
+    <form id="f-viol" class="form-grid mt-2">
       <label>Date de l'incident *<input name="date_incident" type="datetime-local" required></label>
       <label>Nature
         <select name="nature">
@@ -2534,7 +2540,7 @@ window.chargerFiscal = async () => {
           <button class="btn btn-primary btn-sm" onclick="attestationFiscale()">Attestation de conformité</button>
         </div>
 
-        <div class="kpis" style="margin-top:14px">
+        <div class="kpis mt-2">
           <div class="kpi ${chaine.integre ? '' : 'bad'}">
             <div class="v">${chaine.integre ? 'Intègre' : 'ROMPUE'}</div>
             <div class="l">État de la chaîne</div></div>
@@ -2569,7 +2575,7 @@ window.chargerFiscal = async () => {
             <button class="btn btn-ghost btn-sm" onclick="archiveFiscale()">Archive (JSON)</button>
           </div>
         </div>
-        ${clotures.length ? `<table style="margin-top:12px"><thead><tr><th>Type</th><th>Période</th><th class="right">Factures</th><th class="right">Encaissements</th><th class="right">CA TTC</th><th class="right">Encaissé</th><th class="right">Cumul perpétuel</th><th>Scellée le</th></tr></thead>
+        ${clotures.length ? `<table class="mt-2"><thead><tr><th>Type</th><th>Période</th><th class="right">Factures</th><th class="right">Encaissements</th><th class="right">CA TTC</th><th class="right">Encaissé</th><th class="right">Cumul perpétuel</th><th>Scellée le</th></tr></thead>
         <tbody>${clotures.map((c) => `<tr>
           <td><span class="ptype ${c.type === 'annuelle' ? 'caution' : c.type === 'mensuelle' ? 'sejour' : 'charge'}">${esc(c.type)}</span></td>
           <td><strong>${esc(c.periode)}</strong></td>
@@ -2580,8 +2586,8 @@ window.chargerFiscal = async () => {
           <td class="right"><strong>${eur(c.cumul_perpetuel)}</strong></td>
           <td class="muted" style="font-size:12px">${new Date(c.horodatage).toLocaleString('fr-FR')}</td>
         </tr>`).join('')}</tbody></table>`
-        : '<p class="muted" style="margin-top:12px">Aucune clôture. La première clôture journalière sera créée automatiquement, ou lancez-la manuellement ci-dessus.</p>'}
-        <p class="muted" style="margin-top:10px">Format de période : <code>2026-07-11</code> (journalière), <code>2026-07</code> (mensuelle), <code>2026</code> (annuelle).</p>
+        : '<p class="muted mt-2">Aucune clôture. La première clôture journalière sera créée automatiquement, ou lancez-la manuellement ci-dessus.</p>'}
+        <p class="muted mt-1">Format de période : <code>2026-07-11</code> (journalière), <code>2026-07</code> (mensuelle), <code>2026</code> (annuelle).</p>
       </div>`;
   } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
 };
@@ -2676,7 +2682,7 @@ window.chargerJournal = async () => {
           <td class="muted" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(resumeAudit(x))}</td>
           <td class="muted">${esc(x.ip || '—')}</td>
         </tr>`).join('')}</tbody></table>
-      ${entrees.length >= limite ? `<p class="muted" style="margin-top:10px">${limite} dernières entrées affichées — affine les dates ou exporte en CSV pour tout voir.</p>` : ''}`
+      ${entrees.length >= limite ? `<p class="muted mt-1">${limite} dernières entrées affichées — affine les dates ou exporte en CSV pour tout voir.</p>` : ''}`
       : '<p class="muted">Aucune opération sur cette période.</p>';
   } catch (err) { box.innerHTML = `<p class="form-error">${esc(err.message)}</p>`; }
 };
@@ -2728,7 +2734,7 @@ window.formUtilisateur = async (userId) => {
   openDrawer(`
     <h2>${u ? 'Modifier l\u2019accès' : 'Ajouter un compte'}</h2>
     <p class="muted" style="margin-top:4px">${u ? esc(u.email) : 'Le compte recevra ses identifiants par e-mail. Les droits ne valent que pour le camping actif.'}</p>
-    <form id="f-user" class="form-grid" style="margin-top:14px">
+    <form id="f-user" class="form-grid mt-2">
       ${u ? '' : `
         <label class="full">E-mail *<input name="email" type="email" required></label>
         <label>Prénom<input name="prenom"></label>
@@ -2894,7 +2900,7 @@ window.importerModeleContrat = () => {
   openDrawer(`
     <h2>Importer un contrat existant</h2>
     <p class="muted" style="margin-top:4px">Dépose ton contrat PDF : Locamp en extrait le texte et en fait un modèle. Tu n\u2019auras plus qu\u2019à remplacer le nom, les dates et le montant par les variables — clique-les dans l\u2019éditeur qui s\u2019ouvrira.</p>
-    <form id="f-import-modele" class="form-grid" style="margin-top:12px">
+    <form id="f-import-modele" class="form-grid mt-2">
       <label class="full">Contrat PDF *<input type="file" name="file" accept="application/pdf" required></label>
       <label class="full">Nom du modèle<input name="nom" placeholder="(par défaut : nom du fichier)"></label>
       <div class="full"><button class="btn btn-primary btn-block">Importer</button></div>
@@ -2921,7 +2927,7 @@ window.nouveauContrat = async (residentId) => {
   openDrawer(`
     <h2>Nouveau contrat — ${esc((r.prenom || '') + ' ' + r.nom)}</h2>
     <p class="muted" style="margin-top:4px">Le contrat est généré depuis le modèle (variables remplies), puis tu pourras l\u2019envoyer en signature.</p>
-    <form id="f-contrat" class="form-grid" style="margin-top:12px">
+    <form id="f-contrat" class="form-grid mt-2">
       <label class="full">Modèle ${modeles.length ? '' : '<span class="muted">(aucun — crée-en un dans Paramètres)</span>'}
         <select name="modele_id">${['<option value="">— sans modèle (PDF standard) —</option>']
           .concat(modeles.map((m) => `<option value="${m.id}">${esc(m.nom)}</option>`)).join('')}</select></label>
@@ -2951,7 +2957,7 @@ window.formDocSignature = async () => {
   openDrawer(`
     <h2>Déposer un document à signer</h2>
     <p class="muted" style="margin-top:4px">PDF uniquement. Tu placeras ensuite les zones de signature sur le document.</p>
-    <form id="f-docsig" class="form-grid" style="margin-top:14px">
+    <form id="f-docsig" class="form-grid mt-2">
       <label class="full">Fichier PDF *<input type="file" name="file" accept="application/pdf" required></label>
       <label class="full">Titre *<input name="titre" required placeholder="Contrat de location — emplacement 077"></label>
       <label class="full">Signataire *
@@ -3156,7 +3162,7 @@ window.voirSignature = async (id) => {
     <h2>Preuve de signature</h2>
     <p class="muted" style="margin-top:4px">${esc(d.titre)}</p>
     ${preuve ? `
-      <ul class="list-tight" style="margin-top:14px">
+      <ul class="list-tight mt-2">
         <li><span>Signataire</span><span><strong>${esc(preuve.signataire_nom)}</strong></span></li>
         <li><span>E-mail</span><span>${esc(preuve.signataire_email || '—')}</span></li>
         <li><span>Date et heure</span><span>${new Date(preuve.horodatage).toLocaleString('fr-FR')}</span></li>
@@ -3180,13 +3186,13 @@ function renderEfactureCard(cx, plateformes) {
   const connecte = cx && (cx.statut === 'connecte' || cx.statut === 'connectee');
   if (connecte) {
     return `
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <div class="card-actions"><h2 style="margin:0">Facturation electronique</h2>
         <span class="badge reglee">Connectee &mdash; ${esc(platNom(cx.pa_code))}</span></div>
       ${intro}
-      <div class="stat" style="margin-top:10px"><span class="k">Adresse de routage</span><span class="v">${esc(cx.adresse_routage || '&mdash;')}</span></div>
+      <div class="stat mt-1"><span class="k">Adresse de routage</span><span class="v">${esc(cx.adresse_routage || '&mdash;')}</span></div>
       ${cx.message ? `<p class="muted">${esc(cx.message)}</p>` : ''}
-      <div class="card-actions" style="margin-top:10px">
+      <div class="card-actions mt-1">
         <button class="btn btn-ghost btn-sm" onclick="deconnecterPA()">Deconnecter</button></div>
 
       <div style="border-top:1px solid var(--trait,#E4DCC8);margin-top:16px;padding-top:12px">
@@ -3197,7 +3203,7 @@ function renderEfactureCard(cx, plateformes) {
           <label>Type<select id="erep-type"><option value="transaction">Transactions (ventes)</option><option value="encaissement">Encaissements (paiements recus)</option></select></label>
           <div class="full"><button class="btn btn-primary btn-sm" onclick="efApercu()">Apercu de la periode</button></div>
         </div>
-        <div id="erep-apercu" style="margin-top:10px"></div>
+        <div id="erep-apercu" class="mt-1"></div>
         <h3 style="margin:16px 0 6px;font-size:14px">Periodes deja transmises</h3>
         <div id="erep-histo">${CHARGE}</div>
       </div>
@@ -3212,11 +3218,11 @@ function renderEfactureCard(cx, plateformes) {
   }
   const opts = plateformes.map((x) => `<option value="${esc(x.code)}">${esc(x.nom)}</option>`).join('');
   return `
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <div class="card-actions"><h2 style="margin:0">Facturation electronique</h2>
         <span class="badge en_retard">Non connectee</span></div>
       ${intro}
-      <div class="form-grid" style="margin-top:12px">
+      <div class="form-grid mt-2">
         <label>Plateforme agreee
           <select id="ef-pa" onchange="efRenderChamps()">${opts || '<option value="">Aucune disponible</option>'}</select></label>
         <div id="ef-champs" class="full"></div>
@@ -3260,9 +3266,9 @@ window.efApercu = async () => {
     zone.innerHTML = `
       <div class="stat"><span class="k">Operations B2C</span><span class="v">${lot.nb_operations || 0}</span></div>
       <div class="stat"><span class="k">Total TTC</span><span class="v">${eur(lot.total_ttc)}</span></div>
-      ${type === 'transaction' ? `<table style="margin-top:8px"><thead><tr><th>Taux</th><th class="right">Base HT</th><th class="right">TVA</th></tr></thead><tbody>${vent || '<tr><td colspan="3" class="muted">Aucune vente sur la periode.</td></tr>'}</tbody></table>` : ''}
+      ${type === 'transaction' ? `<table class="mt-1"><thead><tr><th>Taux</th><th class="right">Base HT</th><th class="right">TVA</th></tr></thead><tbody>${vent || '<tr><td colspan="3" class="muted">Aucune vente sur la periode.</td></tr>'}</tbody></table>` : ''}
       ${exclues ? `<p class="muted" style="margin-top:6px">${exclues} facture(s) entreprise exclue(s) (transmises en Factur-X).</p>` : ''}
-      <div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="efTransmettre()">Transmettre cette periode a la PA</button></div>`;
+      <div class="mt-1"><button class="btn btn-primary btn-sm" onclick="efTransmettre()">Transmettre cette periode a la PA</button></div>`;
   } catch (e) { zone.innerHTML = `<p class="bad">${esc(e.message || 'Erreur')}</p>`; }
 };
 window.efTransmettre = async () => {
@@ -3346,7 +3352,7 @@ async function vueParametres() {
 
     <div class="card">
       <h2>Identité & mentions légales</h2>
-      <form id="f-ident" class="form-grid" style="margin-top:12px">
+      <form id="f-ident" class="form-grid mt-2">
         <label>Nom (interne)<input name="nom" value="${esc(c.nom || '')}"></label>
         <label>Raison sociale<input name="raison_sociale" value="${esc(c.raison_sociale || '')}"></label>
         <label>SIRET<input name="siret" value="${esc(c.siret || '')}"></label>
@@ -3365,12 +3371,12 @@ async function vueParametres() {
           <button class="btn btn-primary btn-sm" onclick="formModeleContrat()">Nouveau modèle</button>
         </div></div>
       <p class="muted">Un modèle = le texte de ton contrat avec des variables (nom du résident, emplacement, montant, dates) remplies automatiquement à la création. Chaque camping a ses propres modèles.</p>
-      <div id="modeles-zone" style="margin-top:10px">${CHARGE}</div>
+      <div id="modeles-zone" class="mt-1">${CHARGE}</div>
     </div>
 
     ${efCard}
 
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <h2>Logo</h2>
       <div class="logo-row">
         <div class="logo-preview">${logoUrl ? `<img src="${logoUrl}" alt="logo">` : '<span class="muted">Aucun logo</span>'}</div>
@@ -3382,10 +3388,10 @@ async function vueParametres() {
       </div>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <h2>Facturation</h2>
       <p class="muted" style="margin-top:2px">Tous les prix se saisissent <strong>TTC</strong> dans Locamp. Le HT et la TVA sont calculés automatiquement d'après le taux de chaque ligne.</p>
-      <form id="f-fact-params" class="form-grid" style="margin-top:12px">
+      <form id="f-fact-params" class="form-grid mt-2">
         <label>TVA loyer (%)<input name="tva_taux_loyer" type="number" step="0.1" value="${fp.tva_taux_loyer ?? 0}"></label>
         <label>Délai de paiement (jours)<input name="delai_paiement" type="number" step="1" value="${fp.delai_paiement ?? 30}"></label>
         <label class="full">Conditions de règlement<input name="conditions_reglement" value="${esc(fp.conditions_reglement || 'À réception de facture.')}"></label>
@@ -3398,9 +3404,9 @@ async function vueParametres() {
       </form>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <h2>Taxe de séjour</h2>
-      <form id="f-taxe" class="form-grid" style="margin-top:12px">
+      <form id="f-taxe" class="form-grid mt-2">
         <label>Active<select name="actif"><option value="true"${ts.actif ? ' selected' : ''}>Oui</option><option value="false"${ts.actif ? '' : ' selected'}>Non</option></select></label>
         <label>Tarif / nuit / personne (€)<input name="tarif_nuit_personne" type="number" step="0.01" value="${ts.tarif_nuit_personne ?? 0}"></label>
         <p class="muted full" style="margin:0">La taxe de séjour n'est pas soumise à TVA : le tarif saisi est le montant final.</p>
@@ -3408,31 +3414,31 @@ async function vueParametres() {
       </form>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <h2>Énergie</h2>
       <p class="muted" style="margin-top:2px">Utilisé par l'écran Compteurs : chaque relevé crée une charge (conso × prix kWh) sur la fiche du résident.</p>
-      <form id="f-energie" class="form-grid" style="margin-top:12px">
+      <form id="f-energie" class="form-grid mt-2">
         <label>Prix du kWh TTC (€)<input name="prix_kwh" type="number" step="0.0001" value="${en.prix_kwh ?? ''}" placeholder="0.39"></label>
         <label>TVA énergie (%)<input name="taux_tva" type="number" step="0.1" value="${en.taux_tva ?? 10}"></label>
         <div class="full"><button class="btn btn-primary">Enregistrer l'énergie</button></div>
       </form>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <h2>Relances</h2>
       <p class="muted" style="margin-top:2px">En automatique, les clients en retard reçoivent un rappel par e-mail (au plus un par facture tous les 7 jours).</p>
-      <form id="f-relances" class="form-grid" style="margin-top:12px">
+      <form id="f-relances" class="form-grid mt-2">
         <label>Relances automatiques<select name="auto"><option value="false"${rl.auto === true ? '' : ' selected'}>Désactivées</option><option value="true"${rl.auto === true ? ' selected' : ''}>Activées (quotidien)</option></select></label>
         <div class="full"><button class="btn btn-primary">Enregistrer les relances</button></div>
       </form>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card mt-3">
       <h2>Catalogue de ventes</h2>
       <p class="muted" style="margin-top:2px">Articles vendables (jetons de lavage, bouteille de gaz…), réutilisables sur les factures via « Article du catalogue ».</p>
-      <table style="margin-top:10px"><thead><tr><th>Désignation</th><th>Unité</th><th class="right">Prix TTC</th><th class="right">TVA</th><th></th></tr></thead>
+      <table class="mt-1"><thead><tr><th>Désignation</th><th>Unité</th><th class="right">Prix TTC</th><th class="right">TVA</th><th></th></tr></thead>
         <tbody id="art-body"></tbody></table>
-      <form id="f-article" class="form-grid" style="margin-top:12px">
+      <form id="f-article" class="form-grid mt-2">
         <label>Désignation *<input name="designation" required placeholder="Jeton de lavage"></label>
         <label>Unité<input name="unite" placeholder="unité, jeton, bouteille…"></label>
         <label>Prix TTC (€)<input name="prix_ttc" type="number" step="0.01" value="0"></label>
@@ -3561,7 +3567,7 @@ window.formFacture = async (presetResidentId, preset) => {
 
   openDrawer(`
     <h2>Nouvelle facture / vente</h2>
-    <form id="f-fac" class="form-grid" style="margin-top:14px">
+    <form id="f-fac" class="form-grid mt-2">
       <label class="full">Résident *
         <select name="resident_id" required>
           <option value="">— choisir —</option>
@@ -3668,7 +3674,7 @@ async function vueReglements() {
     <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
     <div class="card">
       <h2>Enregistrer un paiement</h2>
-      <form id="f-reg" class="form-grid" style="margin-top:10px">
+      <form id="f-reg" class="form-grid mt-1">
         <label>Résident *<select name="resident_id" required>${residents.map((r) => `<option value="${r.id}">${esc(rmap[r.id])}</option>`).join('')}</select></label>
         <label>Moyen de paiement *<select name="mode" required>
           ${moyens.length
@@ -3679,7 +3685,7 @@ async function vueReglements() {
         <label>Référence<input name="reference" placeholder="n° chèque, n° titre ANCV, libellé virement…"></label>
         <div class="full"><button class="btn btn-primary">Encaisser (lettrage automatique)</button></div>
       </form>
-      ${moyens.length ? '' : '<p class="muted" style="margin-top:8px">Moyens de paiement par défaut — configure-les dans Administration.</p>'}
+      ${moyens.length ? '' : '<p class="muted mt-1">Moyens de paiement par défaut — configure-les dans Administration.</p>'}
     </div>
     <div class="card"><table><thead><tr><th>Date</th><th>Résident</th><th>Moyen</th><th>Référence</th><th class="right">Montant</th></tr></thead>
     <tbody>${reglements.map((g) => `
@@ -3862,7 +3868,7 @@ async function vueCompta() {
         <div class="toolbar"><input id="tva-mois" type="month" value="${mois}">
         <button class="btn btn-primary btn-sm" onclick="chargerTva()">Calculer</button></div></div>
       <p class="muted">TVA exigible au titre des paiements reçus sur le mois (régime des encaissements), ventilée par taux via le lettrage.</p>
-      <div id="tva-resultat" style="margin-top:12px"><p class="muted">Choisir un mois puis « Calculer ».</p></div>
+      <div id="tva-resultat" class="mt-2"><p class="muted">Choisir un mois puis « Calculer ».</p></div>
     </div>
 
     <div class="card">
@@ -3873,7 +3879,7 @@ async function vueCompta() {
           <button class="btn btn-primary btn-sm" onclick="idxApercu()">Aperçu</button>
         </div></div>
       <p class="muted">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
-      <div id="idx-zone" style="margin-top:10px"></div>
+      <div id="idx-zone" class="mt-1"></div>
       <h3 style="margin:16px 0 6px;font-size:14px">Campagnes passées</h3>
       <div id="idx-histo">${CHARGE}</div>
     </div>
@@ -3881,19 +3887,19 @@ async function vueCompta() {
     <div class="card">
       <div class="card-actions"><h2>Comptes clients (auxiliaires)</h2></div>
       <p class="muted">Chaque client reçoit automatiquement un numéro de compte à sa création (ex. 41100001). Réglez la racine ci-dessous, puis attribuez un compte aux clients existants qui n'en ont pas.</p>
-      <div class="toolbar" style="margin-top:10px">
+      <div class="toolbar mt-1">
         <label style="margin:0">Racine<input id="cc-racine" value="${esc((camping?.parametres?.comptabilite || {}).racine_client || '411')}" style="width:110px"></label>
         <label style="margin:0">Chiffres de séquence<input id="cc-lng" type="number" min="2" max="8" value="${(camping?.parametres?.comptabilite || {}).longueur_seq_client || 5}" style="width:90px"></label>
         <button class="btn btn-ghost" onclick="enregistrerRacine()">Enregistrer</button>
         <button class="btn btn-primary" onclick="attribuerComptes()">Attribuer aux clients existants</button>
       </div>
-      <p class="muted" style="margin-top:8px">Aperçu : <strong id="cc-apercu"></strong></p>
+      <p class="muted mt-1">Aperçu : <strong id="cc-apercu"></strong></p>
     </div>
 
     <div class="card">
       <div class="card-actions"><h2>Exports comptables</h2></div>
       <p class="muted">Période par défaut : l'exercice en cours. Modifiable ci-dessous.</p>
-      <div class="toolbar" style="margin-top:10px">
+      <div class="toolbar mt-1">
         <label style="margin:0">Du<input id="exp-debut" type="date" value="${ex.debut}"></label>
         <label style="margin:0">Au<input id="exp-fin" type="date" value="${ex.fin}"></label>
         <button class="btn btn-primary" onclick="telechargerExport('/api/compta/fec?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'FEC_' + $('#exp-fin').value + '.txt')">Export FEC</button>
