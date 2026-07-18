@@ -12,7 +12,7 @@ router.use(auth, campingScope);
 router.get('/', async (req, res) => {
   try {
     let q = supabase.from('factures')
-      .select('id,numero,resident_id,contrat_id,periode,date_emission,total_ttc,montant_regle,statut')
+      .select('id,numero,resident_id,contrat_id,periode,date_emission,total_ttc,montant_regle,statut,efacture_statut,efacture_pa_id')
       .eq('camping_id', req.activeCampingId);
     for (const f of ['resident_id', 'contrat_id', 'statut', 'periode']) {
       if (req.query[f]) q = q.eq(f, req.query[f]);
@@ -411,6 +411,39 @@ router.get('/:id/facturx.xml', async (req, res) => {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.send(out.xml);
   } catch (e) { console.error('[factures:facturx-xml]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/factures/:id/emettre-pa  -> envoie le Factur-X à la plateforme agréée (Pennylane…)
+router.post('/:id/emettre-pa', async (req, res) => {
+  try {
+    const ef = require('../lib/efacture');
+    const cx = await ef.chargerConnexion(req.activeCampingId);
+    if (!cx || !/connect/.test(cx.statut || '')) {
+      return res.status(400).json({ error: 'Aucune plateforme connectée. Paramètres → Facturation électronique.' });
+    }
+    const { genererFacturx } = require('../lib/efacture/facturx');
+    const out = await genererFacturx(req.activeCampingId, req.params.id);
+    if (out.error) return res.status(out.code || 400).json({ error: out.error, b2c: !!out.b2c });
+
+    const { data: fac } = await supabase.from('factures')
+      .select('id,numero,statut').eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!fac) return res.status(404).json({ error: 'Facture introuvable' });
+    if (fac.statut === 'brouillon') return res.status(400).json({ error: 'Émettez d’abord la facture avant de l’envoyer à la PA.' });
+
+    const ctx = await ef.contexte(req.activeCampingId);
+    const driver = ef.getDriver(cx.pa_code);
+    const r = await driver.emettre(ctx, { id: fac.id, numero: fac.numero }, out.buffer);
+
+    await supabase.from('factures').update({
+      efacture_pa_id: r.doc_externe_id || null,
+      efacture_statut: r.statut || 'deposee',
+      efacture_maj_at: new Date().toISOString(),
+    }).eq('camping_id', req.activeCampingId).eq('id', fac.id);
+
+    await writeAudit(req, { action: 'efacture.emission', entite: 'factures', entite_id: fac.id,
+      apres: { pa: cx.pa_code, statut: r.statut, doc: r.doc_externe_id } });
+    res.json({ ok: true, statut: r.statut, doc_externe_id: r.doc_externe_id });
+  } catch (e) { console.error('[factures:emettre-pa]', e.message); res.status(500).json({ error: e.message || 'Erreur serveur' }); }
 });
 
 // GET /api/factures/:id/pdf  (régénère toujours : logo + identité à jour)

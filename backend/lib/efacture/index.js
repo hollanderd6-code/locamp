@@ -34,6 +34,7 @@ function register(driver) { drivers[driver.code] = driver; }
 
 // Pilotes disponibles. Ajouter ici une vraie PA le moment venu.
 register(require('./drivers/demo'));
+register(require('./drivers/pennylane'));
 
 function getDriver(code) {
   const d = drivers[code];

@@ -1314,6 +1314,8 @@ async function vueFicheClient(id) {
             <td class="right">
               <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
               ${!brouillon && r.siret ? `<button class="btn btn-ghost btn-sm" onclick="facturxFacture('${f.id}')" title="Facture électronique (PDF + XML EN 16931)">Factur-X</button>` : ''}
+              ${!brouillon && r.siret ? `<button class="btn btn-ghost btn-sm" onclick="envoyerFacturePA('${f.id}')" title="Transmettre à la plateforme agréée">Envoyer à la PA</button>` : ''}
+              ${f.efacture_statut ? `<span class="badge reglee" title="Statut plateforme agréée">PA · ${esc(f.efacture_statut)}</span>` : ''}
               ${brouillon ? `
                 <button class="btn btn-ghost btn-sm" onclick="ajouterPrestationsFacture('${f.id}','${id}')">+ Prestations</button>
                 <button class="btn btn-ghost btn-sm" onclick="editerLignesFacture('${f.id}')">Modifier</button>
@@ -1846,6 +1848,15 @@ window.facturxFacture = async (id) => {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
     toast('Factur-X généré');
   } catch (e) { toast(e.message, true); }
+};
+
+window.envoyerFacturePA = async (id) => {
+  if (!await askConfirm('Transmettre cette facture à la plateforme agréée ?', { titre: 'Envoyer à la PA', ok: 'Envoyer' })) return;
+  try {
+    const r = await api(`/api/factures/${id}/emettre-pa`, { method: 'POST' });
+    toast(`Transmise à la PA (${r.statut || 'déposée'})`);
+    route();
+  } catch (e) { toast(e.message || 'Échec de la transmission', true); }
 };
 
 window.lettrerCredit = async (residentId) => {
