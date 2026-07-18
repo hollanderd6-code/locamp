@@ -717,3 +717,38 @@ input,textarea,select,[contenteditable]{-webkit-user-select:auto;user-select:aut
   .card tbody tr.rel-report{background:#FBF9F3}
   .card tfoot tr.rel-total{background:var(--ivoire-2)}
 }
+
+
+/* ================================================================
+   IMPRESSION — la page courante devient un document propre
+   ================================================================ */
+@media print{
+  body{background:#fff;font-size:12.5px;color:#000}
+  .sidebar,.nav-burger,.toolbar,.page-head .toolbar,.btn,.alertes,
+  .drawer,.toast,.fiche-tabs,.selbar,.card-actions button,.search,
+  .msg-form,.map-editbar,.map-panel{display:none!important}
+  .app{display:block}
+  .main{padding:0;max-width:none}
+  .card,.kpi,.synth{box-shadow:none;border-color:#CCC;break-inside:avoid}
+  #main > *{animation:none!important}
+  a{color:#000;text-decoration:none}
+  tr:hover td{background:none}
+  h1{font-size:22px}
+  .eyebrow{color:#555}
+}
+
+/* ---------------- Tri des colonnes ---------------- */
+th.triable{cursor:pointer;user-select:none;transition:color .13s}
+th.triable:hover{color:var(--encre)}
+th.triable::after{content:"↕";margin-left:5px;opacity:.35;font-size:10px}
+th.triable.asc::after{content:"↑";opacity:1;color:var(--sapin)}
+th.triable.desc::after{content:"↓";opacity:1;color:var(--sapin)}
+
+/* ---------------- Pull-to-refresh (mobile) ---------------- */
+#ptr{position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:50%;z-index:44;
+  transform:translate(-50%,-60px);transition:transform .2s var(--ease);
+  width:38px;height:38px;border-radius:50%;background:var(--carte);
+  border:1px solid var(--hairline);box-shadow:var(--shadow-m);
+  display:flex;align-items:center;justify-content:center}
+#ptr.visible{transform:translate(-50%,52px)}
+#ptr .spin{width:17px;height:17px;border-width:2.5px}

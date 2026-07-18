@@ -144,6 +144,37 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
 
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 const CHARGE = '<div class="chargement"><span class="spin"></span>Chargement…</div>';
+/* Tri générique : rend les <th> cliquables et trie les lignes du <tbody>.
+   Comprend les montants (« 1 053,38 € »), les dates fr (jj/mm/aaaa) et le texte. */
+function initTri(table) {
+  if (!table) return;
+  const ths = [...table.querySelectorAll('thead th')];
+  const valeur = (td) => {
+    const t = (td?.textContent || '').trim();
+    const num = t.replace(/[€\s\u202F\u00A0]/g, '').replace(',', '.');
+    if (num && !isNaN(Number(num))) return Number(num);
+    const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) return `${m[3]}${m[2]}${m[1]}`;
+    return t.toLowerCase();
+  };
+  ths.forEach((th, i) => {
+    if (!th.textContent.trim()) return;           // colonne d'actions
+    th.classList.add('triable');
+    th.addEventListener('click', () => {
+      const asc = !th.classList.contains('asc');
+      ths.forEach((x) => x.classList.remove('asc', 'desc'));
+      th.classList.add(asc ? 'asc' : 'desc');
+      const tb = table.querySelector('tbody');
+      [...tb.querySelectorAll('tr')]
+        .filter((tr) => tr.children.length > 1)   // ignore l'état vide
+        .sort((r1, r2) => {
+          const [v1, v2] = [valeur(r1.children[i]), valeur(r2.children[i])];
+          return (v1 < v2 ? -1 : v1 > v2 ? 1 : 0) * (asc ? 1 : -1);
+        })
+        .forEach((tr) => tb.appendChild(tr));
+    });
+  });
+}
 /* Skeleton de page : préfigure titre + KPI + deux cartes, en shimmer ivoire. */
 const SKEL_PAGE = `<div class="skel">
   <div class="sk sk-titre"></div>
@@ -2147,6 +2178,7 @@ async function vueFactures() {
           ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
         </td>
       </tr>`).join('') || `<tr><td colspan="7"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></div><h3>Aucune facture</h3><p>Lancez « Générer la facturation du mois » pour créer les factures de loyers et prestations en un clic.</p></div></td></tr>`}</tbody></table></div>`;
+  initTri($('#main table'));
 }
 /* ---------- Messagerie (boîte de réception) ---------- */
 async function vueMessagerie() {
@@ -3720,7 +3752,7 @@ async function vueReglements() {
         <label>Référence<input name="reference" placeholder="n° chèque, n° titre ANCV, libellé virement…"></label>
         <div class="full"><button class="btn btn-primary">Encaisser (lettrage automatique)</button></div>
       </form>
-      ${moyens.length ? '' : '<p class="muted mt-1">Moyens de paiement par défaut — configure-les dans Administration.</p>'}
+      ${moyens.length ? '' : '<p class="muted mt-1">Moyens de paiement par défaut — configurez-les dans Administration.</p>'}
     </div>
     <div class="card"><table><thead><tr><th>Date</th><th>Résident</th><th>Moyen</th><th>Référence</th><th class="right">Montant</th></tr></thead>
     <tbody>${reglements.map((g) => `
@@ -3736,6 +3768,7 @@ async function vueReglements() {
     catch (err) { toast(err.message, true); }
   });
 
+  initTri($('#main .card:last-of-type table'));
   $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
   chargerRemises();
 }
@@ -4210,4 +4243,30 @@ boot();
 
   window.addEventListener('hashchange', enregistrer);
   [1500, 4000].forEach((t) => setTimeout(enregistrer, t));
+})();
+
+
+/* ==================== Pull-to-refresh (mobile / app) ==================== */
+(function () {
+  if (!('ontouchstart' in window)) return;
+  const ind = document.createElement('div');
+  ind.id = 'ptr'; ind.innerHTML = '<span class="spin"></span>';
+  document.body.appendChild(ind);
+  let y0 = null, tire = false;
+  document.addEventListener('touchstart', (e) => {
+    // uniquement en haut de page, hors tiroir / modale / carte en édition
+    if (window.scrollY > 0 || !$('#drawer').classList.contains('hidden')
+        || document.querySelector('.ask-overlay') || (carteState && carteState.mode === 'edit')) { y0 = null; return; }
+    y0 = e.touches[0].clientY; tire = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    const dy = e.touches[0].clientY - y0;
+    if (dy > 70 && !tire) { tire = true; ind.classList.add('visible'); }
+    if (dy <= 70 && tire) { tire = false; ind.classList.remove('visible'); }
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    if (tire) { tire = false; setTimeout(() => { ind.classList.remove('visible'); route(); }, 350); }
+    y0 = null;
+  });
 })();
