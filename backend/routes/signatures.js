@@ -6,7 +6,7 @@ const { writeAudit } = require('../lib/audit');
 const { sendEmail } = require('../lib/email');
 const { uploadDocument, signedUrl } = require('../lib/storage');
 const { sha256, nbPages, normaliserChamps, signerDocument, CONSENTEMENT } = require('../lib/signature');
-const { auth, campingScope, requirePerm } = require('../middleware/auth');
+const { auth, campingScope, requirePerm, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -239,26 +239,6 @@ router.delete('/:id', requirePerm('gerer_residents'), async (req, res) => {
     await writeAudit(req, { action: 'delete', entite: 'documents_signature', entite_id: doc.id });
     res.json({ ok: true });
   } catch (e) { console.error('[sign:delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
-});
-
-// PUT /api/signatures/:id/dates  { date_debut?, date_fin? }
-// Édition du terme d'un document déjà déposé (contrats PDF existants) -> radar des échéances.
-router.put('/:id/dates', requireRole('admin', 'gestionnaire'), async (req, res) => {
-  try {
-    const okDate = (v) => (v && /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? v : null);
-    const b = req.body || {};
-    const patch = {};
-    if ('date_debut' in b) patch.date_debut = okDate(b.date_debut);
-    if ('date_fin' in b) patch.date_fin = okDate(b.date_fin);
-    if (!Object.keys(patch).length) return res.status(400).json({ error: 'Aucune date fournie' });
-    const { data, error } = await supabase.from('documents_signature')
-      .update(patch).eq('camping_id', req.activeCampingId).eq('id', req.params.id)
-      .select('id,titre,date_debut,date_fin').maybeSingle();
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Document introuvable' });
-    await writeAudit(req, { action: 'update', entite: 'documents_signature', entite_id: data.id, apres: patch });
-    res.json({ ok: true, document: data });
-  } catch (e) { console.error('[sign:dates]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;
