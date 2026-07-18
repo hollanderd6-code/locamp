@@ -32,6 +32,15 @@ router.post('/facturation-mensuelle', async (req, res) => {
   } catch (e) { console.error('[cron:facturation]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// POST /api/cron/echeances  -> rappels assurances + fins de contrat (tous campings)
+router.post('/echeances', async (req, res) => {
+  try {
+    const { runRappels } = require('../lib/echeances');
+    const resultats = await forEachCamping((id) => runRappels(id));
+    res.json({ campings: resultats.length, resultats });
+  } catch (e) { console.error('[cron:echeances]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 // POST /api/cron/relances
 router.post('/relances', async (req, res) => {
   try {

@@ -224,4 +224,75 @@ router.get('/:id/pdf', async (req, res) => {
   } catch (e) { console.error('[contrats:pdf]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// ---------- POST renouveler : duplique le contrat pour la période suivante ----------
+// Nouveau contrat en brouillon (mêmes clauses/montant, dates décalées d'un an par
+// défaut ou fournies), PDF généré — prêt à partir en signature.
+router.post('/:id/renouveler', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const full = await loadFullContrat(req.activeCampingId, req.params.id);
+    if (!full) return res.status(404).json({ error: 'Contrat introuvable' });
+    const anc = full.contrat;
+
+    const plusUnAn = (d) => { if (!d) return null; const x = new Date(d + 'T00:00:00'); x.setFullYear(x.getFullYear() + 1); return x.toISOString().slice(0, 10); };
+    const date_debut = (req.body && req.body.date_debut) || plusUnAn(anc.date_debut) || null;
+    const date_fin = (req.body && req.body.date_fin) || plusUnAn(anc.date_fin) || null;
+    const montant_mensuel = (req.body && req.body.montant_mensuel != null) ? req.body.montant_mensuel : anc.montant_mensuel;
+
+    const numero = await nextNumero(req.activeCampingId);
+    const { data: neuf, error } = await supabase.from('contrats').insert({
+      camping_id: req.activeCampingId, resident_id: anc.resident_id, emplacement_id: anc.emplacement_id,
+      modele_id: anc.modele_id || null, numero, date_debut, date_fin,
+      montant_mensuel: montant_mensuel || 0, clauses: anc.clauses || '',
+      reglement_interieur_ver: anc.reglement_interieur_ver || null, statut: 'brouillon',
+    }).select().single();
+    if (error) throw error;
+
+    const full2 = await loadFullContrat(req.activeCampingId, neuf.id);
+    const { path, hash } = await genererPdfNonSigne(full2);
+    await supabase.from('contrats').update({ pdf_path: path, hash_document: hash, statut: 'emis' })
+      .eq('id', neuf.id);
+
+    await writeAudit(req, { action: 'contrat.renouvellement', entite: 'contrats', entite_id: neuf.id,
+      avant: { ancien: anc.id, numero: anc.numero }, apres: { numero, date_debut, date_fin, montant_mensuel } });
+    res.status(201).json({ contrat: { ...neuf, pdf_path: path, statut: 'emis' } });
+  } catch (e) { console.error('[contrats:renouveler]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// ---------- POST envoyer-signature : bascule le PDF du contrat dans le circuit eIDAS ----------
+// Crée un documents_signature (brouillon) depuis le PDF du contrat ; on place ensuite
+// les zones dans l'éditeur existant puis on envoie au résident (jeton par e-mail).
+router.post('/:id/envoyer-signature', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const full = await loadFullContrat(req.activeCampingId, req.params.id);
+    if (!full) return res.status(404).json({ error: 'Contrat introuvable' });
+    const c = full.contrat;
+    if (!c.pdf_path) return res.status(400).json({ error: 'Ce contrat n\u2019a pas encore de PDF.' });
+    if (c.statut === 'signe') return res.status(409).json({ error: 'Contrat déjà signé.' });
+
+    const { downloadDocument } = require('../lib/storage');
+    const buffer = await downloadDocument(c.pdf_path);
+
+    const id = crypto.randomUUID();
+    const path = `signatures/${req.activeCampingId}/${id}.pdf`;
+    await uploadDocument(path, buffer, 'application/pdf');
+
+    // nb de pages : approximation robuste par comptage des objets /Page du PDF
+    let nb_pages = 1;
+    try { nb_pages = Math.max(1, (buffer.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length); } catch (_) {}
+
+    const { data: doc, error } = await supabase.from('documents_signature').insert({
+      id, camping_id: req.activeCampingId, resident_id: c.resident_id,
+      titre: `Contrat ${c.numero || ''}`.trim(),
+      message: (req.body && req.body.message) || 'Merci de signer votre contrat de location.',
+      storage_path: path, hash_original: sha256(buffer), nb_pages,
+      champs: [], statut: 'brouillon', auteur_id: req.user.uid,
+    }).select().single();
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'contrat.envoi-signature', entite: 'documents_signature', entite_id: doc.id,
+      avant: { contrat: c.id, numero: c.numero }, apres: { hash: doc.hash_original } });
+    res.status(201).json({ document: doc });
+  } catch (e) { console.error('[contrats:envoyer-signature]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 module.exports = router;

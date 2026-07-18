@@ -397,13 +397,15 @@ window.addEventListener('hashchange', route);
 /* ================= VUES ================= */
 
 async function vueDashboard() {
-  const [d, imp, presRes, msgRes, { residents }] = await Promise.all([
+  const [d, imp, presRes, msgRes, { residents }, echRes] = await Promise.all([
     api('/api/dashboard' + exQS()),
     api('/api/relances/impayes' + exQS()).catch(() => null),
     api('/api/prestations?statut=en_cours').catch(() => ({ prestations: [] })),
     api('/api/messages/non-lus').catch(() => ({ total: 0 })),
     api('/api/residents').catch(() => ({ residents: [] })),
+    api('/api/echeances?horizon=60').catch(() => ({ echeances: [] })),
   ]);
+  const echeances = (echRes.echeances || []);
   const st = d.factures_mois.par_statut || {};
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const aFacturer = (presRes.prestations || []).filter((p) => p.type !== 'caution')
@@ -452,6 +454,26 @@ async function vueDashboard() {
       ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
     </div>` : ''}
 
+    ${echeances.length ? `
+    <div class="card">
+      <div class="card-actions"><h2>Échéances — assurances &amp; contrats</h2>
+        <button class="btn btn-ghost btn-sm" onclick="echRappels()" title="Notifie le staff et écrit aux résidents concernés (paliers 60/30/7/0 j, jamais deux fois le même rappel)">Envoyer les rappels</button></div>
+      <table style="margin-top:8px"><thead><tr><th>Type</th><th>Résident</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${echeances.slice(0, 10).map((x) => `
+        <tr>
+          <td>${x.type === 'assurance' ? 'Assurance' : `Contrat ${esc(x.contrat_numero || '')}`}</td>
+          <td data-l="Résident">${x.resident_id ? `<a href="#/residents/${x.resident_id}" style="color:inherit">${esc(x.resident_nom)}</a>` : esc(x.resident_nom)}</td>
+          <td data-l="Échéance">${x.echeance ? dfr(x.echeance) : '—'}</td>
+          <td data-l="Statut">${x.statut === 'manquante' ? '<span class="badge en_retard">aucune attestation</span>'
+            : x.statut === 'expiree' ? '<span class="badge en_retard">expirée</span>'
+            : `<span class="badge ${x.jours_restants <= 7 ? 'partielle' : 'emise'}">dans ${x.jours_restants} j</span>`}</td>
+          <td class="right">${x.type === 'contrat'
+            ? `<button class="btn btn-ghost btn-sm" onclick="renouvelerContrat('${x.contrat_id}')" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
+            : (x.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${x.resident_id}')">Écrire</button>` : '')}</td>
+        </tr>`).join('')}</tbody></table>
+      ${echeances.length > 10 ? `<p class="muted" style="margin-top:8px">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
+    </div>` : ''}
+
     <div class="card">
       <h2>Ce mois-ci</h2>
       <div class="stats">
@@ -465,6 +487,31 @@ async function vueDashboard() {
         </div>` : ''}
     </div>`;
 }
+
+window.echRappels = async () => {
+  if (!await askConfirm('Envoyer les rappels d\u2019échéance dus (assurances et contrats) ?\nLe staff est notifié et les résidents concernés reçoivent un e-mail. Un même rappel n\u2019est jamais envoyé deux fois.', { titre: 'Rappels d\u2019échéances', ok: 'Envoyer' })) return;
+  try {
+    const r = await api('/api/echeances/rappels', { method: 'POST' });
+    toast(r.rappels_envoyes ? `${r.rappels_envoyes} rappel(s) envoyé(s)` : 'Aucun rappel à envoyer (déjà tous notifiés)');
+  } catch (e) { toast(e.message || 'Erreur', true); }
+};
+
+window.renouvelerContrat = async (id) => {
+  if (!await askConfirm('Créer le contrat de la période suivante (mêmes conditions, dates décalées d\u2019un an) puis préparer son envoi en signature ?', { titre: 'Renouveler le contrat', ok: 'Renouveler' })) return;
+  try {
+    const { contrat } = await api(`/api/contrats/${id}/renouveler`, { method: 'POST' });
+    toast(`Contrat ${contrat.numero} créé`);
+    await contratVersSignature(contrat.id);
+  } catch (e) { toast(e.message || 'Erreur', true); }
+};
+
+window.contratVersSignature = async (id) => {
+  try {
+    const { document: doc } = await api(`/api/contrats/${id}/envoyer-signature`, { method: 'POST' });
+    toast('Contrat prêt — placez la zone de signature puis envoyez');
+    editeurZones(doc.id);
+  } catch (e) { toast(e.message || 'Erreur', true); }
+};
 
 window.relancerImpayes = async () => {
   if (!await askConfirm('Envoyer un rappel par e-mail à tous les clients en retard de paiement ?')) return;
@@ -1225,6 +1272,11 @@ async function vueFicheClient(id) {
           ${r.compte_comptable ? ` · Compte <strong>${esc(r.compte_comptable)}</strong>` : ''}
           ${r.email ? ' · ' + esc(r.email) : ''}
           ${r.telephone ? ' · ' + esc(r.telephone) : ' · <span style="color:var(--rouge)">téléphone manquant</span>'}
+          ${(() => { if (!r.assurance_expire_le) return ' · <span class="badge en_retard" title="Aucune attestation d\u2019assurance enregistrée">assurance manquante</span>';
+            const jr = Math.floor((new Date(r.assurance_expire_le) - new Date()) / 86400000);
+            if (jr < 0) return ` · <span class="badge en_retard" title="Attestation expirée le ${dfr(r.assurance_expire_le)}">assurance expirée</span>`;
+            if (jr <= 60) return ` · <span class="badge partielle" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}expire le ${dfr(r.assurance_expire_le)}">assurance : ${jr} j</span>`;
+            return ` · <span class="badge reglee" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}valable jusqu\u2019au ${dfr(r.assurance_expire_le)}">assurance OK</span>`; })()}
         </div>
         ${r.adresse ? `<div class="muted" style="margin-top:2px">${esc(r.adresse)}</div>` : ''}
       </div>
@@ -1939,6 +1991,11 @@ window.formResident = async (id = null) => {
       <label class="full">Notes internes<input name="notes_internes" value="${v('notes_internes')}"></label>
       <p class="muted full" style="margin:-4px 0 2px;font-size:12.5px">Le téléphone permet d'envoyer le code de sécurité par SMS lors des signatures.</p>
 
+            <div class="full" style="margin-top:6px"><strong>Assurance</strong>
+        <p class="muted" style="margin:4px 0 0;font-size:12.5px">Date de fin de l\u2019attestation en cours : des rappels automatiques partent avant l\u2019échéance (60/30/7 jours).</p>
+      </div>
+      <label>Attestation valable jusqu\u2019au<input type="date" name="assurance_expire_le" value="${v('assurance_expire_le')}"></label>
+      <label>Assureur / n° de police<input name="assurance_ref" value="${v('assurance_ref')}" placeholder="MAIF n° 1234567"></label>
       <div class="full" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--hairline)">
         <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume)">Client entreprise (facultatif)</div>
         <p class="muted" style="margin:4px 0 0;font-size:12.5px">À remplir uniquement pour une société, un CE ou une association.
