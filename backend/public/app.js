@@ -144,6 +144,26 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
 
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 const CHARGE = '<div class="chargement"><span class="spin"></span>Chargement…</div>';
+/* Pagination : au-delà de `taille` lignes, bouton « Afficher les N restantes ».
+   Compatible avec le tri (initTri rappelle table._pgRefresh après chaque tri). */
+function pagineTable(table, taille = 50) {
+  if (!table) return;
+  const tb = table.querySelector('tbody');
+  const refresh = () => {
+    const lignes = [...tb.querySelectorAll('tr')].filter((tr) => tr.children.length > 1);
+    table.parentElement.querySelector('.pg-plus')?.remove();
+    if (lignes.length <= taille || table._pgTout) { lignes.forEach((tr) => tr.style.display = ''); return; }
+    lignes.forEach((tr, i) => tr.style.display = i < taille ? '' : 'none');
+    const btn = document.createElement('button');
+    btn.className = 'pg-plus';
+    btn.textContent = `Afficher les ${lignes.length - taille} lignes restantes`;
+    btn.addEventListener('click', () => { table._pgTout = true; refresh(); });
+    table.insertAdjacentElement('afterend', btn);
+  };
+  table._pgRefresh = refresh;
+  refresh();
+}
+
 /* Tri générique : rend les <th> cliquables et trie les lignes du <tbody>.
    Comprend les montants (« 1 053,38 € »), les dates fr (jj/mm/aaaa) et le texte. */
 function initTri(table) {
@@ -172,6 +192,7 @@ function initTri(table) {
           return (v1 < v2 ? -1 : v1 > v2 ? 1 : 0) * (asc ? 1 : -1);
         })
         .forEach((tr) => tb.appendChild(tr));
+      if (table._pgRefresh) table._pgRefresh();
     });
   });
 }
@@ -486,6 +507,25 @@ async function vueDashboard() {
     .reduce((s, p) => s + Number(p.montant_ttc), 0);
   const enRetard = imp ? imp.impayes.filter((f) => f.en_retard) : [];
 
+  // Parcours de démarrage : visible tant que la base n'est pas posée
+  const onbEtapes = [
+    { fait: d.occupation.total > 0, t: 'Créez vos emplacements', s: 'Numéros, secteurs, loyers de base', h: '#/emplacements' },
+    { fait: residents.length > 0, t: 'Ajoutez vos résidents', s: 'Coordonnées et emplacement attribué', h: '#/residents' },
+    { fait: residents.some((r) => Number(r.solde) !== 0) || d.factures_mois.total > 0, t: 'Configurez les loyers mensuels', s: 'Depuis chaque fiche résident, onglet facturation', h: '#/residents' },
+    { fait: d.factures_mois.total > 0, t: 'Générez votre première facturation', s: 'Toutes les factures du mois en un clic', h: '#/factures' },
+  ];
+  const onbHtml = (d.occupation.total === 0 || residents.length === 0) ? `
+    <div class="card onb">
+      <div class="eyebrow">Bienvenue sur Locamp</div>
+      <h2>Démarrez en 4 étapes</h2>
+      <div class="onb-etapes">${onbEtapes.map((e, i) => `
+        <a class="onb-etape ${e.fait ? 'fait' : ''}" href="${e.h}">
+          <span class="onb-num">${e.fait ? '✓' : i + 1}</span>
+          <span><span class="onb-t">${e.t}</span><br><span class="onb-s">${e.s}</span></span>
+          <span class="onb-fleche">→</span>
+        </a>`).join('')}</div>
+    </div>` : '';
+
   $('#main').innerHTML = `
     <div class="page-head">
       <div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div>
@@ -495,6 +535,8 @@ async function vueDashboard() {
         ${enRetard.length ? `<button class="btn btn-primary btn-sm" onclick="relancerImpayes()">Relancer ${enRetard.length} retard${enRetard.length > 1 ? 's' : ''}</button>` : ''}
       </div>
     </div>
+
+    ${onbHtml}
 
     <div class="kpis">
       <div class="kpi clickable" onclick="location.hash='#/emplacements'" title="Voir les emplacements"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
@@ -1284,6 +1326,7 @@ async function vueResidents() {
         <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
         <td class="right" data-l="Solde">${eur(r.solde)}</td>
       </tr>`).join('') || `<tr><td colspan="4"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c1.2-3.6 4-5.4 7-5.4s5.8 1.8 7 5.4"/></svg></div><h3>Aucun résident pour le moment</h3><p>Créez votre premier résident : sa fiche regroupera contrats, factures, documents et messages.</p></div></td></tr>`;
+    pagineTable($('#res-body').closest('table'));
   };
   render(residents);
   $('#res-search').addEventListener('input', (e) => {
@@ -2179,6 +2222,7 @@ async function vueFactures() {
         </td>
       </tr>`).join('') || `<tr><td colspan="7"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></div><h3>Aucune facture</h3><p>Lancez « Générer la facturation du mois » pour créer les factures de loyers et prestations en un clic.</p></div></td></tr>`}</tbody></table></div>`;
   initTri($('#main table'));
+  pagineTable($('#main table'));
 }
 /* ---------- Messagerie (boîte de réception) ---------- */
 async function vueMessagerie() {
@@ -3812,6 +3856,7 @@ async function vueReglements() {
   });
 
   initTri($('#main .card:last-of-type table'));
+  pagineTable($('#main .card:last-of-type table'));
   $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
   chargerRemises();
 }
@@ -4311,5 +4356,105 @@ boot();
   document.addEventListener('touchend', () => {
     if (tire) { tire = false; setTimeout(() => { ind.classList.remove('visible'); route(); }, 350); }
     y0 = null;
+  });
+})();
+
+
+/* ==================== Recherche globale (Ctrl/Cmd+K) ==================== */
+(function () {
+  const PAGES = [
+    ['Tableau de bord', '#/dashboard'], ['Carte du camping', '#/carte'],
+    ['Emplacements', '#/emplacements'], ['Résidents', '#/residents'],
+    ['Signatures', '#/signatures'], ['Messagerie', '#/messagerie'],
+    ['Compteurs', '#/compteurs'], ['Factures', '#/factures'],
+    ['Règlements', '#/reglements'], ['Impayés', '#/impayes'],
+    ['Comptabilité', '#/compta'], ['Paramètres', '#/parametres'],
+    ['Administration', '#/administration'],
+  ];
+  const IC = {
+    page: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16M4 12h16M4 18.5h10"/></svg>',
+    res: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5c1.1-3.3 3.7-5 6.5-5s5.4 1.7 6.5 5"/></svg>',
+    fac: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+    emp: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3.5 17h17z"/><path d="M12 9v8"/></svg>',
+  };
+  let cache = null, cacheT = 0;
+  async function donnees() {
+    if (cache && Date.now() - cacheT < 60000) return cache;
+    const [r, f, e] = await Promise.all([
+      api('/api/residents').catch(() => ({ residents: [] })),
+      api('/api/factures').catch(() => ({ factures: [] })),
+      api('/api/emplacements').catch(() => ({ emplacements: [] })),
+    ]);
+    cache = { residents: r.residents || [], factures: f.factures || [], emplacements: e.emplacements || [] };
+    cacheT = Date.now();
+    return cache;
+  }
+  const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  window.ouvrirPalette = async function () {
+    if (document.querySelector('.pal-overlay')) return;
+    document.body.classList.remove('nav-open');
+    const b = document.getElementById('nav-burger'); if (b) b.textContent = '☰';
+    const ov = document.createElement('div');
+    ov.className = 'pal-overlay';
+    ov.innerHTML = `<div class="pal">
+      <input type="search" placeholder="Résident, n° de facture, emplacement, page…" autocomplete="off">
+      <div class="pal-res"></div>
+      <div class="pal-pied"><span><kbd>↑</kbd><kbd>↓</kbd> naviguer</span><span><kbd>Entrée</kbd> ouvrir</span><span><kbd>Échap</kbd> fermer</span></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const inp = ov.querySelector('input'), zone = ov.querySelector('.pal-res');
+    inp.focus();
+    let items = [], actif = 0;
+    const fermer = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); };
+    const executer = (it) => { fermer(); it.go(); };
+    const dessiner = () => {
+      if (!items.length) { zone.innerHTML = '<div class="pal-vide">Aucun résultat. Essayez un nom, un numéro de facture ou d\u2019emplacement.</div>'; return; }
+      let html = '', grp = '';
+      items.forEach((it, i) => {
+        if (it.grp !== grp) { grp = it.grp; html += `<div class="pal-grp">${grp}</div>`; }
+        html += `<div class="pal-item ${i === actif ? 'actif' : ''}" data-i="${i}">
+          <span class="p-ic">${IC[it.ic]}</span>
+          <span class="p-l"><span class="p-t">${esc(it.t)}</span>${it.s ? `<span class="p-s">${esc(it.s)}</span>` : ''}</span>
+        </div>`;
+      });
+      zone.innerHTML = html;
+      zone.querySelectorAll('.pal-item').forEach((el) =>
+        el.addEventListener('click', () => executer(items[Number(el.dataset.i)])));
+      zone.querySelector('.pal-item.actif')?.scrollIntoView({ block: 'nearest' });
+    };
+    const chercher = async () => {
+      const q = norm(inp.value.trim());
+      const out = [];
+      // pages (toujours, filtrées)
+      PAGES.filter(([n]) => !q || norm(n).includes(q)).slice(0, q ? 4 : 6)
+        .forEach(([n, h]) => out.push({ grp: 'Pages', ic: 'page', t: n, go: () => location.hash = h }));
+      if (q.length >= 2) {
+        const d = await donnees();
+        d.residents.filter((r) => norm(`${r.prenom || ''} ${r.nom} ${r.email || ''} ${r.telephone || ''}`).includes(q)).slice(0, 6)
+          .forEach((r) => out.push({ grp: 'Résidents', ic: 'res', t: `${r.prenom || ''} ${r.nom}`.trim(),
+            s: r.email || r.telephone || '', go: () => location.hash = `#/residents/${r.id}` }));
+        d.factures.filter((f) => norm(`${f.numero} ${f.periode || ''}`).includes(q)).slice(0, 6)
+          .forEach((f) => out.push({ grp: 'Factures', ic: 'fac', t: f.numero,
+            s: `${lib(f.statut)} · ${eur(f.total_ttc)}`, go: () => apercuFacture(f.id, null, f.numero) }));
+        d.emplacements.filter((e) => norm(`${e.numero} ${e.secteur || ''}`).includes(q)).slice(0, 6)
+          .forEach((e) => out.push({ grp: 'Emplacements', ic: 'emp', t: `Empl. ${e.numero}`,
+            s: e.secteur || '', go: () => location.hash = '#/emplacements' }));
+      }
+      items = out; actif = Math.min(actif, Math.max(0, items.length - 1)); dessiner();
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); fermer(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); actif = Math.min(actif + 1, items.length - 1); dessiner(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); actif = Math.max(actif - 1, 0); dessiner(); }
+      else if (e.key === 'Enter' && items[actif]) { e.preventDefault(); executer(items[actif]); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    inp.addEventListener('input', () => { actif = 0; chercher(); });
+    ov.addEventListener('click', (e) => { if (e.target === ov) fermer(); });
+    chercher();
+  };
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ouvrirPalette(); }
   });
 })();
