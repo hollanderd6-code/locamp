@@ -1296,6 +1296,7 @@ async function vueFicheClient(id) {
       </div>
       <div class="toolbar">
         <button class="btn btn-ghost" onclick="formResident('${id}')">Modifier</button>
+        <button class="btn btn-ghost" onclick="nouveauContrat('${id}')">Nouveau contrat</button>
         <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
       </div>
     </div>
@@ -2821,6 +2822,124 @@ async function vueSignatures() {
     </div>`;
 }
 
+const VARS_CONTRAT = [
+  ['{{nom}}', 'Nom du résident'], ['{{prenom}}', 'Prénom'], ['{{emplacement}}', 'N° d\u2019emplacement'],
+  ['{{secteur}}', 'Secteur'], ['{{montant}}', 'Loyer mensuel'], ['{{date_debut}}', 'Début du contrat'], ['{{date_fin}}', 'Fin du contrat'],
+];
+
+window.chargerModelesContrat = async () => {
+  const zone = $('#modeles-zone'); if (!zone) return;
+  try {
+    const { modeles } = await api('/api/contrat-modeles');
+    zone.innerHTML = (modeles || []).length
+      ? `<table><thead><tr><th>Nom</th><th>Type</th><th class="right">Longueur</th><th></th></tr></thead>
+        <tbody>${modeles.map((m) => `<tr>
+          <td><strong>${esc(m.nom)}</strong></td>
+          <td class="muted">${esc(m.type || '—')}</td>
+          <td class="right muted">${(m.clauses || '').length.toLocaleString('fr-FR')} car.</td>
+          <td class="right">
+            <button class="btn btn-ghost btn-sm" onclick="formModeleContrat('${m.id}')">Éditer</button>
+            <button class="btn btn-ghost btn-sm" onclick="supprimerModeleContrat('${m.id}')">Supprimer</button>
+          </td></tr>`).join('')}</tbody></table>`
+      : '<span class="muted">Aucun modèle. Importe ton contrat PDF ou crée un modèle vierge.</span>';
+  } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
+};
+
+window.formModeleContrat = async (id) => {
+  let m = null;
+  if (id) {
+    const { modeles } = await api('/api/contrat-modeles');
+    m = (modeles || []).find((x) => x.id === id) || null;
+  }
+  openDrawer(`
+    <h2>${m ? 'Modifier le modèle' : 'Nouveau modèle de contrat'}</h2>
+    <p class="muted" style="margin-top:4px">Clique une variable pour l\u2019insérer à l\u2019endroit du curseur — elle sera remplacée automatiquement à la création de chaque contrat.</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${VARS_CONTRAT.map(([v, l]) => `<button type="button" class="btn btn-ghost btn-sm" onclick="insererVarModele('${v}')" title="${esc(l)}">${esc(v)}</button>`).join('')}</div>
+    <form id="f-modele" class="form-grid">
+      <label class="full">Nom du modèle *<input name="nom" required value="${m ? esc(m.nom) : ''}" placeholder="Contrat résidentiel annuel"></label>
+      <label class="full">Texte du contrat (clauses)
+        <textarea id="modele-clauses" name="clauses" rows="18" style="width:100%;font-family:ui-monospace,monospace;font-size:12.5px">${m ? esc(m.clauses || '') : ''}</textarea></label>
+      <div class="full"><button class="btn btn-primary btn-block">${m ? 'Enregistrer' : 'Créer le modèle'}</button></div>
+    </form>`);
+  $('#f-modele').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      if (m) { await api('/api/contrat-modeles/' + m.id, { method: 'PUT', body }); toast('Modèle mis à jour'); }
+      else { await api('/api/contrat-modeles', { method: 'POST', body }); toast('Modèle créé'); }
+      closeDrawer(); chargerModelesContrat();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.insererVarModele = (v) => {
+  const ta = $('#modele-clauses'); if (!ta) return;
+  const [a, b] = [ta.selectionStart || 0, ta.selectionEnd || 0];
+  ta.value = ta.value.slice(0, a) + v + ta.value.slice(b);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = a + v.length;
+};
+
+window.supprimerModeleContrat = async (id) => {
+  if (!await askConfirm('Supprimer ce modèle ? (refusé s\u2019il est utilisé par des contrats)', { titre: 'Supprimer le modèle', ok: 'Supprimer', danger: true })) return;
+  try { await api('/api/contrat-modeles/' + id, { method: 'DELETE' }); toast('Modèle supprimé'); chargerModelesContrat(); }
+  catch (e) { toast(e.message, true); }
+};
+
+window.importerModeleContrat = () => {
+  openDrawer(`
+    <h2>Importer un contrat existant</h2>
+    <p class="muted" style="margin-top:4px">Dépose ton contrat PDF : Locamp en extrait le texte et en fait un modèle. Tu n\u2019auras plus qu\u2019à remplacer le nom, les dates et le montant par les variables — clique-les dans l\u2019éditeur qui s\u2019ouvrira.</p>
+    <form id="f-import-modele" class="form-grid" style="margin-top:12px">
+      <label class="full">Contrat PDF *<input type="file" name="file" accept="application/pdf" required></label>
+      <label class="full">Nom du modèle<input name="nom" placeholder="(par défaut : nom du fichier)"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Importer</button></div>
+    </form>
+    <p class="muted" style="font-size:12px">PDF texte uniquement — un scan (image) ne peut pas être converti.</p>`);
+  $('#f-import-modele').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const { modele } = await api('/api/contrat-modeles/importer', { method: 'POST', body: fd });
+      closeDrawer(); toast('Contrat importé — remplace maintenant les passages variables');
+      formModeleContrat(modele.id);
+      chargerModelesContrat();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.nouveauContrat = async (residentId) => {
+  const [{ modeles }, { resident: r }] = await Promise.all([
+    api('/api/contrat-modeles').catch(() => ({ modeles: [] })),
+    api('/api/residents/' + residentId),
+  ]);
+  const an = new Date().getFullYear();
+  openDrawer(`
+    <h2>Nouveau contrat — ${esc((r.prenom || '') + ' ' + r.nom)}</h2>
+    <p class="muted" style="margin-top:4px">Le contrat est généré depuis le modèle (variables remplies), puis tu pourras l\u2019envoyer en signature.</p>
+    <form id="f-contrat" class="form-grid" style="margin-top:12px">
+      <label class="full">Modèle ${modeles.length ? '' : '<span class="muted">(aucun — crée-en un dans Paramètres)</span>'}
+        <select name="modele_id">${['<option value="">— sans modèle (PDF standard) —</option>']
+          .concat(modeles.map((m) => `<option value="${m.id}">${esc(m.nom)}</option>`)).join('')}</select></label>
+      <label>Début *<input type="date" name="date_debut" required value="${an}-01-01"></label>
+      <label>Fin *<input type="date" name="date_fin" required value="${an}-12-31"></label>
+      <label>Loyer mensuel (€ TTC)<input type="number" step="0.01" min="0" name="montant_mensuel" placeholder="0"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Créer le contrat</button></div>
+    </form>`);
+  $('#f-contrat').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    body.resident_id = residentId;
+    if (!body.modele_id) delete body.modele_id;
+    try {
+      const { contrat } = await api('/api/contrats', { method: 'POST', body });
+      closeDrawer();
+      if (await askConfirm(`Contrat ${contrat.numero} créé. L\u2019envoyer en signature au résident maintenant ?`, { titre: 'Contrat créé', ok: 'Envoyer en signature' })) {
+        await contratVersSignature(contrat.id);
+      } else { route(); }
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
 window.formDocSignature = async () => {
   const { residents } = await api('/api/residents');
   const actifs = residents.filter((r) => r.actif !== false && r.email);
@@ -3234,6 +3353,16 @@ async function vueParametres() {
       </form>
     </div>
 
+    <div class="card">
+      <div class="card-actions"><h2>Modèles de contrats</h2>
+        <div class="toolbar">
+          <button class="btn btn-ghost btn-sm" onclick="importerModeleContrat()" title="Dépose un contrat PDF existant : Locamp en extrait le texte pour en faire un modèle">Importer un PDF</button>
+          <button class="btn btn-primary btn-sm" onclick="formModeleContrat()">Nouveau modèle</button>
+        </div></div>
+      <p class="muted">Un modèle = le texte de ton contrat avec des variables (nom du résident, emplacement, montant, dates) remplies automatiquement à la création. Chaque camping a ses propres modèles.</p>
+      <div id="modeles-zone" class="muted" style="margin-top:10px">Chargement&hellip;</div>
+    </div>
+
     ${efCard}
 
     <div class="card" style="margin-top:16px">
@@ -3334,6 +3463,7 @@ async function vueParametres() {
   if ($('#ef-pa')) efRenderChamps();
   if ($('#erep-histo')) efHistorique();
   if ($('#recues-zone')) efRecuesLoad();
+  if ($('#modeles-zone')) chargerModelesContrat();
 
   $('#f-ident').addEventListener('submit', async (e) => {
     e.preventDefault();
