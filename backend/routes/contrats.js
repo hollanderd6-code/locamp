@@ -282,6 +282,7 @@ router.post('/:id/envoyer-signature', requireRole('admin', 'gestionnaire'), asyn
 
     const { data: doc, error } = await supabase.from('documents_signature').insert({
       id, camping_id: req.activeCampingId, resident_id: c.resident_id,
+      contrat_id: c.id, date_debut: c.date_debut || null, date_fin: c.date_fin || null,
       titre: `Contrat ${c.numero || ''}`.trim(),
       message: (req.body && req.body.message) || 'Merci de signer votre contrat de location.',
       storage_path: path, hash_original: sha256(buffer), nb_pages,

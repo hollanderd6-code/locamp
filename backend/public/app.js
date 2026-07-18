@@ -461,7 +461,7 @@ async function vueDashboard() {
       <table style="margin-top:8px"><thead><tr><th>Type</th><th>Résident</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
       <tbody>${echeances.slice(0, 10).map((x) => `
         <tr>
-          <td>${x.type === 'assurance' ? 'Assurance' : `Contrat ${esc(x.contrat_numero || '')}`}</td>
+          <td>${x.type === 'assurance' ? 'Assurance' : x.type === 'document' ? `Doc. ${esc((x.titre || '').slice(0, 28))}${!x.signe ? ' <span class="muted">(non signé)</span>' : ''}` : `Contrat ${esc(x.contrat_numero || '')}`}</td>
           <td data-l="Résident">${x.resident_id ? `<a href="#/residents/${x.resident_id}" style="color:inherit">${esc(x.resident_nom)}</a>` : esc(x.resident_nom)}</td>
           <td data-l="Échéance">${x.echeance ? dfr(x.echeance) : '—'}</td>
           <td data-l="Statut">${x.statut === 'manquante' ? '<span class="badge en_retard">aucune attestation</span>'
@@ -469,6 +469,8 @@ async function vueDashboard() {
             : `<span class="badge ${x.jours_restants <= 7 ? 'partielle' : 'emise'}">dans ${x.jours_restants} j</span>`}</td>
           <td class="right">${x.type === 'contrat'
             ? `<button class="btn btn-ghost btn-sm" onclick="renouvelerContrat('${x.contrat_id}')" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
+            : x.type === 'document'
+            ? `<button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'" title="Déposer la nouvelle version à signer">Voir / refaire</button>`
             : (x.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${x.resident_id}')">Écrire</button>` : '')}</td>
         </tr>`).join('')}</tbody></table>
       ${echeances.length > 10 ? `<p class="muted" style="margin-top:8px">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
@@ -1285,9 +1287,10 @@ async function vueFicheClient(id) {
             if (sansFin) return ` · <span class="badge reglee" title="Contrat ${esc(sansFin.numero || '')} sans date de fin">contrat OK</span>`;
             const ref = lesContrats.reduce((m, c) => (!m || c.date_fin > m.date_fin ? c : m), null);
             const jr = Math.floor((new Date(ref.date_fin) - new Date()) / 86400000);
+            const sig = ref.statut === 'signe' ? ' · signé' : ' · à faire signer';
             if (jr < 0) return ` · <span class="badge en_retard" title="Contrat ${esc(ref.numero || '')} expiré le ${dfr(ref.date_fin)} — pensez au renouvellement">contrat expiré</span>`;
-            if (jr <= 60) return ` · <span class="badge partielle" title="Contrat ${esc(ref.numero || '')} — expire le ${dfr(ref.date_fin)}">contrat : ${jr} j</span>`;
-            return ` · <span class="badge reglee" title="Contrat ${esc(ref.numero || '')} — jusqu\u2019au ${dfr(ref.date_fin)}">contrat OK</span>`; })()}
+            if (jr <= 60) return ` · <span class="badge partielle" title="Contrat ${esc(ref.numero || '')}${sig} — expire le ${dfr(ref.date_fin)}">contrat : ${jr} j${ref.statut !== 'signe' ? ' · non signé' : ''}</span>`;
+            return ` · <span class="badge ${ref.statut === 'signe' ? 'reglee' : 'partielle'}" title="Contrat ${esc(ref.numero || '')}${sig} — jusqu\u2019au ${dfr(ref.date_fin)}">${ref.statut === 'signe' ? 'contrat OK' : 'contrat non signé'}</span>`; })()}
         </div>
         ${r.adresse ? `<div class="muted" style="margin-top:2px">${esc(r.adresse)}</div>` : ''}
       </div>
@@ -2790,7 +2793,7 @@ async function vueSignatures() {
     <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
 
     <div class="card">
-      ${documents.length ? `<table><thead><tr><th>Document</th><th>Signataire</th><th>Zones</th><th>Statut</th><th>Signé le</th><th></th></tr></thead>
+      ${documents.length ? `<table><thead><tr><th>Document</th><th>Signataire</th><th>Zones</th><th>Statut</th><th>Signé le</th><th>Terme</th><th></th></tr></thead>
       <tbody>${documents.map((d) => `
         <tr>
           <td><strong>${esc(d.titre)}</strong><div class="muted">${d.nb_pages || 1} page(s)</div></td>
@@ -2798,6 +2801,11 @@ async function vueSignatures() {
           <td class="muted">${(d.champs || []).length}</td>
           <td><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
           <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR') : '—'}</td>
+          <td>${(() => { if (!d.date_fin) return '<span class="muted">—</span>';
+            const jr = Math.floor((new Date(d.date_fin) - new Date()) / 86400000);
+            if (jr < 0) return `<span class="badge en_retard" title="À refaire / re-signer">expiré ${dfr(d.date_fin)}</span>`;
+            if (jr <= 60) return `<span class="badge partielle">${dfr(d.date_fin)} · ${jr} j</span>`;
+            return `<span class="muted">${dfr(d.date_fin)}</span>`; })()}</td>
           <td class="right">
             ${d.statut === 'signe'
               ? `<button class="btn btn-ghost btn-sm" onclick="recapSignature('${d.id}')" title="Récapitulatif de transaction (dossier de preuve)">Récapitulatif</button>
@@ -2828,6 +2836,9 @@ window.formDocSignature = async () => {
           ${actifs.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)} · ${esc(r.email)}</option>`).join('')}
         </select></label>
       <label class="full">Message d'accompagnement<textarea name="message" rows="2" style="width:100%"></textarea></label>
+      <div class="full muted" style="font-size:12.5px;margin-top:2px">Si c\u2019est un contrat (ou tout document à durée limitée), renseigne son terme : Locamp te préviendra avant l\u2019échéance et le marquera « à refaire ».</div>
+      <label>Début de validité<input type="date" name="date_debut"></label>
+      <label>Fin de validité (terme)<input type="date" name="date_fin"></label>
       <div class="full"><button class="btn btn-primary btn-block">Déposer le document</button></div>
     </form>
     ${actifs.length ? '' : '<p class="form-error">Aucun résident avec une adresse e-mail — ajoute-la sur sa fiche.</p>'}`);

@@ -67,6 +67,31 @@ async function lister(campingId, horizon = 90) {
     }
   }
 
+  // 3) Documents signés déposés (contrats PDF faits hors Locamp) avec un terme.
+  //    Les documents liés à un contrat natif sont exclus : le contrat porte déjà l'échéance.
+  const { data: docs, error: e3 } = await supabase.from('documents_signature')
+    .select('id,titre,resident_id,date_fin,statut,contrat_id')
+    .eq('camping_id', campingId).not('date_fin', 'is', null).is('contrat_id', null)
+    .neq('statut', 'annule');
+  if (e3) throw e3;
+  const docsProches = (docs || []).filter((d) => d.date_fin <= limite);
+  if (docsProches.length) {
+    const dIds = [...new Set(docsProches.map((d) => d.resident_id).filter(Boolean))];
+    const { data: res3 } = dIds.length
+      ? await supabase.from('residents').select('id,nom,prenom,email,actif').in('id', dIds)
+      : { data: [] };
+    const resMap3 = {}; (res3 || []).forEach((r) => { resMap3[r.id] = r; });
+    for (const d of docsProches) {
+      const r = resMap3[d.resident_id] || {};
+      if (r.actif === false) continue;
+      const jr = joursRestants(d.date_fin);
+      items.push({ type: 'document', cible_id: d.id, document_id: d.id, titre: d.titre,
+        resident_id: d.resident_id || null, resident_nom: [r.prenom, r.nom].filter(Boolean).join(' ') || '—',
+        email: r.email || null, echeance: d.date_fin, jours_restants: jr,
+        statut: jr < 0 ? 'expiree' : 'a_venir', signe: d.statut === 'signe' });
+    }
+  }
+
   items.sort((a, b) => (a.echeance || '9999') < (b.echeance || '9999') ? -1 : 1);
   return items;
 }
@@ -122,17 +147,19 @@ async function runRappels(campingId) {
         }).catch((e) => console.error('[echeances:email]', e.message));
       }
     } else {
+      const objet = it.type === 'document' ? `Document « ${it.titre || ''} »` : `Contrat ${it.contrat_numero || ''}`;
       await creerNotifsStaff(campingId, {
-        titre: 'Contrat arrivant à échéance',
-        corps: `Contrat ${it.contrat_numero || ''} — ${it.resident_nom} : ${quand}. Pensez au renouvellement (envoi en signature).`,
-        type: 'echeance', lien: `#/residents`,
+        titre: it.type === 'document' ? 'Document arrivant à échéance' : 'Contrat arrivant à échéance',
+        corps: `${objet} — ${it.resident_nom} : ${quand}.${it.type === 'document' ? ' À refaire / re-signer.' : ' Pensez au renouvellement (envoi en signature).'}`,
+        type: 'echeance', lien: it.type === 'document' ? `#/signatures` : `#/residents`,
       }).catch(() => {});
       if (sendEmail && it.email) {
+        const quoi = it.type === 'document' ? `Votre document « ${it.titre || ''} »` : 'Votre contrat de location';
         await sendEmail({
           to: it.email,
-          subject: `${nomCamping} — votre contrat ${it.jours_restants < 0 ? 'a expiré' : 'arrive à échéance'}`,
+          subject: `${nomCamping} — ${it.type === 'document' ? 'votre document' : 'votre contrat'} ${it.jours_restants < 0 ? 'a expiré' : 'arrive à échéance'}`,
           html: `<p>Bonjour ${it.resident_nom},</p>
-<p>Votre contrat de location ${quand}.</p>
+<p>${quoi} ${quand}.</p>
 <p>Nous allons vous proposer son renouvellement prochainement. N\u2019hésitez pas à nous contacter pour toute question.</p>
 <p>Cordialement,<br>${nomCamping}</p>`,
         }).catch((e) => console.error('[echeances:email]', e.message));

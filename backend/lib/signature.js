@@ -361,6 +361,22 @@ async function signerDocument({ jeton, corps = {}, ip, userAgent, canal } = {}) 
       storage_signe: signePath, hash_signe: hashSigne, jeton: null, jeton_expire: null,
     }).eq('id', doc.id);
 
+    // Boucle fermée : si ce document est un contrat natif parti en signature,
+    // le contrat passe automatiquement en 'signe' avec le PDF scellé et la preuve.
+    if (doc.contrat_id) {
+      await supabase.from('contrats').update({
+        statut: 'signe',
+        pdf_signe_path: signePath,
+        signature_meta: {
+          via: 'eidas', document_signature_id: doc.id,
+          signataire_nom: signataireNom, horodatage: now.toISOString(),
+          hash_document: doc.hash_original, hash_signe: hashSigne,
+        },
+      }).eq('camping_id', doc.camping_id).eq('id', doc.contrat_id)
+        .neq('statut', 'signe')
+        .then(({ error }) => { if (error) console.error('[signature:contrat]', error.message); });
+    }
+
     if (resident?.email) {
       const { data: camp } = await supabase.from('campings')
         .select('nom,raison_sociale,parametres').eq('id', doc.camping_id).maybeSingle();

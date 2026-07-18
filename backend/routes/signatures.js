@@ -86,7 +86,7 @@ router.use(auth, campingScope);
 router.get('/', async (req, res) => {
   try {
     let q = supabase.from('documents_signature')
-      .select('id,titre,statut,resident_id,nb_pages,date_envoi,date_signature,created_at,champs')
+      .select('id,titre,statut,resident_id,nb_pages,date_envoi,date_signature,created_at,champs,date_debut,date_fin,contrat_id')
       .eq('camping_id', req.activeCampingId);
     if (req.query.debut && req.query.fin) {   // cadrage exercice : par date de création du document
       q = q.gte('created_at', req.query.debut).lte('created_at', `${req.query.fin}T23:59:59`);
@@ -118,10 +118,12 @@ router.post('/', requirePerm('gerer_residents'), upload.single('file'), async (r
     const path = `signatures/${req.activeCampingId}/${id}.pdf`;
     await uploadDocument(path, req.file.buffer, 'application/pdf');
 
+    const okDate = (v) => (v && /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? v : null);
     const { data, error } = await supabase.from('documents_signature').insert({
       id,
       camping_id: req.activeCampingId,
       resident_id: req.body.resident_id || null,
+      date_debut: okDate(req.body.date_debut), date_fin: okDate(req.body.date_fin),
       titre,
       message: req.body.message || null,
       storage_path: path,
