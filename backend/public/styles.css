@@ -446,16 +446,18 @@ tr:hover td{background:#FBF9F3}
   .app{grid-template-rows:auto 1fr;align-content:start}
   .sidebar{align-self:start;position:sticky;top:0;z-index:40;height:auto;overflow:visible;
     flex-direction:row;align-items:center;
-    flex-wrap:nowrap;gap:12px;padding:12px 16px;box-shadow:0 4px 18px rgba(15,35,29,.22)}
+    flex-wrap:wrap;gap:12px;row-gap:10px;padding:12px 16px;box-shadow:0 4px 18px rgba(15,35,29,.22)}
   /* le conteneur d'en-tête s'efface : ses enfants redeviennent des éléments de la barre */
   .sidebar-head{display:contents}
-  .brand-side{flex:1;min-width:0}
+  /* Ligne 1 : logo (respire) + burger à droite. Ligne 2 : les deux sélecteurs côte à côte. */
+  .brand-side{order:1;flex:1;min-width:0}
   .brand-side .brand-mark{width:36px;height:36px;border-radius:11px}
   .brand-side .brand-name{font-size:17px}
-  .nav-burger{display:flex;align-items:center;justify-content:center;order:3;
+  .nav-burger{display:flex;align-items:center;justify-content:center;order:2;
     width:42px;height:42px;border:1px solid #2E4A41;border-radius:11px;background:transparent;
     color:#E8EFEA;font-size:19px;cursor:pointer;flex:none}
-  .camping-switch{order:2;max-width:44vw}
+  .camping-switch{order:5;flex:1 1 calc(50% - 6px);min-width:0;max-width:none;width:auto}
+  .camping-switch select{padding:9px 30px 9px 11px;font-size:13px;background-position:right 10px center}
   .nav{display:none;order:10;width:100%;flex:none;flex-direction:column;gap:2px;padding:10px 0 0;
     max-height:66vh;overflow-y:auto;
     border-top:1px solid rgba(255,255,255,.08);margin-top:10px}
