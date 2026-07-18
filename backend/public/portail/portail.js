@@ -8,9 +8,13 @@ const eur = (n) => Number(n || 0).toLocaleString('fr-FR', { style: 'currency', c
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
 function toast(msg, err = false) {
-  const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 4000);
+  const t = $('#toast');
+  t.innerHTML = `<span class="t-ic">${err ? '!' : '✓'}</span><span></span>`;
+  t.lastElementChild.textContent = msg;
+  t.className = 'toast ' + (err ? 'err' : 'ok');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), err ? 5000 : 4000);
 }
+const CHARGE = '<div class="chargement"><span class="spin"></span>Chargement…</div>';
 
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -431,7 +435,7 @@ $('#sig-retour').addEventListener('click', (e) => {
 
 async function afficherPdfSignature(url) {
   const zone = $('#sig-pdf');
-  zone.innerHTML = '<p class="note" style="margin:0">Chargement du document…</p>';
+  zone.innerHTML = CHARGE;
   try {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -625,7 +629,7 @@ $('#sig-signer').addEventListener('click', async () => {
     const o = document.getElementById('pnotif-overlay'); const card = document.getElementById('pnotif-card');
     if (!o || !card) return;
     o.style.display = 'flex';
-    card.innerHTML = '<div style="padding:26px;color:#999;font-size:14px">Chargement…</div>';
+    card.innerHTML = CHARGE;
     try {
       const { notifications } = await api('/api/portail/notifications?limit=40');
       rendre(notifications || []);
@@ -646,7 +650,7 @@ $('#sig-signer').addEventListener('click', async () => {
       + '</div></div><div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
 
     if (!list.length) {
-      html += '<div style="padding:44px 20px;text-align:center;color:#999;font-size:14px">Aucune notification</div>';
+      html += '<div style="padding:44px 20px;text-align:center;color:var(--brume);font-size:14px">Vous êtes à jour — aucune notification.</div>';
     } else {
       html += list.map((n) => `
         <div class="pnotif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;

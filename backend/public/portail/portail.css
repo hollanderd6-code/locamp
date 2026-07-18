@@ -113,10 +113,27 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px
 .footy{text-align:center;color:var(--brume);font-size:12px;padding:10px 16px calc(30px + env(safe-area-inset-bottom))}
 
 /* ---- toast ---- */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-  background:var(--nuit);color:#F2EEE3;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:500;
-  z-index:60;box-shadow:var(--shadow-l)}
-.toast.err{background:var(--rouge)}
+.toast{position:fixed;bottom:max(24px, calc(env(safe-area-inset-bottom) + 14px));left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:11px;
+  background:var(--nuit);color:#F2EEE3;border-radius:13px;padding:12px 20px 12px 14px;
+  font-size:14px;font-weight:500;line-height:1.45;border-left:3px solid var(--laiton);
+  z-index:60;box-shadow:var(--shadow-l);max-width:min(520px,92vw)}
+.toast .t-ic{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;background:rgba(255,255,255,.14)}
+.toast.ok{border-left-color:#3E9C7C}
+.toast.ok .t-ic{background:#1F5C49;color:#BFE8D6}
+.toast.err{background:#5A2417;border-left-color:#E07A5F}
+.toast.err .t-ic{background:#7A3322;color:#F6D5CB}
+
+/* ---- chargement ---- */
+.chargement{display:flex;align-items:center;justify-content:center;gap:11px;
+  color:var(--brume);font-size:13.5px;padding:36px 0;
+  opacity:0;animation:chIn .3s ease .15s forwards}
+@keyframes chIn{to{opacity:1}}
+.spin{width:18px;height:18px;border-radius:50%;flex:none;
+  border:2.5px solid var(--sapin-pale);border-top-color:var(--sapin);
+  animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 @media (max-width:520px){
   .fac{flex-direction:column;align-items:flex-start}
@@ -125,11 +142,11 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 /* ---- animations d'entrée ---- */
-.content > *{animation:viewIn .38s cubic-bezier(.3,.9,.3,1) both}
-.content > *:nth-child(2){animation-delay:.05s}
-.content > *:nth-child(3){animation-delay:.10s}
-.content > *:nth-child(4){animation-delay:.15s}
-.content > *:nth-child(n+5){animation-delay:.19s}
+.content > *{animation:viewIn .26s cubic-bezier(.3,.9,.3,1) both}
+.content > *:nth-child(2){animation-delay:.04s}
+.content > *:nth-child(3){animation-delay:.07s}
+.content > *:nth-child(4){animation-delay:.10s}
+.content > *:nth-child(n+5){animation-delay:.12s}
 @keyframes viewIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 5px 16px rgba(23,82,67,.35)}
 .btn-ghost:hover{transform:translateY(-1px)}
