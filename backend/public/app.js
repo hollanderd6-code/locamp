@@ -345,12 +345,44 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 $('#logout-btn').addEventListener('click', logout);
 // menu mobile
-document.getElementById('nav-burger')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
+document.getElementById('nav-burger')?.addEventListener('click', () => {
+  const open = document.body.classList.toggle('nav-open');
+  document.getElementById('nav-burger').textContent = open ? '✕' : '☰';
+});
+document.querySelectorAll('.nav a').forEach((a) => a.addEventListener('click', () => {
+  const b = document.getElementById('nav-burger'); if (b) b.textContent = '☰';
+}));
 document.querySelectorAll('.nav a').forEach((a) => a.addEventListener('click', () => document.body.classList.remove('nav-open')));
 
 /* ---------- drawer ---------- */
 function openDrawer(html) { $('#drawer-content').innerHTML = html; $('#drawer').classList.remove('hidden'); }
 function closeDrawer() { $('#drawer').classList.add('hidden'); }
+// Échap ferme le tiroir (sauf si une boîte ask est ouverte : elle gère déjà Échap)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#drawer').classList.contains('hidden')
+      && !document.querySelector('.ask-overlay')) closeDrawer();
+});
+// Mobile : glisser la poignée vers le bas ferme le tiroir
+(function () {
+  const panel = document.querySelector('.drawer-panel');
+  if (!panel) return;
+  let y0 = null;
+  panel.addEventListener('touchstart', (e) => {
+    if (panel.scrollTop <= 0) y0 = e.touches[0].clientY;
+  }, { passive: true });
+  panel.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    const dy = e.touches[0].clientY - y0;
+    if (dy > 0 && panel.scrollTop <= 0) panel.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  panel.addEventListener('touchend', (e) => {
+    if (y0 == null) return;
+    const dy = e.changedTouches[0].clientY - y0;
+    panel.style.transform = '';
+    if (dy > 90) closeDrawer();
+    y0 = null;
+  });
+})();
 window.closeDrawer = closeDrawer;
 
 /* ---------- routing ---------- */
@@ -434,10 +466,10 @@ async function vueDashboard() {
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
+      <div class="kpi clickable" onclick="location.hash='#/emplacements'" title="Voir les emplacements"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
         <div class="l">Emplacements occupés · ${d.occupation.taux} %</div></div>
-      <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
-      <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div>
+      <div class="kpi clickable" onclick="location.hash='#/factures'" title="Voir les factures"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
+      <div class="kpi clickable ${d.impayes.total_du > 0 ? 'bad' : ''}" onclick="location.hash='#/impayes'" title="Voir les impayés"><div class="v">${eur(d.impayes.total_du)}</div>
         <div class="l">Impayés · ${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}</div></div>
       <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div>
         <div class="l">Prestations à facturer</div></div>
@@ -1225,7 +1257,10 @@ async function vueResidents() {
   render(residents);
   $('#res-search').addEventListener('input', (e) => {
     const s = e.target.value.toLowerCase();
-    render(residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone} ${r.compte_comptable || ''} ${r.emplacement_id ? empNum[r.emplacement_id] || '' : ''}`.toLowerCase().includes(s)));
+    const filtres = residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone} ${r.compte_comptable || ''} ${r.emplacement_id ? empNum[r.emplacement_id] || '' : ''}`.toLowerCase().includes(s));
+    if (s && !filtres.length) {
+      $('#res-body').innerHTML = `<tr><td colspan="4"><div class="vide"><h3>Aucun résultat</h3><p>Aucun résident ne correspond à « ${esc(e.target.value)} ». Vérifiez l\u2019orthographe ou élargissez la recherche.</p></div></td></tr>`;
+    } else render(filtres);
   });
 }
 
