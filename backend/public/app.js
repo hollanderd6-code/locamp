@@ -126,7 +126,7 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
     padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.28);
     transform:translateY(8px) scale(.98);transition:transform .16s cubic-bezier(.3,.9,.3,1)}
   .ask-overlay.in .ask-box{transform:none}
-  .ask-titre{font-family:"Fraunces",serif;font-size:18px;font-weight:600;margin:0 0 8px;color:#14283F}
+  .ask-titre{font-family:"Fraunces",serif;font-size:18px;font-weight:600;margin:0 0 8px;color:#1B2E28}
   .ask-msg{font-size:14.5px;line-height:1.55;color:#4A5A54;margin:0 0 18px;white-space:normal}
   .ask-input{width:100%;font:15px/1.4 "Inter",sans-serif;padding:11px 13px;margin-bottom:18px;
     border:1px solid #E7E1D4;border-radius:10px;background:#fff}
@@ -143,6 +143,7 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
 })();
 
 const dfr = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+const CHARGE = '<div class="chargement"><span class="spin"></span>Chargement…</div>';
 
 /* Libellés lisibles : jamais de code technique à l'écran. */
 const STATUT_LIB = {
@@ -156,8 +157,10 @@ const lib = (s) => STATUT_LIB[s] || String(s || '').replace(/_/g, ' ');
 
 function toast(msg, err = false) {
   const t = $('#toast');
-  t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 3500);
+  t.innerHTML = `<span class="t-ic">${err ? '!' : '✓'}</span><span></span>`;
+  t.lastElementChild.textContent = msg;
+  t.className = 'toast ' + (err ? 'err' : 'ok');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), err ? 5000 : 3500);
 }
 
 async function api(path, opts = {}) {
@@ -314,7 +317,7 @@ window.formNouveauCamping = () => {
       renderCampingSwitch();
       location.hash = '#/parametres';
       route();
-      toast(`Espace « ${camping.nom} » créé — complète son identité`);
+      toast(`Espace « ${camping.nom} » créé — complétez son identité`);
     } catch (err) { toast(err.message, true); }
   });
 };
@@ -323,6 +326,7 @@ window.formNouveauCamping = () => {
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = $('#login-btn'); btn.disabled = true;
+  const lbl = btn.textContent; btn.textContent = 'Connexion…';
   $('#login-error').classList.add('hidden');
   try {
     const data = await api('/api/auth/login', { method: 'POST', body: { email: $('#login-email').value, password: $('#login-password').value } });
@@ -331,7 +335,7 @@ $('#login-form').addEventListener('submit', async (e) => {
     await boot();
   } catch (err) {
     const el = $('#login-error'); el.textContent = err.message; el.classList.remove('hidden');
-  } finally { btn.disabled = false; }
+  } finally { btn.disabled = false; btn.textContent = lbl; }
 });
 $('#logout-btn').addEventListener('click', logout);
 // menu mobile
@@ -368,16 +372,17 @@ function route() {
   // on quitte la carte alors que des modifications ne sont pas enregistrées ?
   if (name !== 'carte' && carteState && carteState.mode === 'edit'
       && (carteState.dirty.size + carteState.dirtyElems.size) > 0) {
-    // eslint-disable-next-line no-alert -- garde de navigation : doit rester synchrone
-    if (!confirm('Le plan comporte des modifications non enregistrées. Quitter sans enregistrer ?')) {
-      location.hash = '#/carte';
-      return;
-    }
-    carteState = null;
+    // garde de navigation : on reste sur la carte le temps de la confirmation
+    const cible = location.hash;
+    location.hash = '#/carte';
+    askConfirm('Le plan comporte des modifications non enregistrées.\nQuitter sans enregistrer ?',
+      { titre: 'Modifications non enregistrées', ok: 'Quitter sans enregistrer', danger: true })
+      .then((ok) => { if (ok) { carteState = null; location.hash = cible; } });
+    return;
   }
   _hashPrec = location.hash;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
-  ($('#main').innerHTML = '<p class="muted">Chargement…</p>');
+  ($('#main').innerHTML = CHARGE);
   const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
   fn().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
   majBadgeMessagerie();
@@ -615,12 +620,12 @@ const carteClamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 window.imprimerCarte = () => {
   const svg = document.querySelector('.map-svg');
-  if (!svg) { toast('Ouvre la carte avant d\u2019imprimer', true); return; }
+  if (!svg) { toast('Ouvrez la carte avant d\u2019imprimer', true); return; }
   const legend = document.querySelector('.map-legend');
   const nom = (CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) || {}).nom || 'Camping';
   const dateStr = new Date().toLocaleDateString('fr-FR');
   const w = window.open('', '_blank', 'width=1200,height=850');
-  if (!w) { toast('Autorise les pop-ups pour imprimer le plan', true); return; }
+  if (!w) { toast('Autorisez les pop-ups pour imprimer le plan', true); return; }
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Plan \u2014 ${esc(nom)}</title>
     <style>
       @page{size:A4 landscape;margin:8mm}
@@ -833,7 +838,7 @@ function renderProps() {
   const s = st.selected;
 
   if (!s) {
-    box.innerHTML = `<div class="map-panel-sec map-empty">Sélectionne un élément du plan pour le modifier.</div>`;
+    box.innerHTML = `<div class="map-panel-sec map-empty">Sélectionnez un élément du plan pour le modifier.</div>`;
     return;
   }
 
@@ -1100,7 +1105,7 @@ window.ajouterElement = async (type) => {
       largeur: num(element.largeur), hauteur: num(element.hauteur), x2: num(element.x2), y2: num(element.y2) });
     carteState.selected = { kind: 'elem', id: element.id };
     renderCarte();
-    toast(`${def.lib} ajouté — glisse-le à sa place`);
+    toast(`${def.lib} ajouté — glissez-le à sa place`);
   } catch (e) { toast(e.message, true); }
 };
 
@@ -1209,7 +1214,7 @@ async function vueResidents() {
         <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
         <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
         <td class="right" data-l="Solde">${eur(r.solde)}</td>
-      </tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
+      </tr>`).join('') || `<tr><td colspan="4"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c1.2-3.6 4-5.4 7-5.4s5.8 1.8 7 5.4"/></svg></div><h3>Aucun résident pour le moment</h3><p>Créez votre premier résident : sa fiche regroupera contrats, factures, documents et messages.</p></div></td></tr>`;
   };
   render(residents);
   $('#res-search').addEventListener('input', (e) => {
@@ -1343,7 +1348,7 @@ async function vueFicheClient(id) {
             <td class="right" data-l="Montant TTC"><strong>${eur(p.montant_ttc)}</strong></td>
             <td data-l="État">${etatBadge(p)}</td>
             <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
-          </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>
+          </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucune prestation. Ajoutez un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>
         <div id="presta-actionbar" class="selbar hidden">
           <span id="presta-selinfo" style="font-weight:600"></span>
           <div class="selbar-actions">
@@ -1429,7 +1434,7 @@ async function vueFicheClient(id) {
     </section>
 
     <section data-panel="compte" class="hidden">
-      <div id="releve-zone"><p class="muted">Chargement du relevé…</p></div>
+      <div id="releve-zone">${CHARGE}</div>
     </section>
 
     <section data-panel="messages" class="hidden">
@@ -1442,7 +1447,7 @@ async function vueFicheClient(id) {
             <div class="msg-row ${m.auteur === 'camping' ? 'me' : 'them'}">
               <div class="msg-bubble">${esc(m.corps)}</div>
               <div class="msg-meta">${m.auteur === 'camping' ? 'Camping' : esc(r.prenom || r.nom)} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-            </div>`).join('') || '<p class="muted" style="margin:0">Aucun message. Écris le premier ci-dessous — le client le verra sur son portail et sera notifié par e-mail.</p>'}
+            </div>`).join('') || '<p class="muted" style="margin:0">Aucun message. Écrivez le premier ci-dessous — le client le verra sur son portail et sera notifié par e-mail.</p>'}
         </div>
         <form id="f-msg" class="msg-form">
           <input name="corps" placeholder="Écrire un message au client…" required>
@@ -1499,7 +1504,7 @@ window.switchFicheTab = (key) => {
 window.chargerReleve = async (id, annee) => {
   const zone = $('#releve-zone');
   if (!zone) return;
-  zone.innerHTML = '<p class="muted">Chargement du relevé…</p>';
+  zone.innerHTML = CHARGE;
   try {
     const d = await api(`/api/residents/${id}/releve?annee=${annee || exerciceActif().year}`);
     const du = d.solde_total > 0.004;
@@ -1601,7 +1606,7 @@ function selectionPresta() {
 window.facturerSelection = async (residentId) => {
   const sel = selectionPresta();
   const facturables = sel.filter((s) => s.type !== 'caution');
-  if (!facturables.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
+  if (!facturables.length) { toast('Sélectionnez au moins une prestation facturable', true); return; }
   if (!await askConfirm(`Créer une facture avec ${facturables.length} prestation(s) ?`)) return;
   try {
     const r = await api('/api/prestations/facturer', {
@@ -1615,7 +1620,7 @@ window.facturerSelection = async (residentId) => {
 
 window.proformaSelection = async (residentId) => {
   const sel = selectionPresta().filter((s) => s.type !== 'caution');
-  if (!sel.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
+  if (!sel.length) { toast('Sélectionnez au moins une prestation facturable', true); return; }
   try {
     const { url } = await api('/api/prestations/proforma', {
       method: 'POST',
@@ -1696,7 +1701,7 @@ window.formPrestation = async (residentId, type) => {
     b.resident_id = residentId; b.type = type;
     if (type === 'charge') {
       const nat = b.nature_charge === '__autre' ? (b.nature_autre || '').trim() : (b.nature_charge || '').trim();
-      if (!nat) { toast('Choisis la nature de la charge', true); return; }
+      if (!nat) { toast('Choisissez la nature de la charge', true); return; }
       b.designation = `Charges — ${nat}`;
       delete b.nature_charge; delete b.nature_autre;
     }
@@ -2052,7 +2057,7 @@ async function vueEmplacements() {
         <td class="muted">${esc(e.type || '—')}</td><td><span class="badge ${e.statut}">${lib(e.statut)}</span></td>
         <td class="right">${eur(e.loyer_base)}</td>
         <td class="muted">${e.coord_x != null ? '✓' : '—'}</td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
+      </tr>`).join('') || `<tr><td colspan="6"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3.5 17h17z"/><path d="M12 9v8"/></svg></div><h3>Aucun emplacement</h3><p>Ajoutez vos emplacements pour suivre l\u2019occupation et les rattacher aux résidents.</p></div></td></tr>`}</tbody></table></div>`;
 }
 
 window.formEmplacement = () => {
@@ -2100,7 +2105,7 @@ async function vueFactures() {
           ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
           ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
         </td>
-      </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
+      </tr>`).join('') || `<tr><td colspan="7"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></div><h3>Aucune facture</h3><p>Lancez « Générer la facturation du mois » pour créer les factures de loyers et prestations en un clic.</p></div></td></tr>`}</tbody></table></div>`;
 }
 /* ---------- Messagerie (boîte de réception) ---------- */
 async function vueMessagerie() {
@@ -2124,7 +2129,7 @@ async function vueMessagerie() {
             <span class="when">${new Date(c.dernier_message.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
             ${c.non_lus ? `<span class="pill-count">${c.non_lus}</span>` : ''}
           </div>
-        </div>`).join('') : '<p class="muted" style="padding:18px 20px;margin:0">Aucune conversation. Les échanges apparaissent ici dès qu\u2019un client écrit depuis son portail, ou que tu écris depuis une fiche client.</p>'}
+        </div>`).join('') : `<div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v11H9l-5 4z"/></svg></div><h3>Aucune conversation</h3><p>Les échanges apparaissent ici dès qu\u2019un client écrit depuis son portail, ou que vous écrivez depuis une fiche client.</p></div>`}
     </div>`}`;
 }
 
@@ -2155,7 +2160,7 @@ async function vueCompteurs() {
         <td class="right">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
         <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
         <td class="right"><button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>
+      </tr>`).join('') || `<tr><td colspan="6"><div class="vide"><div class="v-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3.5 17h17z"/><path d="M12 9v8"/></svg></div><h3>Aucun emplacement</h3><p>Ajoutez vos emplacements pour suivre l\u2019occupation et les rattacher aux résidents.</p></div></td></tr>`}</tbody></table></div>
     <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix kWh) — à facturer depuis sa fiche.</p>`;
 }
 
@@ -2178,7 +2183,7 @@ window.imprimerTournee = () => {
   const nom = (CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) || {}).nom || 'Camping';
   const dateStr = new Date().toLocaleDateString('fr-FR');
   const w = window.open('', '_blank', 'width=900,height=800');
-  if (!w) { toast('Autorise les pop-ups pour imprimer', true); return; }
+  if (!w) { toast('Autorisez les pop-ups pour imprimer', true); return; }
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Tournée compteurs — ${esc(nom)}</title>
     <style>
       @page{size:A4 portrait;margin:12mm}
@@ -2236,11 +2241,11 @@ async function vueAdministration() {
     </div>
 
     <section data-panel="rgpd" class="hidden">
-      <div id="rgpd-body"><p class="muted">Chargement…</p></div>
+      <div id="rgpd-body"></div>
     </section>
 
     <section data-panel="fiscal" class="hidden">
-      <div id="fiscal-body"><p class="muted">Chargement…</p></div>
+      <div id="fiscal-body"></div>
     </section>
 
     <section data-panel="moyens" class="hidden">
@@ -2252,7 +2257,7 @@ async function vueAdministration() {
           </div>
           <button class="btn btn-primary btn-sm" onclick="formMoyen()">Ajouter un moyen</button>
         </div>
-        <div id="moyens-body" style="margin-top:12px"><p class="muted">Chargement…</p></div>
+        <div id="moyens-body" style="margin-top:12px"></div>
       </div>
     </section>
 
@@ -2296,7 +2301,7 @@ async function vueAdministration() {
             <button class="btn btn-primary btn-sm" onclick="exportJournal()">Export fisc (CSV)</button>
           </div>
         </div>
-        <div id="journal-body" style="margin-top:14px"><p class="muted">Chargement…</p></div>
+        <div id="journal-body" style="margin-top:14px"></div>
       </div>
     </section>`;
 }
@@ -2306,7 +2311,7 @@ const TYPES_MOYEN = { espece: 'Espèces', cheque: 'Chèque', virement: 'Virement
 window.chargerMoyens = async () => {
   const box = $('#moyens-body');
   if (!box) return;
-  box.innerHTML = '<p class="muted">Chargement…</p>';
+  box.innerHTML = CHARGE;
   try {
     const { moyens, migration_manquante } = await api('/api/moyens-paiement?tous=1');
     if (migration_manquante) {
@@ -2328,7 +2333,7 @@ window.chargerMoyens = async () => {
             ${m.actif ? `<button class="btn btn-ghost btn-sm" onclick="retirerMoyen('${m.id}','${esc(m.libelle)}')">Désactiver</button>` : ''}
           </td>
         </tr>`).join('')}</tbody></table>`
-      : '<p class="muted">Aucun moyen de paiement. Ajoute-en un.</p>';
+      : '<p class="muted">Aucun moyen de paiement. Ajoutez-en un.</p>';
   } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
 };
 
@@ -2388,7 +2393,7 @@ window.retirerMoyen = async (id, libelle) => {
 window.chargerRgpd = async () => {
   const box = $('#rgpd-body');
   if (!box) return;
-  box.innerHTML = '<p class="muted">Chargement…</p>';
+  box.innerHTML = CHARGE;
   try {
     const d = await api('/api/rgpd/etat');
     box.innerHTML = `
@@ -2575,7 +2580,7 @@ window.chargerFiscal = async () => {
           <td class="right"><strong>${eur(c.cumul_perpetuel)}</strong></td>
           <td class="muted" style="font-size:12px">${new Date(c.horodatage).toLocaleString('fr-FR')}</td>
         </tr>`).join('')}</tbody></table>`
-        : '<p class="muted" style="margin-top:12px">Aucune clôture. La première clôture journalière sera créée automatiquement, ou lance-la manuellement ci-dessus.</p>'}
+        : '<p class="muted" style="margin-top:12px">Aucune clôture. La première clôture journalière sera créée automatiquement, ou lancez-la manuellement ci-dessus.</p>'}
         <p class="muted" style="margin-top:10px">Format de période : <code>2026-07-11</code> (journalière), <code>2026-07</code> (mensuelle), <code>2026</code> (annuelle).</p>
       </div>`;
   } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
@@ -2658,7 +2663,7 @@ window.chargerJournal = async () => {
   if (e) p.set('entite', e);
   const box = $('#journal-body');
   if (!box) return;
-  box.innerHTML = '<p class="muted">Chargement…</p>';
+  box.innerHTML = CHARGE;
   try {
     const { entrees, limite } = await api('/api/admin/journal?' + p.toString());
     box.innerHTML = entrees.length ? `
@@ -2968,7 +2973,7 @@ window.formDocSignature = async () => {
     try {
       const { document: d } = await api('/api/signatures', { method: 'POST', body: fd });
       closeDrawer();
-      toast('Document déposé — place maintenant les zones de signature');
+      toast('Document déposé — placez maintenant les zones de signature');
       editeurZones(d.id);
     } catch (err) { toast(err.message, true); }
   });
@@ -3194,14 +3199,14 @@ function renderEfactureCard(cx, plateformes) {
         </div>
         <div id="erep-apercu" style="margin-top:10px"></div>
         <h3 style="margin:16px 0 6px;font-size:14px">Periodes deja transmises</h3>
-        <div id="erep-histo" class="muted">Chargement&hellip;</div>
+        <div id="erep-histo">${CHARGE}</div>
       </div>
 
       <div style="border-top:1px solid var(--trait,#E4DCC8);margin-top:16px;padding-top:12px">
         <div class="card-actions"><h3 style="margin:0;font-size:15px">Factures fournisseurs reçues</h3>
           <button class="btn btn-ghost btn-sm" onclick="efRecuesSync()">Synchroniser</button></div>
         <p class="muted" style="margin:2px 0 8px;font-size:12px">Les factures que vos fournisseurs vous adressent via la plateforme. À accepter ou refuser (statut renvoyé à l'émetteur).</p>
-        <div id="recues-zone" class="muted">Chargement&hellip;</div>
+        <div id="recues-zone">${CHARGE}</div>
       </div>
     </div>`;
   }
@@ -3360,7 +3365,7 @@ async function vueParametres() {
           <button class="btn btn-primary btn-sm" onclick="formModeleContrat()">Nouveau modèle</button>
         </div></div>
       <p class="muted">Un modèle = le texte de ton contrat avec des variables (nom du résident, emplacement, montant, dates) remplies automatiquement à la création. Chaque camping a ses propres modèles.</p>
-      <div id="modeles-zone" class="muted" style="margin-top:10px">Chargement&hellip;</div>
+      <div id="modeles-zone" style="margin-top:10px">${CHARGE}</div>
     </div>
 
     ${efCard}
@@ -3444,7 +3449,7 @@ async function vueParametres() {
         <td class="right">${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))}</td>
         <td class="right">${Number(a.taux_tva)} %</td>
         <td class="right"><button class="btn btn-ghost btn-sm" onclick="supprimerArticle('${a.id}')">Retirer</button></td>
-      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoutez le premier ci-dessous.</td></tr>';
   };
   renderArts(articles);
 
@@ -3517,7 +3522,7 @@ async function vueParametres() {
 
 window.uploadLogo = async () => {
   const input = $('#logo-file');
-  if (!input.files || !input.files[0]) { toast('Choisis une image', true); return; }
+  if (!input.files || !input.files[0]) { toast('Choisissez une image', true); return; }
   const fd = new FormData(); fd.append('file', input.files[0]);
   try { await api('/api/camping/logo', { method: 'POST', body: fd }); toast('Logo mis à jour'); route(); }
   catch (err) { toast(err.message, true); }
@@ -3596,8 +3601,8 @@ window.formFacture = async (presetResidentId, preset) => {
       pu_ttc: Number(row.querySelector('[name=pu_ttc]').value || 0),
       taux_tva: Number(row.querySelector('[name=taux_tva]').value || 0),
     })).filter((l) => l.designation && l.pu_ttc);
-    if (!resident_id) { toast('Choisis un résident', true); return; }
-    if (!lignes.length) { toast('Ajoute au moins une ligne (désignation + PU TTC)', true); return; }
+    if (!resident_id) { toast('Choisissez un résident', true); return; }
+    if (!lignes.length) { toast('Ajoutez au moins une ligne (désignation + PU TTC)', true); return; }
     try {
       const { facture } = await api('/api/factures', { method: 'POST', body: { resident_id, periode, lignes } });
       closeDrawer();
@@ -3757,7 +3762,7 @@ async function chargerRemises() {
 
 window.creerRemise = async (code, libelle) => {
   const ids = [...document.querySelectorAll(`.chk-remise[data-moyen="${code}"]:checked`)].map((x) => x.value);
-  if (!ids.length) { toast('Sélectionne au moins un titre', true); return; }
+  if (!ids.length) { toast('Sélectionnez au moins un titre', true); return; }
   const banque = await askPrompt(`Banque pour ce bordereau ${libelle} (optionnel) :`) || undefined;
   try {
     const { remise } = await api('/api/remises', { method: 'POST', body: { reglement_ids: ids, banque } });
@@ -3779,7 +3784,7 @@ window.encaisserRemise = async (id) => {
 // Annulation : motif obligatoire, remise conservée (statut « annulée »), tout est tracé.
 window.annulerRemise = async (id, numero, etaitEncaissee) => {
   const avert = etaitEncaissee
-    ? `\n\nATTENTION : cette remise est DÉJÀ ENCAISSÉE. L'annulation ne supprime pas l'encaissement bancaire — pense à passer la contre-écriture en comptabilité.`
+    ? `\n\nATTENTION : cette remise est DÉJÀ ENCAISSÉE. L'annulation ne supprime pas l'encaissement bancaire — pensez à passer la contre-écriture en comptabilité.`
     : '';
   const motif = await askPrompt(`Annuler la remise ${numero} ?${avert}\n\nMotif d'annulation (obligatoire, conservé au journal) :`);
   if (motif === null) return;
@@ -3809,7 +3814,7 @@ async function vueImpayes() {
     <tbody>${imp.impayes.map((f) => `
       <tr><td><strong>${esc(f.numero)}</strong></td><td>${esc(rmap[f.resident_id] || '—')}</td>
       <td class="right">${eur(f.reste)}</td>
-      <td class="right">${f.en_retard ? `<span class="badge en_retard">${f.jours_retard} j</span>` : '<span class="badge reglee">à échoir</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun impayé. 🎉</td></tr>'}</tbody></table></div>`;
+      <td class="right">${f.en_retard ? `<span class="badge en_retard">${f.jours_retard} j</span>` : '<span class="badge reglee">à échoir</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun impayé — tout est réglé.</td></tr>'}</tbody></table></div>`;
 }
 window.runRelancesBtn = async () => {
   try { const r = await api('/api/relances/run', { method: 'POST' }); toast(`Relances : ${r.envoyees} envoyée(s), ${r.ignorees} à échoir`); route(); }
@@ -3870,7 +3875,7 @@ async function vueCompta() {
       <p class="muted">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
       <div id="idx-zone" style="margin-top:10px"></div>
       <h3 style="margin:16px 0 6px;font-size:14px">Campagnes passées</h3>
-      <div id="idx-histo" class="muted">Chargement&hellip;</div>
+      <div id="idx-histo">${CHARGE}</div>
     </div>
 
     <div class="card">
@@ -3943,7 +3948,7 @@ window.chargerTva = async () => {
         <td class="right">${eur(v.base_ht)}</td><td class="right"><strong>${eur(v.tva)}</strong></td><td class="right">${eur(v.ttc)}</td></tr>`).join('')
         || '<tr><td colspan="4" class="muted">Aucun encaissement sur la période.</td></tr>'}</tbody></table>
       <div style="display:flex;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px">
-        <span class="muted">${d.non_ventile > 0 ? `⚠️ ${eur(d.non_ventile)} encaissés non lettrés (TVA non ventilable) — lettrer les règlements concernés.` : 'Tous les encaissements sont lettrés.'}</span>
+        <span class="muted">${d.non_ventile > 0 ? `${eur(d.non_ventile)} encaissés non lettrés (TVA non ventilable) — lettrer les règlements concernés.` : 'Tous les encaissements sont lettrés.'}</span>
         <strong>TVA exigible du mois : ${eur(d.total_tva_exigible)}</strong>
       </div>`;
   } catch (e) { el.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
@@ -3956,9 +3961,14 @@ boot();
 /* Cloche dans la barre du haut ; au clic, panneau plein écran centré (overlay). */
 (function () {
   let built = false;
+  const _ic = (p) => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
   const ICONES = {
-    paiement_recu: '💶', paiement_confirme: '✅', nouveau_message: '💬',
-    nouvelle_facture: '🧾', relance: '⏰', document_signe: '✍️',
+    paiement_recu: _ic('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/>'),
+    paiement_confirme: _ic('<circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.6 2.6L16 9.5"/>'),
+    nouveau_message: _ic('<path d="M4 5.5h16v11H9l-5 4z"/>'),
+    nouvelle_facture: _ic('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'),
+    relance: _ic('<circle cx="12" cy="13" r="8"/><path d="M12 9v4.5l3 1.8M9 2.5h6"/>'),
+    document_signe: _ic('<path d="M7 3h10v18H7z"/><path d="M10 15c1-1.6 2-1.6 2.6 0 .6 1.4 1.4 1.4 2.4-.4"/>'),
   };
   function tempsRelatif(iso) {
     const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
@@ -4019,7 +4029,7 @@ boot();
     const o = document.getElementById('notif-overlay'); const card = document.getElementById('notif-card');
     if (!o || !card) return;
     o.style.display = 'flex';
-    card.innerHTML = '<div style="padding:26px;color:#999;font-size:14px">Chargement…</div>';
+    card.innerHTML = CHARGE;
     try {
       const { notifications } = await api('/api/notifications?limit=40');
       rendre(notifications || []);
@@ -4045,9 +4055,9 @@ boot();
       html += list.map((n) => `
         <div class="notif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;
           border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
-          <span style="font-size:21px;line-height:1.2;flex-shrink:0">${ICONES[n.type] || '🔔'}</span>
+          <span style="flex-shrink:0;width:34px;height:34px;border-radius:10px;background:var(--sapin-pale);color:var(--sapin);display:flex;align-items:center;justify-content:center">${ICONES[n.type] || _ic('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.8 2.5H4.2z"/><path d="M10 21a2 2 0 0 0 4 0"/>')}</span>
           <div style="min-width:0;flex:1">
-            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
+            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#1B2E28">${esc(n.titre)}</div>
             ${n.corps ? `<div style="font-size:13px;color:#6b6b6b;margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
             <div style="font-size:11.5px;color:#a3a3a3;margin-top:4px">${tempsRelatif(n.created_at)}</div>
           </div>

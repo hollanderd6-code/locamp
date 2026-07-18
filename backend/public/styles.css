@@ -55,12 +55,12 @@ a{color:var(--sapin)}
 *::-webkit-scrollbar-track{background:transparent}
 
 /* entrée des vues : cascade douce */
-#main > *{animation:viewIn .38s var(--ease) both}
-#main > *:nth-child(2){animation-delay:.05s}
-#main > *:nth-child(3){animation-delay:.10s}
-#main > *:nth-child(4){animation-delay:.15s}
-#main > *:nth-child(5){animation-delay:.19s}
-#main > *:nth-child(n+6){animation-delay:.22s}
+#main > *{animation:viewIn .26s var(--ease) both}
+#main > *:nth-child(2){animation-delay:.04s}
+#main > *:nth-child(3){animation-delay:.07s}
+#main > *:nth-child(4){animation-delay:.10s}
+#main > *:nth-child(5){animation-delay:.12s}
+#main > *:nth-child(n+6){animation-delay:.14s}
 @keyframes viewIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 
 .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--laiton);margin-bottom:6px}
@@ -120,6 +120,7 @@ input[type="month"],input[type="date"]{cursor:pointer}
 .btn-ghost{background:transparent;color:var(--encre);border:1px solid var(--hairline)}
 .btn-ghost:hover{border-color:#CFC6B2;background:var(--creme);transform:translateY(-1px)}
 .btn-danger{background:var(--rouge);color:#fff}
+.btn-danger:hover{background:#B94A32;transform:translateY(-1px)}
 .btn-sm{padding:7px 13px;font-size:12.5px;border-radius:9px}
 .btn-block{width:100%}
 
@@ -298,12 +299,7 @@ tr:hover td{background:#FBF9F3}
   background:var(--rouge);color:#fff;font-size:11px;font-weight:700;margin-left:4px}
 
 /* ---------------- Carte du camping ---------------- */
-.map-wrap{background:
-  linear-gradient(0deg, rgba(23,82,67,.05) 1px, transparent 1px),
-  linear-gradient(90deg, rgba(23,82,67,.05) 1px, transparent 1px),
-  linear-gradient(180deg,#FCFAF5, #F8F5EC);
-  background-size:38px 38px, 38px 38px, 100% 100%;
-  border:1px solid var(--hairline);border-radius:var(--r);position:relative;overflow:hidden;
+.map-wrap{border:1px solid var(--hairline);border-radius:var(--r);position:relative;overflow:hidden;
   box-shadow:var(--shadow-s)}
 .map-svg{width:100%;height:auto;display:block}
 .pin{cursor:pointer}
@@ -419,10 +415,41 @@ tr:hover td{background:#FBF9F3}
 
 /* ---------------- Toast ---------------- */
 .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
-  background:var(--nuit);color:#F2EEE3;border-radius:12px;padding:13px 22px;font-size:14px;font-weight:500;
+  display:flex;align-items:center;gap:11px;
+  background:var(--nuit);color:#F2EEE3;border-radius:13px;padding:12px 20px 12px 14px;
+  font-size:14px;font-weight:500;line-height:1.45;
+  border-left:3px solid var(--laiton-vif);
   z-index:60;box-shadow:var(--shadow-l);animation:toastUp .28s var(--ease);max-width:min(560px,90vw)}
 @keyframes toastUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
-.toast.err{background:var(--rouge)}
+.toast .t-ic{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;background:rgba(255,255,255,.14)}
+.toast.ok{border-left-color:#3E9C7C}
+.toast.ok .t-ic{background:#1F5C49;color:#BFE8D6}
+.toast.err{background:#5A2417;border-left-color:#E07A5F}
+.toast.err .t-ic{background:#7A3322;color:#F6D5CB}
+
+/* ---------------- Chargement ---------------- */
+.chargement{display:flex;align-items:center;justify-content:center;gap:11px;
+  color:var(--brume);font-size:13.5px;padding:52px 0;
+  opacity:0;animation:chIn .3s ease .15s forwards}
+@keyframes chIn{to{opacity:1}}
+.spin{width:18px;height:18px;border-radius:50%;flex:none;
+  border:2.5px solid var(--sapin-pale);border-top-color:var(--sapin);
+  animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------------- État vide ---------------- */
+.vide{text-align:center;padding:38px 20px 34px;color:var(--brume)}
+.vide .v-ic{width:52px;height:52px;margin:0 auto 14px;border-radius:16px;
+  background:var(--laiton-pale);border:1px solid #EBDCBB;
+  display:flex;align-items:center;justify-content:center;color:var(--laiton)}
+.vide .v-ic svg{width:26px;height:26px}
+.vide h3{font-family:"Fraunces",serif;font-size:17px;font-weight:600;color:var(--encre);margin:0 0 5px}
+.vide p{font-size:13.5px;margin:0 auto;max-width:380px;line-height:1.55}
+.vide .btn{margin-top:16px}
+
+/* ---------------- Utilitaires d'espacement ---------------- */
+.mt-1{margin-top:8px}.mt-2{margin-top:12px}.mt-3{margin-top:16px}
 
 /* ---------------- Responsive & accessibilité ---------------- */
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -439,24 +466,28 @@ tr:hover td{background:#FBF9F3}
      la grille répartit la hauteur restante sur ses lignes et le bandeau grandit
      (330 px sur une page vide, 80 px sur une page pleine). */
   .app{grid-template-rows:auto 1fr;align-content:start}
+  /* la barre d'état iPhone reste sombre : voile fixe sous l'encoche */
+  body::before{content:"";position:fixed;top:0;left:0;right:0;
+    height:env(safe-area-inset-top);background:var(--nuit);z-index:45}
   .sidebar{align-self:start;position:sticky;top:0;z-index:40;height:auto;overflow:visible;
     flex-direction:row;align-items:center;
-    flex-wrap:nowrap;gap:12px;padding:12px 16px;box-shadow:0 4px 18px rgba(15,35,29,.22)}
+    flex-wrap:wrap;gap:10px 12px;padding:12px 16px;box-shadow:0 4px 18px rgba(15,35,29,.22)}
   /* le conteneur d'en-tête s'efface : ses enfants redeviennent des éléments de la barre */
   .sidebar-head{display:contents}
-  .brand-side{flex:1;min-width:0}
+  /* rangée 1 : marque + burger — rangée 2 : les deux sélecteurs côte à côte */
+  .brand-side{flex:1;min-width:0;order:1}
   .brand-side .brand-mark{width:36px;height:36px;border-radius:11px}
   .brand-side .brand-name{font-size:17px}
-  .nav-burger{display:flex;align-items:center;justify-content:center;order:3;
+  .nav-burger{display:flex;align-items:center;justify-content:center;order:2;
     width:42px;height:42px;border:1px solid #2E4A41;border-radius:11px;background:transparent;
     color:#E8EFEA;font-size:19px;cursor:pointer;flex:none}
-  .camping-switch{order:2;max-width:44vw}
+  .camping-switch{order:3;flex:1 1 calc(50% - 6px);min-width:0;max-width:none}
+  .camping-switch select{font-size:13px;padding:9px 32px 9px 12px}
   .nav{display:none;order:10;width:100%;flex:none;flex-direction:column;gap:2px;padding:10px 0 0;
     max-height:66vh;overflow-y:auto;
     border-top:1px solid rgba(255,255,255,.08);margin-top:10px}
   body.nav-open .nav{display:flex}
   .nav-grp{padding:12px 14px 4px}
-  body.nav-open .sidebar{flex-wrap:wrap}
   .nav a{padding:13px 14px;font-size:15px}
   .nav a.active::before{display:none}
   .sidebar-foot{display:none;order:11;width:100%;flex:none;margin:0;padding-top:10px;

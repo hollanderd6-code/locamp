@@ -22,6 +22,7 @@ h2{font-size:18px;font-weight:600}
 .hidden{display:none!important}
 .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--laiton);margin-bottom:4px}
 .note{font-size:13px;color:var(--brume)}
+.form-error{color:var(--rouge);font-size:13px;margin:2px 0 0;font-weight:500}
 
 /* ---- marque ---- */
 .brand{display:flex;align-items:center;gap:12px}

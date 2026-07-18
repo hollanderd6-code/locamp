@@ -561,7 +561,12 @@ $('#sig-signer').addEventListener('click', async () => {
 /* Cloche dans la barre du haut ; au clic, panneau plein écran centré (overlay). */
 (function () {
   let built = false;
-  const ICONES = { paiement_confirme: '✅', nouvelle_facture: '🧾', nouveau_message: '💬' };
+  const _ic = (d) => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const ICONES = {
+    paiement_confirme: _ic('<circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.6 2.6L16 9.5"/>'),
+    nouvelle_facture: _ic('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'),
+    nouveau_message: _ic('<path d="M4 5.5h16v11H9l-5 4z"/>'),
+  };
   function tempsRelatif(iso) {
     const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
     if (diff < 60) return "à l'instant";
@@ -646,7 +651,7 @@ $('#sig-signer').addEventListener('click', async () => {
       html += list.map((n) => `
         <div class="pnotif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;
           border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
-          <span style="font-size:21px;flex-shrink:0">${ICONES[n.type] || '🔔'}</span>
+          <span style="flex-shrink:0;width:34px;height:34px;border-radius:10px;background:var(--sapin-pale);color:var(--sapin);display:flex;align-items:center;justify-content:center">${ICONES[n.type] || _ic('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.8 2.5H4.2z"/><path d="M10 21a2 2 0 0 0 4 0"/>')}</span>
           <div style="min-width:0;flex:1">
             <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
             ${n.corps ? `<div style="font-size:13px;color:#6b6b6b;margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
