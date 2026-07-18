@@ -766,3 +766,35 @@ $('#sig-signer').addEventListener('click', async () => {
   }
   setTimeout(enregistrer, 3000);
 })();
+
+
+/* ==================== Actualisation ==================== */
+/* Bouton du header + rechargement automatique quand l'app revient au premier
+   plan (notification poussée -> ouverture : les messages/documents sont à jour). */
+(function () {
+  let enCours = false, dernier = 0;
+  async function actualiser(silencieux = false) {
+    if (enCours || !RTOKEN || $('#espace').classList.contains('hidden')) return;
+    enCours = true; dernier = Date.now();
+    const btn = $('#btn-actualiser');
+    btn?.classList.add('tourne');
+    try {
+      await chargerEspace();
+      if (!silencieux) toast('Espace actualisé');
+    } catch (e) {
+      if (!silencieux) toast(e.message || 'Impossible d\u2019actualiser', true);
+    } finally {
+      enCours = false;
+      btn?.classList.remove('tourne');
+    }
+  }
+  $('#btn-actualiser')?.addEventListener('click', () => actualiser(false));
+  // Retour au premier plan (webview Capacitor ou onglet navigateur) :
+  // on recharge silencieusement, au plus une fois toutes les 10 s.
+  const auRetour = () => {
+    if (document.visibilityState === 'visible' && Date.now() - dernier > 10000) actualiser(true);
+  };
+  document.addEventListener('visibilitychange', auRetour);
+  document.addEventListener('resume', auRetour);          // événement Capacitor
+  window.addEventListener('focus', auRetour);
+})();
