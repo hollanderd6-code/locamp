@@ -194,6 +194,7 @@ app.use('/api/fiscal', fiscalRoutes);
 app.use('/api/exercices', exercicesRoutes);
 app.use('/api/efacture', efactureRoutes);
 app.use('/api/echeances', require('./routes/echeances'));
+app.use('/api/indexation', require('./routes/indexation'));
 app.use('/api/rgpd', rgpdRoutes);
 app.use('/api/signatures', signaturesRoutes);
 app.use('/api/carte-elements', carteElementsRoutes);

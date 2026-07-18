@@ -2132,10 +2132,15 @@ window.ouvrirConversation = (residentId) => {
 /* ---------- Compteurs (tournée de relevés) ---------- */
 async function vueCompteurs() {
   const d = await api('/api/compteurs');
+  d.emplacements.sort((a, b) => String(a.numero || '').localeCompare(String(b.numero || ''), undefined, { numeric: true, sensitivity: 'base' }));
+  window._tourneeData = d.emplacements;
   const prixOk = d.prix_kwh != null && d.prix_kwh > 0;
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Énergie</div><h1>Compteurs électriques</h1></div>
-      <span class="muted">${prixOk ? `Prix du kWh : <strong>${Number(d.prix_kwh)} € TTC</strong> · TVA ${d.taux_tva} %` : ''}</span></div>
+      <div class="toolbar" style="align-items:center;gap:10px">
+        <span class="muted">${prixOk ? `Prix du kWh : <strong>${Number(d.prix_kwh)} € TTC</strong> · TVA ${d.taux_tva} %` : ''}</span>
+        <button class="btn btn-ghost btn-sm" onclick="imprimerTournee()" title="Feuille papier pour relever sur le terrain">Feuille de tournée</button>
+      </div></div>
     ${prixOk ? '' : `<p class="form-error" style="margin-bottom:14px">Prix du kWh non configuré — les relevés seront enregistrés mais aucune charge ne sera créée. <a href="#/parametres">Configurer dans Paramètres → Énergie</a>.</p>`}
     <div class="card"><table><thead><tr><th>Empl.</th><th>Résident</th><th>Dernier relevé</th><th class="right">Index</th><th class="right">Nouvel index</th><th></th></tr></thead>
     <tbody>${d.emplacements.map((e) => `
@@ -2156,10 +2161,46 @@ window.releverCompteur = async (empId) => {
   if (v === '' || Number(v) < 0) { toast('Saisis le nouvel index', true); input.focus(); return; }
   try {
     const r = await api('/api/compteurs/releve', { method: 'POST', body: { emplacement_id: empId, index_kwh: Number(v) } });
-    if (r.prestation) toast(`Relevé enregistré — charge de ${eur(r.prestation.montant_ttc)} créée (${Number(r.releve.conso_kwh)} kWh)`);
+    if (r.alerte) toast(r.alerte, true);
+    else if (r.prestation) toast(`Relevé enregistré — charge de ${eur(r.prestation.montant_ttc)} créée (${Number(r.releve.conso_kwh)} kWh)`);
     else toast(r.info || 'Relevé enregistré');
     route();
   } catch (err) { toast(err.message, true); }
+};
+
+window.imprimerTournee = () => {
+  const emps = window._tourneeData || [];
+  if (!emps.length) { toast('Aucun emplacement', true); return; }
+  const nom = (CAMPINGS.find((c) => c.camping_id === ACTIVE_CAMPING) || {}).nom || 'Camping';
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+  const w = window.open('', '_blank', 'width=900,height=800');
+  if (!w) { toast('Autorise les pop-ups pour imprimer', true); return; }
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Tournée compteurs — ${esc(nom)}</title>
+    <style>
+      @page{size:A4 portrait;margin:12mm}
+      body{margin:0;font-family:system-ui,-apple-system,sans-serif;color:#2b2b26;font-size:12px}
+      h1{font-size:16px;margin:0 0 2px}
+      .dt{color:#777;margin-bottom:12px}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #cfc8b6;padding:6px 8px;text-align:left}
+      th{background:#f2eee2;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+      td.num{text-align:right}
+      td.saisie{width:110px}
+      tr{page-break-inside:avoid}
+    </style></head><body>
+    <h1>${esc(nom)} — feuille de tournée compteurs</h1>
+    <div class="dt">Édition du ${dateStr} — relevé par : ______________________</div>
+    <table><thead><tr><th>Empl.</th><th>Résident</th><th>Dernier relevé</th><th>Ancien index</th><th>Nouvel index</th><th>Observations</th></tr></thead>
+    <tbody>${emps.map((e) => `<tr>
+      <td><strong>${esc(e.numero)}</strong>${e.secteur ? ` · ${esc(e.secteur)}` : ''}</td>
+      <td>${e.resident ? esc((e.resident.prenom || '') + ' ' + e.resident.nom) : '—'}</td>
+      <td>${e.dernier_releve ? new Date(e.dernier_releve.date_releve).toLocaleDateString('fr-FR') : 'jamais'}</td>
+      <td class="num">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
+      <td class="saisie"></td><td></td>
+    </tr>`).join('')}</tbody></table>
+  </body></html>`);
+  w.document.close();
+  w.onload = () => { try { w.focus(); w.print(); } catch (_) {} };
 };
 
 /* ---------- Administration : comptes, droits, journal ---------- */
@@ -2534,6 +2575,54 @@ window.chargerFiscal = async () => {
         <p class="muted" style="margin-top:10px">Format de période : <code>2026-07-11</code> (journalière), <code>2026-07</code> (mensuelle), <code>2026</code> (annuelle).</p>
       </div>`;
   } catch (e) { box.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
+};
+
+window.idxApercu = async () => {
+  const taux = Number($('#idx-taux').value);
+  if (!Number.isFinite(taux) || taux === 0) { toast('Saisis un taux (ex. 3.26)', true); return; }
+  const zone = $('#idx-zone'); zone.innerHTML = '<span class="muted">Calcul&hellip;</span>';
+  try {
+    const { loyers, modeles } = await api('/api/indexation/apercu?taux=' + encodeURIComponent(taux));
+    const concernes = loyers.filter((x) => x.avant > 0);
+    if (!concernes.length && !modeles.length) { zone.innerHTML = '<span class="muted">Aucun loyer configuré à indexer.</span>'; return; }
+    const srcLib = { fiche: 'fiche', modele: 'modèle', contrat: 'contrat' };
+    zone.innerHTML = `
+      ${modeles.length ? `<p style="margin:0 0 6px"><strong>Modèles partagés</strong> — les résidents qui les suivent sont revalorisés automatiquement :</p>
+      <table style="margin-bottom:12px"><thead><tr><th>Modèle</th><th class="right">Avant</th><th class="right">Après</th></tr></thead>
+      <tbody>${modeles.map((m) => `<tr><td>${esc(m.nom)}</td><td class="right">${eur(m.avant)}</td><td class="right"><strong>${eur(m.apres)}</strong></td></tr>`).join('')}</tbody></table>` : ''}
+      <table><thead><tr><th>Résident</th><th>Empl.</th><th>Source</th><th class="right">Avant</th><th class="right">Après</th></tr></thead>
+      <tbody>${concernes.map((x) => `<tr>
+        <td><a href="#/residents/${x.resident_id}" style="color:inherit">${esc(x.nom)}</a></td>
+        <td class="muted">${esc(x.emplacement || '—')}</td>
+        <td class="muted">${srcLib[x.source] || x.source}${x.modele_nom ? ' · ' + esc(x.modele_nom) : ''}</td>
+        <td class="right">${eur(x.avant)}</td>
+        <td class="right"><strong>${eur(x.apres)}</strong></td>
+      </tr>`).join('')}</tbody></table>
+      <div style="margin-top:12px;text-align:right">
+        <button class="btn btn-primary" onclick="idxAppliquer(${taux})">Appliquer +${taux} % à ${concernes.filter((x) => x.source !== 'modele').length + modeles.length} loyer(s)/modèle(s)</button>
+      </div>`;
+  } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
+};
+
+window.idxAppliquer = async (taux) => {
+  const ref = $('#idx-ref') ? $('#idx-ref').value.trim() : '';
+  if (!await askConfirm(`Appliquer +${taux} % à tous les loyers ?\nLes fiches et modèles sont mis à jour immédiatement ; la prochaine facturation mensuelle utilisera les nouveaux montants. Cette campagne sera journalisée${ref ? ' (' + ref + ')' : ''}.`, { titre: 'Indexer les loyers', ok: 'Appliquer' })) return;
+  try {
+    const r = await api('/api/indexation', { method: 'POST', body: { taux, reference: ref || null } });
+    toast(`Indexation appliquée : ${r.nb_loyers} loyer(s) et ${r.nb_modeles} modèle(s) revalorisés`);
+    $('#idx-zone').innerHTML = ''; idxHisto();
+  } catch (e) { toast(e.message || 'Erreur', true); }
+};
+
+window.idxHisto = async () => {
+  const zone = $('#idx-histo'); if (!zone) return;
+  try {
+    const { indexations } = await api('/api/indexation/historique');
+    zone.innerHTML = indexations.length
+      ? `<table><thead><tr><th>Date</th><th>Taux</th><th>Référence</th><th class="right">Loyers</th><th class="right">Modèles</th></tr></thead>
+        <tbody>${indexations.map((i) => `<tr><td>${dfr(i.created_at)}</td><td>+${Number(i.taux)} %</td><td class="muted">${esc(i.reference || '—')}</td><td class="right">${i.nb_loyers}</td><td class="right">${i.nb_modeles}</td></tr>`).join('')}</tbody></table>`
+      : '<span class="muted">Aucune campagne pour le moment.</span>';
+  } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
 };
 
 window.lancerCloture = async () => {
@@ -3631,6 +3720,19 @@ async function vueCompta() {
     </div>
 
     <div class="card">
+      <div class="card-actions"><h2>Indexation des loyers</h2>
+        <div class="toolbar">
+          <input id="idx-taux" type="number" step="0.01" placeholder="taux %" style="width:90px" title="ex. 3.26 pour +3,26 %">
+          <input id="idx-ref" type="text" placeholder="référence (ex. IRL T1 2026)" style="width:180px">
+          <button class="btn btn-primary btn-sm" onclick="idxApercu()">Aperçu</button>
+        </div></div>
+      <p class="muted">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
+      <div id="idx-zone" style="margin-top:10px"></div>
+      <h3 style="margin:16px 0 6px;font-size:14px">Campagnes passées</h3>
+      <div id="idx-histo" class="muted">Chargement&hellip;</div>
+    </div>
+
+    <div class="card">
       <div class="card-actions"><h2>Comptes clients (auxiliaires)</h2></div>
       <p class="muted">Chaque client reçoit automatiquement un numéro de compte à sa création (ex. 41100001). Réglez la racine ci-dessous, puis attribuez un compte aux clients existants qui n'en ont pas.</p>
       <div class="toolbar" style="margin-top:10px">
@@ -3655,6 +3757,7 @@ async function vueCompta() {
   majApercuCompte();
   $('#cc-racine').addEventListener('input', majApercuCompte);
   $('#cc-lng').addEventListener('input', majApercuCompte);
+  if ($('#idx-histo')) idxHisto();
 }
 
 function majApercuCompte() {

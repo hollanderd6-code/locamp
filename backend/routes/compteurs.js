@@ -121,6 +121,23 @@ router.post('/releve', requireRole('admin', 'gestionnaire'), async (req, res) =>
     }
     const conso = prec ? r2(index_kwh - Number(prec.index_kwh)) : null;
 
+    // Détection de surconsommation : conso > 2× la moyenne des 3 dernières (fuite,
+    // compteur défaillant, erreur de saisie). Avertissement seulement, jamais bloquant.
+    let alerte = null;
+    if (conso != null && conso > 0) {
+      const { data: histo } = await supabase.from('releves_compteurs')
+        .select('conso_kwh').eq('camping_id', req.activeCampingId).eq('emplacement_id', b.emplacement_id)
+        .not('conso_kwh', 'is', null).gt('conso_kwh', 0)
+        .order('date_releve', { ascending: false }).order('created_at', { ascending: false }).limit(3);
+      const consos = (histo || []).map((h) => Number(h.conso_kwh)).filter((x) => x > 0);
+      if (consos.length >= 2) {
+        const moy = consos.reduce((s, x) => s + x, 0) / consos.length;
+        if (conso > 2 * moy && conso - moy >= 50) {
+          alerte = `Consommation inhabituelle : ${conso} kWh contre ${r2(moy)} kWh en moyenne sur les ${consos.length} derniers relevés. Vérifie l'index saisi (ou une fuite/un appareil défaillant).`;
+        }
+      }
+    }
+
     // prestation auto si possible
     let prestation = null, info = null;
     if (conso != null && conso > 0) {
@@ -166,7 +183,7 @@ router.post('/releve', requireRole('admin', 'gestionnaire'), async (req, res) =>
     if (error) throw error;
 
     await writeAudit(req, { action: 'create', entite: 'releves_compteurs', entite_id: releve.id, apres: { index_kwh, conso, prestation_id: prestation?.id || null } });
-    res.status(201).json({ releve, prestation, info });
+    res.status(201).json({ releve, prestation, info, alerte });
   } catch (e) { console.error('[compteurs:releve]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
