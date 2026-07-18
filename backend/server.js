@@ -59,7 +59,7 @@ app.use(helmet({
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:', SUPABASE].filter(Boolean),
       connectSrc: ["'self'", SUPABASE, 'https://api.stripe.com'].filter(Boolean),
-      frameSrc: ["'self'", 'https://js.stripe.com'],
+      frameSrc: ["'self'", 'https://js.stripe.com', 'blob:', SUPABASE].filter(Boolean),
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],

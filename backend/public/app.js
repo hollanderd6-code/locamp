@@ -3722,6 +3722,13 @@ window.apercuFacture = async (id, ev, numero = '') => {
   if (ev && ev.target.closest('button, a, input, select')) return;
   try {
     const { url } = await api(`/api/factures/${id}/pdf`);
+    // On rapatrie le PDF en blob : l'iframe devient locale (blob:), donc
+    // aucune restriction d'embarquement, et l'impression directe fonctionne.
+    let src = url, blobUrl = null;
+    try {
+      const rep = await fetch(url);
+      if (rep.ok) { blobUrl = URL.createObjectURL(await rep.blob()); src = blobUrl; }
+    } catch { /* repli : URL distante */ }
     const ov = document.createElement('div');
     ov.className = 'apercu';
     ov.innerHTML = `
@@ -3735,9 +3742,10 @@ window.apercuFacture = async (id, ev, numero = '') => {
       </div>
       <div class="apercu-corps"><iframe title="Aperçu de la facture"></iframe></div>`;
     ov.querySelector('.apercu-titre').textContent = numero ? `Facture ${numero}` : 'Aperçu de la facture';
-    ov.querySelector('iframe').src = url;
+    ov.querySelector('iframe').src = src;
     document.body.appendChild(ov);
-    const fermer = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    const fermer = () => { ov.remove(); document.removeEventListener('keydown', onKey);
+      if (blobUrl) setTimeout(() => URL.revokeObjectURL(blobUrl), 1000); };
     const onKey = (e) => { if (e.key === 'Escape') fermer(); };
     document.addEventListener('keydown', onKey);
     ov.querySelector('[data-ap-close]').addEventListener('click', fermer);
