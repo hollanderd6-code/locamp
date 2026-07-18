@@ -1218,7 +1218,7 @@ async function vueResidents() {
 
 /* ---------- Fiche client (pleine page) ---------- */
 async function vueFicheClient(id) {
-  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes] = await Promise.all([
+  const [{ resident: r, emplacement, documents }, { factures }, { reglements }, presRes, synRes, msgRes, cfgRes, ctrRes] = await Promise.all([
     api('/api/residents/' + id),
     api('/api/factures?resident_id=' + id + exQSand()),
     api('/api/reglements?resident_id=' + id + exQSand()),
@@ -1226,7 +1226,9 @@ async function vueFicheClient(id) {
     api('/api/prestations/synthese/' + id).catch(() => ({ synthese: null })),
     api('/api/messages?resident_id=' + id).catch(() => ({ messages: null })),
     api('/api/factures/config/' + id).catch(() => ({ facturation: {} })),
+    api('/api/contrats?resident_id=' + id).catch(() => ({ contrats: [] })),
   ]);
+  const lesContrats = (ctrRes.contrats || []).filter((c) => c.statut !== 'annule');
   const fact = cfgRes.facturation || {};
   const factLignes = fact.lignes || [];
   const aConfig = Number(fact.loyer_mensuel || 0) > 0 || factLignes.length > 0;
@@ -1277,6 +1279,15 @@ async function vueFicheClient(id) {
             if (jr < 0) return ` · <span class="badge en_retard" title="Attestation expirée le ${dfr(r.assurance_expire_le)}">assurance expirée</span>`;
             if (jr <= 60) return ` · <span class="badge partielle" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}expire le ${dfr(r.assurance_expire_le)}">assurance : ${jr} j</span>`;
             return ` · <span class="badge reglee" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}valable jusqu\u2019au ${dfr(r.assurance_expire_le)}">assurance OK</span>`; })()}
+          ${(() => { if (!lesContrats.length) return ' · <span class="badge en_retard" title="Aucun contrat de location enregistré">contrat manquant</span>';
+            // contrat de référence : celui qui finit le plus tard (sans date_fin = illimité)
+            const sansFin = lesContrats.find((c) => !c.date_fin);
+            if (sansFin) return ` · <span class="badge reglee" title="Contrat ${esc(sansFin.numero || '')} sans date de fin">contrat OK</span>`;
+            const ref = lesContrats.reduce((m, c) => (!m || c.date_fin > m.date_fin ? c : m), null);
+            const jr = Math.floor((new Date(ref.date_fin) - new Date()) / 86400000);
+            if (jr < 0) return ` · <span class="badge en_retard" title="Contrat ${esc(ref.numero || '')} expiré le ${dfr(ref.date_fin)} — pensez au renouvellement">contrat expiré</span>`;
+            if (jr <= 60) return ` · <span class="badge partielle" title="Contrat ${esc(ref.numero || '')} — expire le ${dfr(ref.date_fin)}">contrat : ${jr} j</span>`;
+            return ` · <span class="badge reglee" title="Contrat ${esc(ref.numero || '')} — jusqu\u2019au ${dfr(ref.date_fin)}">contrat OK</span>`; })()}
         </div>
         ${r.adresse ? `<div class="muted" style="margin-top:2px">${esc(r.adresse)}</div>` : ''}
       </div>
