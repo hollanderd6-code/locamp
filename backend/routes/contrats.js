@@ -6,6 +6,9 @@ const { uploadDocument, signedUrl, removeDocument } = require('../lib/storage');
 const { buildContratPdf, mergeClauses } = require('../lib/pdf');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+
 const router = express.Router();
 router.use(auth, campingScope);
 
@@ -294,6 +297,43 @@ router.post('/:id/envoyer-signature', requireRole('admin', 'gestionnaire'), asyn
       avant: { contrat: c.id, numero: c.numero }, apres: { hash: doc.hash_original } });
     res.status(201).json({ document: doc });
   } catch (e) { console.error('[contrats:envoyer-signature]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// ---------- POST signer-papier : circuit papier pour qui ne peut pas signer en ligne ----------
+// Télécharger le PDF -> imprimer -> faire signer à la main -> marquer signé ici,
+// avec en option le scan du contrat signé (conservé comme exemplaire signé).
+router.post('/:id/signer-papier', requireRole('admin', 'gestionnaire'), upload.single('file'), async (req, res) => {
+  try {
+    const full = await loadFullContrat(req.activeCampingId, req.params.id);
+    if (!full) return res.status(404).json({ error: 'Contrat introuvable' });
+    const c = full.contrat;
+    if (c.statut === 'signe') return res.status(409).json({ error: 'Contrat déjà signé.' });
+    if (c.statut === 'brouillon') return res.status(400).json({ error: 'Émettez d\u2019abord le contrat (PDF généré) avant de le marquer signé.' });
+
+    let pdf_signe_path = c.pdf_signe_path || null;
+    let scan = false;
+    if (req.file) {
+      if (req.file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Le scan doit être un PDF' });
+      pdf_signe_path = `contrats/${req.activeCampingId}/${c.id}_signe_papier.pdf`;
+      await uploadDocument(pdf_signe_path, req.file.buffer, 'application/pdf');
+      scan = true;
+    }
+
+    const meta = {
+      via: 'papier', horodatage: new Date().toISOString(),
+      par: req.user.uid, scan_joint: scan,
+      note: req.body && req.body.note ? String(req.body.note).slice(0, 300) : null,
+      hash_scan: req.file ? sha256(req.file.buffer) : null,
+    };
+    const { error } = await supabase.from('contrats')
+      .update({ statut: 'signe', pdf_signe_path, signature_meta: meta })
+      .eq('camping_id', req.activeCampingId).eq('id', c.id);
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'contrat.signature-papier', entite: 'contrats', entite_id: c.id,
+      apres: { numero: c.numero, scan_joint: scan } });
+    res.json({ ok: true, scan_joint: scan });
+  } catch (e) { console.error('[contrats:signer-papier]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 module.exports = router;

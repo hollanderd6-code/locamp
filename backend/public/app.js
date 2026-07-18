@@ -1200,16 +1200,45 @@ async function vueResidents() {
         <input class="search" id="res-search" placeholder="Rechercher nom, e-mail, emplacement…">
         <button class="btn btn-primary" onclick="formResident()">Nouveau résident</button>
       </div></div>
-    <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th><th class="right">Solde</th></tr></thead>
+    <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th><th>Conformité</th><th class="right">Solde</th></tr></thead>
     <tbody id="res-body"></tbody></table></div>`;
+  const J = 86400000;
+  const pastille = (lettre, etat, titre) => {
+    const c = etat === 'ok' ? 'var(--vert,#3f7d4e)' : etat === 'bientot' ? 'var(--orange,#c07a1f)' : 'var(--rouge,#b03a2e)';
+    return `<span title="${esc(titre)}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${c};color:#fff;font-size:10.5px;font-weight:700;margin-right:5px">${lettre}</span>`;
+  };
+  const conf = (r) => {
+    if (!r.actif) return '<span class="muted">—</span>';
+    let a;
+    if (!r.assurance_expire_le) a = pastille('A', 'ko', 'Assurance : aucune attestation enregistrée');
+    else {
+      const jr = Math.floor((new Date(r.assurance_expire_le) - new Date()) / J);
+      a = jr < 0 ? pastille('A', 'ko', `Assurance expirée le ${dfr(r.assurance_expire_le)}`)
+        : jr <= 60 ? pastille('A', 'bientot', `Assurance : expire dans ${jr} j (${dfr(r.assurance_expire_le)})`)
+        : pastille('A', 'ok', `Assurance valable jusqu\u2019au ${dfr(r.assurance_expire_le)}`);
+    }
+    let c;
+    const ct = r.contrat;
+    if (!ct) c = pastille('C', 'ko', 'Contrat : aucun contrat enregistré');
+    else if (!ct.date_fin) c = ct.signe ? pastille('C', 'ok', 'Contrat sans date de fin — signé') : pastille('C', 'bientot', 'Contrat sans date de fin — non signé');
+    else {
+      const jr = Math.floor((new Date(ct.date_fin) - new Date()) / J);
+      c = jr < 0 ? pastille('C', 'ko', `Contrat expiré le ${dfr(ct.date_fin)}`)
+        : !ct.signe ? pastille('C', 'bientot', `Contrat non signé — jusqu\u2019au ${dfr(ct.date_fin)}`)
+        : jr <= 60 ? pastille('C', 'bientot', `Contrat : expire dans ${jr} j (${dfr(ct.date_fin)})`)
+        : pastille('C', 'ok', `Contrat signé — jusqu\u2019au ${dfr(ct.date_fin)}`);
+    }
+    return a + c;
+  };
   const render = (list) => {
     $('#res-body').innerHTML = list.map((r) => `
       <tr class="row-click" onclick="location.hash='#/residents/${r.id}'">
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
         <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
         <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
+        <td data-l="Conformité">${conf(r)}</td>
         <td class="right" data-l="Solde">${eur(r.solde)}</td>
-      </tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
   };
   render(residents);
   $('#res-search').addEventListener('input', (e) => {
@@ -1466,7 +1495,24 @@ async function vueFicheClient(id) {
         </div>
       </div>
       <div class="card" style="margin-top:16px">
-        <h2>Documents</h2>
+        <div class="card-actions"><h2 style="margin:0">Contrats</h2>
+          <button class="btn btn-primary btn-sm" onclick="nouveauContrat('${id}')">Nouveau contrat</button></div>
+        ${lesContrats.length ? `<table style="margin-top:10px"><thead><tr><th>N°</th><th>Période</th><th>Statut</th><th></th></tr></thead>
+        <tbody>${lesContrats.map((c) => `<tr>
+          <td><strong>${esc(c.numero || '—')}</strong></td>
+          <td class="muted">${c.date_debut ? dfr(c.date_debut) : '—'} → ${c.date_fin ? dfr(c.date_fin) : 'illimité'}</td>
+          <td><span class="badge ${c.statut === 'signe' ? 'reglee' : c.statut === 'brouillon' ? 'brouillon' : 'emise'}">${esc(c.statut === 'signe' ? 'signé' : c.statut)}</span></td>
+          <td class="right">
+            <button class="btn btn-ghost btn-sm" onclick="telechargerContrat('${c.id}')" title="Télécharger le PDF (pour impression et signature papier)">Télécharger</button>
+            ${c.statut !== 'signe' && c.statut !== 'brouillon' ? `
+              <button class="btn btn-ghost btn-sm" onclick="contratVersSignature('${c.id}')" title="Signature électronique par e-mail">Envoyer en signature</button>
+              <button class="btn btn-ghost btn-sm" onclick="signerContratPapier('${c.id}')" title="Le résident a signé sur papier : marquer signé (scan facultatif)">Signé (papier)</button>` : ''}
+          </td></tr>`).join('')}</tbody></table>` : '<p class="muted" style="margin-top:8px">Aucun contrat. « Nouveau contrat » le génère depuis un modèle, puis signature en ligne ou sur papier.</p>'}
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-actions"><h2 style="margin:0">Documents</h2>
+          <button class="btn btn-ghost btn-sm" onclick="ajouterDocResident('${id}')" title="Attestation d\u2019assurance, contrat papier scanné, pièce d\u2019identité…">Ajouter un document</button></div>
         ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
       </div>
     </section>`;
@@ -2814,11 +2860,10 @@ async function vueSignatures() {
           <td class="muted">${(d.champs || []).length}</td>
           <td><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
           <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR') : '—'}</td>
-          <td>${(() => { if (!d.date_fin) return '<span class="muted">—</span>';
-            const jr = Math.floor((new Date(d.date_fin) - new Date()) / 86400000);
-            if (jr < 0) return `<span class="badge en_retard" title="À refaire / re-signer">expiré ${dfr(d.date_fin)}</span>`;
-            if (jr <= 60) return `<span class="badge partielle">${dfr(d.date_fin)} · ${jr} j</span>`;
-            return `<span class="muted">${dfr(d.date_fin)}</span>`; })()}</td>
+          <td onclick="event.stopPropagation()">${(() => {
+            const jr = d.date_fin ? Math.floor((new Date(d.date_fin) - new Date()) / 86400000) : null;
+            const badge = jr == null ? '' : jr < 0 ? `<span class="badge en_retard" title="À refaire / re-signer">expiré</span> ` : jr <= 60 ? `<span class="badge partielle">${jr} j</span> ` : '';
+            return `${badge}<input type="date" value="${d.date_fin || ''}" onchange="majTermeDoc('${d.id}', this.value)" title="Terme du document — modifiable directement, les échéances suivent" style="width:130px;font-size:12px">`; })()}</td>
           <td class="right">
             ${d.statut === 'signe'
               ? `<button class="btn btn-ghost btn-sm" onclick="recapSignature('${d.id}')" title="Récapitulatif de transaction (dossier de preuve)">Récapitulatif</button>
@@ -2948,6 +2993,68 @@ window.nouveauContrat = async (residentId) => {
       if (await askConfirm(`Contrat ${contrat.numero} créé. L\u2019envoyer en signature au résident maintenant ?`, { titre: 'Contrat créé', ok: 'Envoyer en signature' })) {
         await contratVersSignature(contrat.id);
       } else { route(); }
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.majTermeDoc = async (id, val) => {
+  try {
+    await api(`/api/signatures/${id}/dates`, { method: 'PUT', body: { date_fin: val || null } });
+    toast(val ? 'Terme mis à jour — le document est suivi dans les échéances' : 'Terme retiré');
+  } catch (e) { toast(e.message || 'Erreur', true); route(); }
+};
+
+window.telechargerContrat = async (id) => {
+  try {
+    const { url, signe } = await api(`/api/contrats/${id}/pdf`);
+    window.open(url, '_blank');
+    if (!signe) toast('PDF ouvert — imprime-le pour une signature papier, puis « Signé (papier) »');
+  } catch (e) { toast(e.message || 'Erreur', true); }
+};
+
+window.signerContratPapier = async (id) => {
+  openDrawer(`
+    <h2>Contrat signé sur papier</h2>
+    <p class="muted" style="margin-top:4px">Le résident a signé l\u2019exemplaire imprimé. Joins le scan du contrat signé (recommandé — il devient l\u2019exemplaire officiel), ou marque simplement signé.</p>
+    <form id="f-papier" class="form-grid" style="margin-top:12px">
+      <label class="full">Scan du contrat signé (PDF, facultatif)<input type="file" name="file" accept="application/pdf"></label>
+      <label class="full">Note<input name="note" placeholder="ex. signé au bureau le 12/07"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Marquer signé</button></div>
+    </form>`);
+  $('#f-papier').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    if (!fd.get('file') || !fd.get('file').size) fd.delete('file');
+    try {
+      const r = await api(`/api/contrats/${id}/signer-papier`, { method: 'POST', body: fd });
+      closeDrawer(); toast(r.scan_joint ? 'Contrat signé — scan conservé comme exemplaire officiel' : 'Contrat marqué signé (papier)');
+      route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
+window.ajouterDocResident = (residentId) => {
+  openDrawer(`
+    <h2>Ajouter un document</h2>
+    <form id="f-doc" class="form-grid" style="margin-top:12px">
+      <label class="full">Fichier *<input type="file" name="file" required></label>
+      <label>Type<select name="type">
+        <option value="attestation_assurance">Attestation d\u2019assurance</option>
+        <option value="contrat_papier">Contrat signé (papier)</option>
+        <option value="piece_identite">Pièce d\u2019identité</option>
+        <option value="autre">Autre</option>
+      </select></label>
+      <label>Date d\u2019expiration<input type="date" name="date_expiration"></label>
+      <div class="full muted" style="font-size:12px">Pour une attestation d\u2019assurance : pense aussi à renseigner la date sur la fiche (Modifier → Assurance) pour déclencher les rappels automatiques.</div>
+      <div class="full"><button class="btn btn-primary btn-block">Ajouter</button></div>
+    </form>`);
+  $('#f-doc').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    fd.append('resident_id', residentId);
+    try {
+      await api('/api/documents', { method: 'POST', body: fd });
+      closeDrawer(); toast('Document ajouté'); route();
     } catch (err) { toast(err.message, true); }
   });
 };

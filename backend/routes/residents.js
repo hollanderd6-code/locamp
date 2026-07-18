@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
   try {
     const cid = req.activeCampingId;
     let q = supabase.from('residents')
-      .select('id,civilite,nom,prenom,email,telephone,emplacement_id,actif,compte_comptable')
+      .select('id,civilite,nom,prenom,email,telephone,emplacement_id,actif,compte_comptable,assurance_expire_le')
       .eq('camping_id', cid);
     const s = (req.query.q || '').trim();
     if (s) q = q.or(`nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,telephone.ilike.%${s}%`);
@@ -74,6 +74,21 @@ router.get('/', async (req, res) => {
       });
     }
     residents.forEach((r) => { r.solde = r2(soldeMap[r.id] || 0); });
+
+    // Conformité contrat : contrat de référence par résident (hors annulés) —
+    // sans date de fin (illimité) sinon celui qui finit le plus tard — et signé ou non.
+    const ctrMap = {};
+    if (ids.length) {
+      const { data: ctrs } = await supabase.from('contrats')
+        .select('resident_id,date_fin,statut').eq('camping_id', cid).neq('statut', 'annule').in('resident_id', ids);
+      (ctrs || []).forEach((c) => {
+        const cur = ctrMap[c.resident_id];
+        const mieux = !cur || (!c.date_fin && cur.date_fin) || (c.date_fin && cur.date_fin && c.date_fin > cur.date_fin);
+        if (mieux) ctrMap[c.resident_id] = { date_fin: c.date_fin || null, signe: c.statut === 'signe' };
+        else if (cur && !cur.signe && c.statut === 'signe' && (c.date_fin || null) === (cur.date_fin || null)) cur.signe = true;
+      });
+    }
+    residents.forEach((r) => { r.contrat = ctrMap[r.id] || null; });
 
     res.json({ residents });
   } catch (e) {
