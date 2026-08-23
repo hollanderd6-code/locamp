@@ -4078,16 +4078,17 @@ window.runRelancesBtn = async () => {
 };
 
 /* ---------- Comptabilité ---------- */
+/* exerciceCourant supprimée : elle calculait une fin d'exercice un mois
+   trop tôt en année civile (30/11 au lieu du 31/12), à cause d'un
+   new Date(y, 11, 0) — qui renvoie le dernier jour de NOVEMBRE, les mois
+   étant numérotés à partir de zéro.
+
+   exBornesAn(), déjà présente dans ce fichier, fait le même calcul
+   correctement. Une seule implémentation désormais : deux fonctions qui
+   calculent la même chose finissent toujours par diverger, et c'est la
+   fausse qui s'affichait. */
 function exerciceCourant(debutMois) {
-  // debutMois : 1-12 (parametres.exercice_debut_mois). Renvoie {debut, fin} ISO de l'exercice en cours.
-  const dm = Math.min(Math.max(Number(debutMois || 1), 1), 12);
-  const now = new Date();
-  let y = now.getFullYear();
-  if (now.getMonth() + 1 < dm) y -= 1;
-  const debut = `${y}-${String(dm).padStart(2, '0')}-01`;
-  const finDate = new Date(y + (dm === 1 ? 0 : 1), dm === 1 ? 11 : dm - 1, 0); // dernier jour du mois précédent, année suivante
-  const fin = `${finDate.getFullYear()}-${String(finDate.getMonth() + 1).padStart(2, '0')}-${String(finDate.getDate()).padStart(2, '0')}`;
-  return { debut, fin };
+  return exBornesAn(exAnCourant(debutMois), debutMois);
 }
 
 async function telechargerExport(url, filename) {
@@ -4241,7 +4242,7 @@ boot();
     btn.className = 'btn btn-ghost btn-sm';
     btn.title = 'Notifications';
     btn.style.cssText = 'position:relative;padding:6px 9px;line-height:1;margin-right:8px';
-    btn.innerHTML = '<span style="font-size:18px">🔔</span>'
+    btn.innerHTML = '<span style="font-size:18px"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg><span>Notifications</span></span>'
       + '<span id="notif-badge" class="hidden" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;'
       + 'padding:0 4px;border-radius:9px;background:#E5484D;color:#fff;font-size:10px;font-weight:700;'
       + 'display:flex;align-items:center;justify-content:center">0</span>';
@@ -4306,7 +4307,7 @@ boot();
       html += list.map((n) => `
         <div class="notif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;
           border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
-          <span style="font-size:21px;line-height:1.2;flex-shrink:0">${ICONES[n.type] || '🔔'}</span>
+          <span style="font-size:21px;line-height:1.2;flex-shrink:0">${ICONES[n.type] || '<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg><span>Notifications</span>'}</span>
           <div style="min-width:0;flex:1">
             <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
             ${n.corps ? `<div style="font-size:13px;color:#6b6b6b;margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}

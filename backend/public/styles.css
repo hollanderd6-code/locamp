@@ -822,3 +822,36 @@ a.onb-etape:hover{background:var(--creme)}
   font:600 13.5px "Inter",sans-serif;color:var(--sapin);background:var(--creme);
   border:1px dashed var(--hairline);border-radius:11px;cursor:pointer;transition:background .14s,border-color .14s}
 .pg-plus:hover{background:var(--sapin-pale);border-color:#CDE0D7}
+
+
+/* ---------------- Corrections d'écran ----------------
+   Ajoutées après revue des captures du 23 août 2026. */
+
+/* Le sélecteur de camping coupait le nom au milieu d'un mot, sans rien
+   indiquer : « Camping Le parc des gra ». Un point de suspension dit au
+   moins qu'il manque quelque chose, et l'infobulle donne le nom entier.
+   Un <select> ne tronque pas proprement de lui-même : text-overflow ne
+   s'applique qu'au texte replié, d'où le padding qui dégage la flèche. */
+.camping-switch select{
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow:hidden;
+  padding-right:34px;
+}
+
+/* Le remplissage automatique du navigateur impose un fond jaune vif qui
+   écrase la palette — sur l'écran de connexion, c'est la première chose
+   que voit l'utilisateur. Aucune propriété ne le désactive : la seule
+   parade est une transition de fond assez longue pour que la couleur
+   imposée n'apparaisse jamais, et une couleur de texte forcée par
+   -webkit-text-fill-color, que l'autofill respecte. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active{
+  -webkit-text-fill-color:var(--encre);
+  -webkit-box-shadow:0 0 0 1000px var(--carte) inset;
+  box-shadow:0 0 0 1000px var(--carte) inset;
+  caret-color:var(--encre);
+  transition:background-color 100000s ease-in-out 0s;
+}
