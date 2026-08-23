@@ -893,3 +893,17 @@ input:-webkit-autofill:active{
 .map-svg.filtre .pin{opacity:.16;transition:opacity .12s}
 .map-svg.filtre .pin.trouve{opacity:1}
 .map-svg.filtre .pin.trouve circle{stroke:#C98B2D;stroke-width:3.5}
+
+
+/* ── Carte : légende en tête et infobulle de survol ── */
+.map-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:10px}
+
+/* Le cadre ancre l'infobulle : le plan défile, elle doit suivre avec lui. */
+.map-wrap{position:relative}
+.map-tip{position:absolute;z-index:5;pointer-events:none;opacity:0;transition:opacity .1s;
+  background:#20221F;color:#fff;font-size:12.5px;line-height:1.45;white-space:nowrap;
+  padding:7px 11px;border-radius:9px;box-shadow:0 8px 22px rgba(32,34,31,.26)}
+.map-tip.on{opacity:1}
+.map-tip strong{font-weight:700}
+.map-tip-etat{display:block;font-size:11px;opacity:.72;text-transform:lowercase}

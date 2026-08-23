@@ -940,7 +940,9 @@ function renderCarte() {
        plus qu'a comparer des chaines, sans retraiter 124 fiches par frappe. */
     const occ = e.resident ? `${e.resident.prenom || ''} ${e.resident.nom || ''}` : '';
     return `<g class="pin${sel}" data-id="${e.id}" data-kind="emp" transform="translate(${x},${y})"
-      data-cherche="${esc(sansAccents(`${e.numero} ${occ}`))}">
+      data-cherche="${esc(sansAccents(`${e.numero} ${occ}`))}"
+      data-num="${esc(e.numero)}" data-occ="${esc(occ.trim())}"
+      data-etat="${esc(libelleEtat(e))}">
       <circle r="13" fill="${carteColor(e)}"></circle><text>${esc(e.numero)}</text></g>`;
   }).join('');
 
@@ -967,6 +969,18 @@ function renderCarte() {
       <input id="map-q" type="search" placeholder="Numéro ou nom de l'occupant" autocomplete="off"
         aria-label="Rechercher un emplacement">
       <span class="muted" id="map-q-info">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>
+    </div>
+    <div class="map-bar">
+      <div class="map-legend">
+        <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
+        <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
+        <span><span class="dot" style="background:${STATUT_COLOR.impaye}"></span>Impayé</span>
+        <span><span class="dot" style="background:${STATUT_COLOR.reserve}"></span>Réservé</span>
+        <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
+      </div>
+      ${unplaced.length ? `<button class="btn btn-ghost btn-sm" data-act="toggleCarteEdit"
+        title="${esc(unplaced.map((e) => e.numero).join(', '))}">
+        ${unplaced.length} sans position — les placer</button>` : ''}
     </div>`}
 
     <div class="${edit ? 'map-edit-layout' : ''}">
@@ -977,15 +991,15 @@ function renderCarte() {
             <g class="layer-pins">${pins}</g>
             <g class="layer-allees">${alleeLibelles}</g>
           </svg>
-          <div class="map-legend">
+          ${edit ? `<div class="map-legend">
             <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
             <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
             <span><span class="dot" style="background:${STATUT_COLOR.impaye}"></span>Impayé</span>
             <span><span class="dot" style="background:${STATUT_COLOR.reserve}"></span>Réservé</span>
             <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
-          </div>
+          </div>` : ''}
+          <div class="map-tip" id="map-tip" aria-hidden="true"></div>
         </div>
-        ${!edit && unplaced.length ? `<p class="muted" style="margin-top:12px">Sans position : ${unplaced.map((e) => esc(e.numero)).join(', ')} — passer en mode édition pour les placer.</p>` : ''}
       </div>
 
       ${edit ? `<aside class="map-panel">
@@ -1007,6 +1021,8 @@ function renderCarte() {
   wireCarte();
   renderProps();
 
+  carteInfobulle();
+
   const champ = $('#map-q');
   if (champ) {
     champ.addEventListener('input', () => filtrerCarte(champ.value));
@@ -1014,6 +1030,13 @@ function renderCarte() {
       if (ev.key === 'Escape') { champ.value = ''; filtrerCarte(''); }
     });
   }
+}
+
+/* Le mot qui accompagne la couleur. Meme deduction que carteColor : les
+   deux doivent dire la meme chose, sinon l'infobulle contredit la pastille. */
+function libelleEtat(e) {
+  if (e.resident && carteState.enRetard.has(e.resident.id)) return 'impayé';
+  return LABELS[statutReel(e)] || statutReel(e);
 }
 
 /* --------------------- recherche sur le plan --------------------- */
@@ -1055,6 +1078,42 @@ function filtrerCarte(q) {
       ? `Aucun emplacement ne correspond à « ${q.trim()} »`
       : n === 1 ? '1 emplacement trouvé' : `${n} emplacements trouvés`;
   }
+}
+
+/* L'infobulle de survol. L'occupant est deja charge — le clic ne devrait pas
+   etre le seul moyen de savoir qui habite le 87.
+
+   Rien sur ecran tactile : le toucher ouvre la fiche, qui dit tout, et une
+   infobulle accrochee au doigt masque ce qu'on regarde. */
+function carteInfobulle() {
+  const wrap = document.querySelector('.map-wrap');
+  const tip  = $('#map-tip');
+  if (!wrap || !tip || carteState.mode === 'edit') return;
+  if (!window.matchMedia || !window.matchMedia('(hover: hover)').matches) return;
+
+  const cacher = () => { tip.classList.remove('on'); };
+
+  wrap.addEventListener('mousemove', (ev) => {
+    const pin = ev.target.closest?.('.pin');
+    if (!pin) { cacher(); return; }
+
+    const num = pin.dataset.num || '';
+    const occ = pin.dataset.occ || '';
+    tip.innerHTML = `<strong>${esc(num)}</strong>${occ ? ' · ' + esc(occ) : ''}`
+      + `<span class="map-tip-etat">${esc(pin.dataset.etat || '')}</span>`;
+    tip.classList.add('on');
+
+    /* Ancree dans le cadre, pas dans la page : le plan defile, l'infobulle
+       doit rester avec lui. Et elle bascule a gauche pres du bord droit,
+       sinon elle sortirait du cadre sur la derniere colonne. */
+    const r = wrap.getBoundingClientRect();
+    const x = ev.clientX - r.left, y = ev.clientY - r.top;
+    const large = tip.offsetWidth || 160;
+    tip.style.left = (x + large + 24 > r.width ? x - large - 14 : x + 14) + 'px';
+    tip.style.top  = Math.max(4, y - 38) + 'px';
+  });
+
+  wrap.addEventListener('mouseleave', cacher);
 }
 
 /* --------------------- panneau de propriétés --------------------- */
