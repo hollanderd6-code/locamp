@@ -1125,7 +1125,7 @@ function renderProps() {
   const s = st.selected;
 
   if (!s) {
-    box.innerHTML = `<div class="map-panel-sec map-empty">Sélectionne un élément du plan pour le modifier.</div>`;
+    box.innerHTML = `<div class="map-panel-sec map-empty">Sélectionnez un élément du plan pour le modifier.</div>`;
     return;
   }
 
@@ -1777,7 +1777,7 @@ async function vueFicheClient(id) {
             <div class="msg-row ${m.auteur === 'camping' ? 'me' : 'them'}">
               <div class="msg-bubble">${esc(m.corps)}</div>
               <div class="msg-meta">${m.auteur === 'camping' ? 'Camping' : esc(r.prenom || r.nom)} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-            </div>`).join('') || '<p class="muted" style="margin:0">Aucun message. Écris le premier ci-dessous — le client le verra sur son portail et sera notifié par e-mail.</p>'}
+            </div>`).join('') || '<p class="muted" style="margin:0">Aucun message. Écrivez le premier ci-dessous — le client le verra sur son portail et sera notifié par e-mail.</p>'}
         </div>
         <form id="f-msg" class="msg-form">
           <input name="corps" placeholder="Écrire un message au client…" required>
@@ -1802,12 +1802,14 @@ async function vueFicheClient(id) {
       </div>
       <div class="card" style="margin-top:16px">
         <div class="card-actions"><h2 style="margin:0">Contrats</h2>
-          <button class="btn btn-primary btn-sm" data-act="nouveauContrat" data-a1="${id}">Nouveau contrat</button></div>
+          ${/* « Nouveau contrat » est deja dans le bandeau, visible des l'ouverture.
+             Un second exemplaire pose contre la liste laisse croire qu'il agit
+             sur elle. */ ''}</div>
         ${lesContrats.length ? `<table style="margin-top:10px"><thead><tr><th>N°</th><th>Période</th><th>Statut</th><th></th></tr></thead>
         <tbody>${lesContrats.map((c) => `<tr>
           <td><strong>${esc(c.numero || '—')}</strong></td>
           <td class="muted">${c.date_debut ? dfr(c.date_debut) : '—'} → ${c.date_fin ? dfr(c.date_fin) : 'illimité'}</td>
-          <td><span class="badge ${c.statut === 'signe' ? 'reglee' : c.statut === 'brouillon' ? 'brouillon' : 'emise'}">${esc(c.statut === 'signe' ? 'signé' : c.statut)}</span></td>
+          <td><span class="badge ${c.statut === 'signe' ? 'reglee' : c.statut === 'brouillon' ? 'brouillon' : 'emise'}">${/* statut accentue */ esc(lib(c.statut))}</span></td>
           <td class="right">
             <button class="btn btn-ghost btn-sm" data-act="telechargerContrat" data-a1="${c.id}" title="Télécharger le PDF (pour impression et signature papier)">Télécharger</button>
             ${c.statut !== 'signe' && c.statut !== 'brouillon' ? `
@@ -3286,9 +3288,9 @@ window.nouveauContrat = async (residentId) => {
   const an = new Date().getFullYear();
   openDrawer(`
     <h2>Nouveau contrat — ${esc((r.prenom || '') + ' ' + r.nom)}</h2>
-    <p class="muted" style="margin-top:4px">Le contrat est généré depuis le modèle (variables remplies), puis tu pourras l\u2019envoyer en signature.</p>
+    <p class="muted" style="margin-top:4px">Le contrat est généré depuis le modèle (variables remplies), puis vous pourrez l\u2019envoyer en signature.</p>
     <form id="f-contrat" class="form-grid" style="margin-top:12px">
-      <label class="full">Modèle ${modeles.length ? '' : '<span class="muted">(aucun — crée-en un dans Paramètres)</span>'}
+      <label class="full">Modèle ${modeles.length ? '' : '<span class="muted">(aucun — créez-en un dans Paramètres)</span>'}
         <select name="modele_id">${['<option value="">— sans modèle (PDF standard) —</option>']
           .concat(modeles.map((m) => `<option value="${m.id}">${esc(m.nom)}</option>`)).join('')}</select></label>
       <label>Début *<input type="date" name="date_debut" required value="${an}-01-01"></label>
@@ -3340,7 +3342,7 @@ window.telechargerContrat = async (id) => {
   try {
     const { url, signe } = await api(`/api/contrats/${id}/pdf`);
     window.open(url, '_blank');
-    if (!signe) toast('PDF ouvert — imprime-le pour une signature papier, puis « Signé (papier) »');
+    if (!signe) toast('PDF ouvert — imprimez-le pour une signature papier, puis « Signé (papier) »');
   } catch (e) { toast(e.message || 'Erreur', true); }
 };
 
