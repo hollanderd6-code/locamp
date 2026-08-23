@@ -1,4 +1,65 @@
 /* ============ Locamp — front admin (vanilla JS, hash routing) ============ */
+
+/* ============================================================
+   Actions déclarées — un seul écouteur pour toute l'application
+   ============================================================
+   Le HTML ne contient plus « onclick="voirDoc('…')" » mais
+   « data-act="voirDoc" data-a1="…" ». Un écouteur posé sur le
+   document lit l'intention et appelle la fonction.
+
+   Ce n'est pas une préférence de style : tant qu'un attribut
+   onclick existe dans la page, la politique de sécurité doit
+   autoriser 'unsafe-inline', et n'est donc plus un filet contre
+   l'injection de script. C'est ce que ce mécanisme permet de
+   retirer.
+
+   Ajouter une action : écrire la fonction, poser data-act sur le
+   bouton. Rien à enregistrer.
+   ============================================================ */
+(function () {
+  function lireArgs(el) {
+    const out = [];
+    for (let i = 1; i <= 6; i++) {
+      const v = el.getAttribute('data-a' + i);
+      if (v === null) break;
+      out.push(v);
+    }
+    return out;
+  }
+
+  function executer(el, evt) {
+    const nom = el.getAttribute('data-act');
+    const fn = window[nom];
+    if (typeof fn !== 'function') {
+      // Un bouton qui ne fait rien en silence est pire qu'une erreur :
+      // on le dit, pour que ça se voie en test et pas en production.
+      console.error('[action] fonction introuvable : ' + nom, el);
+      return;
+    }
+    try { fn.apply(el, lireArgs(el)); }
+    catch (e) { console.error('[action] ' + nom, e); }
+  }
+
+  document.addEventListener('click', function (e) {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    // Les éléments qui déclarent un autre événement ne réagissent pas au clic.
+    if (el.getAttribute('data-evt')) return;
+    if (el.tagName === 'A' && el.getAttribute('href')) e.preventDefault();
+    executer(el, e);
+  });
+
+  // change / input / submit : même mécanisme, en capture pour attraper
+  // les éléments créés après coup.
+  ['change', 'input', 'submit'].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      const el = e.target.closest('[data-act][data-evt="' + type + '"]');
+      if (!el) return;
+      if (type === 'submit') e.preventDefault();
+      executer(el, e);
+    }, true);
+  });
+})();
 const API = window.LOCAMP_API || '';   // '' en web (relatif) ; URL Render absolue en app mobile
 let TOKEN = localStorage.getItem('lc_token') || null;
 let CAMPINGS = [];
@@ -428,9 +489,9 @@ async function vueDashboard() {
     <div class="page-head">
       <div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" onclick="messageRapide()">Prévenir un client</button>
-        <button class="btn btn-ghost btn-sm" onclick="messageGroupe()">Message à tous</button>
-        ${enRetard.length ? `<button class="btn btn-primary btn-sm" onclick="relancerImpayes()">Relancer ${enRetard.length} retard${enRetard.length > 1 ? 's' : ''}</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-act="messageRapide">Prévenir un client</button>
+        <button class="btn btn-ghost btn-sm" data-act="messageGroupe">Message à tous</button>
+        ${enRetard.length ? `<button class="btn btn-primary btn-sm" data-act="relancerImpayes">Relancer ${enRetard.length} retard${enRetard.length > 1 ? 's' : ''}</button>` : ''}
       </div>
     </div>
 
@@ -461,7 +522,7 @@ async function vueDashboard() {
           <td data-l="Résident">${f.resident_id ? `<a href="#/residents/${f.resident_id}" style="color:inherit">${esc(rmap[f.resident_id] || '—')}</a>` : '—'}</td>
           <td class="right" data-l="Reste dû">${eur(f.reste)}</td>
           <td class="right" data-l="Retard"><span class="badge en_retard">${f.jours_retard} j</span></td>
-          <td class="right">${f.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${f.resident_id}')">Écrire</button>` : ''}</td>
+          <td class="right">${f.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="ouvrirConversation" data-a1="${f.resident_id}">Écrire</button>` : ''}</td>
         </tr>`).join('')}</tbody></table>
       ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
     </div>` : ''}
@@ -469,7 +530,7 @@ async function vueDashboard() {
     ${echeances.length ? `
     <div class="card">
       <div class="card-actions"><h2>Échéances — assurances &amp; contrats</h2>
-        <button class="btn btn-ghost btn-sm" onclick="echRappels()" title="Notifie le staff et écrit aux résidents concernés (paliers 60/30/7/0 j, jamais deux fois le même rappel)">Envoyer les rappels</button></div>
+        <button class="btn btn-ghost btn-sm" data-act="echRappels" title="Notifie le staff et écrit aux résidents concernés (paliers 60/30/7/0 j, jamais deux fois le même rappel)">Envoyer les rappels</button></div>
       <table style="margin-top:8px"><thead><tr><th>Type</th><th>Résident</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
       <tbody>${echeances.slice(0, 10).map((x) => `
         <tr>
@@ -480,10 +541,10 @@ async function vueDashboard() {
             : x.statut === 'expiree' ? '<span class="badge en_retard">expirée</span>'
             : `<span class="badge ${x.jours_restants <= 7 ? 'partielle' : 'emise'}">dans ${x.jours_restants} j</span>`}</td>
           <td class="right">${x.type === 'contrat'
-            ? `<button class="btn btn-ghost btn-sm" onclick="renouvelerContrat('${x.contrat_id}')" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
+            ? `<button class="btn btn-ghost btn-sm" data-act="renouvelerContrat" data-a1="${x.contrat_id}" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
             : x.type === 'document'
             ? `<button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'" title="Déposer la nouvelle version à signer">Voir / refaire</button>`
-            : (x.resident_id ? `<button class="btn btn-ghost btn-sm" onclick="ouvrirConversation('${x.resident_id}')">Écrire</button>` : '')}</td>
+            : (x.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="ouvrirConversation" data-a1="${x.resident_id}">Écrire</button>` : '')}</td>
         </tr>`).join('')}</tbody></table>
       ${echeances.length > 10 ? `<p class="muted" style="margin-top:8px">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
     </div>` : ''}
@@ -786,13 +847,13 @@ function renderCarte() {
       <div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
       ${edit ? `<div class="map-tools">
           <span class="map-dirty ${n ? '' : 'hidden'}">${n} modif.</span>
-          <button class="btn btn-ghost btn-sm" onclick="imprimerCarte()">Imprimer</button>
-          <button class="btn btn-ghost btn-sm" onclick="cancelCarteEdit()">Annuler</button>
-          <button class="btn btn-primary btn-sm" onclick="saveCarte()" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
+          <button class="btn btn-ghost btn-sm" data-act="imprimerCarte">Imprimer</button>
+          <button class="btn btn-ghost btn-sm" data-act="cancelCarteEdit">Annuler</button>
+          <button class="btn btn-primary btn-sm" data-act="saveCarte" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
         </div>`
         : `<div class="map-tools">
-          <button class="btn btn-ghost btn-sm" onclick="imprimerCarte()">Imprimer</button>
-          <button class="btn btn-primary btn-sm" onclick="toggleCarteEdit()">Éditer le plan</button>
+          <button class="btn btn-ghost btn-sm" data-act="imprimerCarte">Imprimer</button>
+          <button class="btn btn-primary btn-sm" data-act="toggleCarteEdit">Éditer le plan</button>
         </div>`}
     </div>
     ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
@@ -822,11 +883,11 @@ function renderCarte() {
           <h3>Ajouter</h3>
           ${Object.entries(groupes).map(([g, items]) => `
             <div class="map-grp">${esc(g)}</div>
-            <div class="map-chips">${items.map(([k, d]) => `<button class="map-chip" onclick="ajouterElement('${k}')">${esc(d.lib)}</button>`).join('')}</div>`).join('')}
+            <div class="map-chips">${items.map(([k, d]) => `<button class="map-chip" data-act="ajouterElement" data-a1="${k}">${esc(d.lib)}</button>`).join('')}</div>`).join('')}
         </div>
         ${unplaced.length ? `<div class="map-panel-sec">
           <h3>Emplacements à placer <span class="map-count">${unplaced.length}</span></h3>
-          <div class="map-chips">${unplaced.map((e) => `<button class="map-chip" onclick="placeEmplacement('${e.id}')">${esc(e.numero)}</button>`).join('')}</div>
+          <div class="map-chips">${unplaced.map((e) => `<button class="map-chip" data-act="placeEmplacement" data-a1="${e.id}">${esc(e.numero)}</button>`).join('')}</div>
         </div>` : ''}
         <p class="map-aide">Glisse pour déplacer · poignée dorée pour redimensionner · <kbd>Suppr</kbd> pour retirer · <kbd>Échap</kbd> pour désélectionner. Aimantation automatique.</p>
       </aside>` : ''}
@@ -854,7 +915,7 @@ function renderProps() {
     box.innerHTML = `<div class="map-panel-sec">
       <h3>Emplacement ${esc(e.numero)}</h3>
       <p class="muted" style="margin:0 0 10px">${esc(e.secteur || '')} ${e.type ? '· ' + esc(e.type) : ''}</p>
-      <button class="btn btn-ghost btn-sm btn-block" onclick="retirerSelection()">Retirer du plan</button>
+      <button class="btn btn-ghost btn-sm btn-block" data-act="retirerSelection">Retirer du plan</button>
     </div>`;
     return;
   }
@@ -873,8 +934,8 @@ function renderProps() {
         <label>Hauteur<input id="prop-h" type="number" step="10" value="${Math.round(v.hauteur ?? def.h)}"></label>
       </div>` : ''}
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="dupliquerElement()">Dupliquer</button>
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="supprimerElement()">Supprimer</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" data-act="dupliquerElement">Dupliquer</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" data-act="supprimerElement">Supprimer</button>
     </div>
   </div>`;
 
@@ -1210,7 +1271,7 @@ async function vueResidents() {
     <div class="page-head"><div><div class="eyebrow">Locataires</div><h1>Résidents</h1></div>
       <div class="toolbar">
         <input class="search" id="res-search" placeholder="Rechercher nom, e-mail, emplacement…">
-        <button class="btn btn-primary" onclick="formResident()">Nouveau résident</button>
+        <button class="btn btn-primary" data-act="formResident">Nouveau résident</button>
       </div></div>
     <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th><th>Conformité</th><th class="right">Solde</th></tr></thead>
     <tbody id="res-body"></tbody></table></div>`;
@@ -1302,7 +1363,7 @@ async function vueFicheClient(id) {
   const banItem = (v, l, cls) => `
     <div class="synth-item${cls ? ' ' + cls : ''}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
   const tabBtn = (key, label, active) => `
-    <button class="fiche-tab${active ? ' active' : ''}" data-tab="${key}" onclick="switchFicheTab('${key}')">${label}</button>`;
+    <button class="fiche-tab${active ? ' active' : ''}" data-tab="${key}" data-act="switchFicheTab" data-a1="${key}">${label}</button>`;
 
   const migrationManquante = prestations === null;
   const nbEnCours = (prestations || []).filter((p) => p.statut === 'en_cours').length;
@@ -1336,9 +1397,9 @@ async function vueFicheClient(id) {
         ${r.adresse ? `<div class="muted" style="margin-top:2px">${esc(r.adresse)}</div>` : ''}
       </div>
       <div class="toolbar">
-        <button class="btn btn-ghost" onclick="formResident('${id}')">Modifier</button>
-        <button class="btn btn-ghost" onclick="nouveauContrat('${id}')">Nouveau contrat</button>
-        <button class="btn btn-ghost" onclick="encaisserClient('${id}')">Encaisser</button>
+        <button class="btn btn-ghost" data-act="formResident" data-a1="${id}">Modifier</button>
+        <button class="btn btn-ghost" data-act="nouveauContrat" data-a1="${id}">Nouveau contrat</button>
+        <button class="btn btn-ghost" data-act="encaisserClient" data-a1="${id}">Encaisser</button>
       </div>
     </div>
 
@@ -1365,10 +1426,10 @@ async function vueFicheClient(id) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <h2 style="margin:0">Prestations</h2>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','sejour')">+ Séjour</button>
-            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','vente')">+ Vente</button>
-            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','charge')">+ Charge</button>
-            <button class="btn btn-ghost btn-sm" onclick="formPrestation('${id}','caution')">+ Caution</button>
+            <button class="btn btn-ghost btn-sm" data-act="formPrestation" data-a1="${id}" data-a2="sejour">+ Séjour</button>
+            <button class="btn btn-ghost btn-sm" data-act="formPrestation" data-a1="${id}" data-a2="vente">+ Vente</button>
+            <button class="btn btn-ghost btn-sm" data-act="formPrestation" data-a1="${id}" data-a2="charge">+ Charge</button>
+            <button class="btn btn-ghost btn-sm" data-act="formPrestation" data-a1="${id}" data-a2="caution">+ Caution</button>
           </div>
         </div>
         ${migrationManquante
@@ -1376,20 +1437,20 @@ async function vueFicheClient(id) {
           : `<table style="margin-top:12px"><thead><tr><th style="width:30px"></th><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
         <tbody>${(prestations || []).map((p) => `
           <tr>
-            <td>${p.statut === 'en_cours' ? `<input type="checkbox" class="presta-check" data-pid="${p.id}" data-type="${p.type}" data-ttc="${p.montant_ttc}" onchange="majSelectionPresta('${id}')">` : ''}</td>
+            <td>${p.statut === 'en_cours' ? `<input type="checkbox" class="presta-check" data-pid="${p.id}" data-type="${p.type}" data-ttc="${p.montant_ttc}" data-act="majSelectionPresta" data-evt="change" data-a1="${id}">` : ''}</td>
             <td>${pillType(p.type)}</td>
             <td><strong>${esc(p.designation)}</strong>${Number(p.quantite) !== 1 ? ` <span class="muted">× ${Number(p.quantite)}</span>` : ''}</td>
             <td class="muted" data-l="Du">${p.date_debut ? dfr(p.date_debut) : '—'}</td>
             <td class="muted" data-l="Au">${p.date_fin ? dfr(p.date_fin) : '—'}</td>
             <td class="right" data-l="Montant TTC"><strong>${eur(p.montant_ttc)}</strong></td>
             <td data-l="État">${etatBadge(p)}</td>
-            <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" onclick="supprimerPrestation('${p.id}','${id}')">Annuler</button>` : ''}</td>
+            <td class="right">${p.statut === 'en_cours' ? `<button class="btn btn-ghost btn-sm" data-act="supprimerPrestation" data-a1="${p.id}" data-a2="${id}">Annuler</button>` : ''}</td>
           </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucune prestation. Ajoute un séjour, une vente, une charge ou une caution.</td></tr>'}</tbody></table>
         <div id="presta-actionbar" class="selbar hidden">
           <span id="presta-selinfo" style="font-weight:600"></span>
           <div class="selbar-actions">
-            <button class="btn btn-ghost btn-sm" onclick="proformaSelection('${id}')">Proforma</button>
-            <button class="btn btn-primary btn-sm" onclick="facturerSelection('${id}')">Facturer la sélection</button>
+            <button class="btn btn-ghost btn-sm" data-act="proformaSelection" data-a1="${id}">Proforma</button>
+            <button class="btn btn-primary btn-sm" data-act="facturerSelection" data-a1="${id}">Facturer la sélection</button>
           </div>
         </div>`}
       </div>
@@ -1400,8 +1461,8 @@ async function vueFicheClient(id) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <h2 style="margin:0">Factures</h2>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn btn-primary btn-sm" onclick="genererFactureMois('${id}')" title="Loyer + lignes récurrentes + taxe de séjour">Générer la facture du mois</button>
-            ${syn && syn.credit_a_affecter > 0 ? `<button class="btn btn-ghost btn-sm" onclick="lettrerCredit('${id}')" title="Affecter les paiements non lettrés aux factures ouvertes, des plus anciennes aux plus récentes">Affecter les paiements (${eur(syn.credit_a_affecter)})</button>` : ''}
+            <button class="btn btn-primary btn-sm" data-act="genererFactureMois" data-a1="${id}" title="Loyer + lignes récurrentes + taxe de séjour">Générer la facture du mois</button>
+            ${syn && syn.credit_a_affecter > 0 ? `<button class="btn btn-ghost btn-sm" data-act="lettrerCredit" data-a1="${id}" title="Affecter les paiements non lettrés aux factures ouvertes, des plus anciennes aux plus récentes">Affecter les paiements (${eur(syn.credit_a_affecter)})</button>` : ''}
           </div>
         </div>
         <table style="margin-top:12px"><thead><tr><th>N°</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th class="right">Reste</th><th></th></tr></thead>
@@ -1420,15 +1481,15 @@ async function vueFicheClient(id) {
             <td class="right" data-l="Reste">${brouillon ? '—'
               : (reste > 0.004 ? eur(reste) : '<span class="badge reglee">soldée</span>')}</td>
             <td class="right">
-              <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
-              ${!brouillon && r.siret ? `<button class="btn btn-ghost btn-sm" onclick="facturxFacture('${f.id}')" title="Facture électronique (PDF + XML EN 16931)">Factur-X</button>` : ''}
-              ${!brouillon && r.siret ? `<button class="btn btn-ghost btn-sm" onclick="envoyerFacturePA('${f.id}')" title="Transmettre à la plateforme agréée">Envoyer à la PA</button>` : ''}
+              <button class="btn btn-ghost btn-sm" data-act="pdfFacture" data-a1="${f.id}">PDF</button>
+              ${!brouillon && r.siret ? `<button class="btn btn-ghost btn-sm" data-act="facturxFacture" data-a1="${f.id}" title="Facture électronique (PDF + XML EN 16931)">Factur-X</button>` : ''}
+              ${!brouillon && r.siret ? `<button class="btn btn-ghost btn-sm" data-act="envoyerFacturePA" data-a1="${f.id}" title="Transmettre à la plateforme agréée">Envoyer à la PA</button>` : ''}
               ${f.efacture_statut ? `<span class="badge reglee" title="Statut plateforme agréée">PA · ${esc(f.efacture_statut)}</span>` : ''}
               ${brouillon ? `
-                <button class="btn btn-ghost btn-sm" onclick="ajouterPrestationsFacture('${f.id}','${id}')">+ Prestations</button>
-                <button class="btn btn-ghost btn-sm" onclick="editerLignesFacture('${f.id}')">Modifier</button>
-                <button class="btn btn-ghost btn-sm" onclick="supprimerBrouillon('${f.id}')">Supprimer</button>
-                <button class="btn btn-primary btn-sm" onclick="emettreFacture('${f.id}')">Émettre</button>` : ''}
+                <button class="btn btn-ghost btn-sm" data-act="ajouterPrestationsFacture" data-a1="${f.id}" data-a2="${id}">+ Prestations</button>
+                <button class="btn btn-ghost btn-sm" data-act="editerLignesFacture" data-a1="${f.id}">Modifier</button>
+                <button class="btn btn-ghost btn-sm" data-act="supprimerBrouillon" data-a1="${f.id}">Supprimer</button>
+                <button class="btn btn-primary btn-sm" data-act="emettreFacture" data-a1="${f.id}">Émettre</button>` : ''}
               ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
             </td>
           </tr>
@@ -1444,7 +1505,7 @@ async function vueFicheClient(id) {
             <h2 style="margin:0">Facturation récurrente</h2>
             <p class="muted" style="margin:2px 0 0;font-size:12.5px">Le « montant type » facturé chaque mois. Modifiable à tout moment (révision de tarif).</p>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="formFacturation('${id}')">Configurer</button>
+          <button class="btn btn-ghost btn-sm" data-act="formFacturation" data-a1="${id}">Configurer</button>
         </div>
         ${aConfig ? `
           <table style="margin-top:12px"><thead><tr><th>Désignation</th><th class="right">Qté</th><th class="right">PU TTC</th><th class="right">TVA</th><th>Prorata</th></tr></thead>
@@ -1500,31 +1561,31 @@ async function vueFicheClient(id) {
             <p class="muted" style="margin:4px 0 0">Droit d'accès et à la portabilité (art. 15 et 20) ; droit à l'effacement (art. 17).</p>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-ghost btn-sm" onclick="exportDonneesResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Exporter ses données</button>
+            <button class="btn btn-ghost btn-sm" data-act="exportDonneesResident" data-a1="${id}" data-a2="${esc((r.prenom || '') + ' ' + r.nom)}">Exporter ses données</button>
             ${r.anonymise_at ? '<span class="badge indisponible">anonymisé</span>'
-              : `<button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${id}','${esc((r.prenom || '') + ' ' + r.nom)}')">Anonymiser</button>`}
+              : `<button class="btn btn-ghost btn-sm" data-act="anonymiserResident" data-a1="${id}" data-a2="${esc((r.prenom || '') + ' ' + r.nom)}">Anonymiser</button>`}
           </div>
         </div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="card-actions"><h2 style="margin:0">Contrats</h2>
-          <button class="btn btn-primary btn-sm" onclick="nouveauContrat('${id}')">Nouveau contrat</button></div>
+          <button class="btn btn-primary btn-sm" data-act="nouveauContrat" data-a1="${id}">Nouveau contrat</button></div>
         ${lesContrats.length ? `<table style="margin-top:10px"><thead><tr><th>N°</th><th>Période</th><th>Statut</th><th></th></tr></thead>
         <tbody>${lesContrats.map((c) => `<tr>
           <td><strong>${esc(c.numero || '—')}</strong></td>
           <td class="muted">${c.date_debut ? dfr(c.date_debut) : '—'} → ${c.date_fin ? dfr(c.date_fin) : 'illimité'}</td>
           <td><span class="badge ${c.statut === 'signe' ? 'reglee' : c.statut === 'brouillon' ? 'brouillon' : 'emise'}">${esc(c.statut === 'signe' ? 'signé' : c.statut)}</span></td>
           <td class="right">
-            <button class="btn btn-ghost btn-sm" onclick="telechargerContrat('${c.id}')" title="Télécharger le PDF (pour impression et signature papier)">Télécharger</button>
+            <button class="btn btn-ghost btn-sm" data-act="telechargerContrat" data-a1="${c.id}" title="Télécharger le PDF (pour impression et signature papier)">Télécharger</button>
             ${c.statut !== 'signe' && c.statut !== 'brouillon' ? `
-              <button class="btn btn-ghost btn-sm" onclick="contratVersSignature('${c.id}')" title="Signature électronique par e-mail">Envoyer en signature</button>
-              <button class="btn btn-ghost btn-sm" onclick="signerContratPapier('${c.id}')" title="Le résident a signé sur papier : marquer signé (scan facultatif)">Signé (papier)</button>` : ''}
+              <button class="btn btn-ghost btn-sm" data-act="contratVersSignature" data-a1="${c.id}" title="Signature électronique par e-mail">Envoyer en signature</button>
+              <button class="btn btn-ghost btn-sm" data-act="signerContratPapier" data-a1="${c.id}" title="Le résident a signé sur papier : marquer signé (scan facultatif)">Signé (papier)</button>` : ''}
           </td></tr>`).join('')}</tbody></table>` : '<p class="muted" style="margin-top:8px">Aucun contrat. « Nouveau contrat » le génère depuis un modèle, puis signature en ligne ou sur papier.</p>'}
       </div>
 
       <div class="card" style="margin-top:16px">
         <div class="card-actions"><h2 style="margin:0">Documents</h2>
-          <button class="btn btn-ghost btn-sm" onclick="ajouterDocResident('${id}')" title="Attestation d\u2019assurance, contrat papier scanné, pièce d\u2019identité…">Ajouter un document</button></div>
+          <button class="btn btn-ghost btn-sm" data-act="ajouterDocResident" data-a1="${id}" title="Attestation d\u2019assurance, contrat papier scanné, pièce d\u2019identité…">Ajouter un document</button></div>
         ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
       </div>
     </section>`;
@@ -1574,7 +1635,7 @@ window.chargerReleve = async (id, annee) => {
             <select id="rel-annee" style="width:auto" onchange="chargerReleve('${id}', this.value)">
               ${d.annees.map((a) => `<option value="${a}"${a === d.annee ? ' selected' : ''}>${a}</option>`).join('') || `<option>${d.annee}</option>`}
             </select>
-            <button class="btn btn-primary btn-sm" onclick="relevePdf('${id}')">Relevé PDF</button>
+            <button class="btn btn-primary btn-sm" data-act="relevePdf" data-a1="${id}">Relevé PDF</button>
           </div>
         </div>
 
@@ -1606,7 +1667,7 @@ window.chargerReleve = async (id, annee) => {
               <td class="right" data-l="Débit">${l.debit ? eur(l.debit) : ''}</td>
               <td class="right" data-l="Crédit" style="color:var(--sapin)">${l.credit ? eur(l.credit) : ''}</td>
               <td class="right" data-l="Solde"><strong>${eur(l.solde)}</strong></td>
-              <td class="right">${l.facture_id ? `<button class="btn btn-ghost btn-sm" onclick="pdfFacture('${l.facture_id}')">PDF</button>` : ''}</td>
+              <td class="right">${l.facture_id ? `<button class="btn btn-ghost btn-sm" data-act="pdfFacture" data-a1="${l.facture_id}">PDF</button>` : ''}</td>
             </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun mouvement sur cette année.</td></tr>'}
           </tbody>
           <tfoot><tr class="rel-total">
@@ -1624,7 +1685,7 @@ window.chargerReleve = async (id, annee) => {
         <table style="margin-top:10px"><thead><tr><th>Année</th><th class="right">Facturé</th><th class="right">Réglé</th><th class="right">Solde fin d'année</th></tr></thead>
         <tbody>${Object.keys(d.par_annee).sort().reverse().map((a) => {
           const v = d.par_annee[a];
-          return `<tr class="row-click" onclick="chargerReleve('${id}','${a}')">
+          return `<tr class="row-click" data-act="chargerReleve" data-a1="${id}" data-a2="${a}">
             <td><strong>${a}</strong></td>
             <td class="right">${eur(v.facture)}</td>
             <td class="right">${eur(v.regle)}</td>
@@ -2102,10 +2163,10 @@ async function vueEmplacements() {
   emplacements.sort((a, b) => String(a.numero || '').localeCompare(String(b.numero || ''), undefined, { numeric: true, sensitivity: 'base' }));
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Parcelles</div><h1>Emplacements</h1></div>
-      <button class="btn btn-primary" onclick="formEmplacement()">Nouvel emplacement</button></div>
+      <button class="btn btn-primary" data-act="formEmplacement">Nouvel emplacement</button></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Secteur</th><th>Type</th><th>Statut</th><th class="right">Loyer</th><th>Carte</th></tr></thead>
     <tbody>${emplacements.map((e) => `
-      <tr class="row-click" onclick="ficheEmplacement('${e.id}')">
+      <tr class="row-click" data-act="ficheEmplacement" data-a1="${e.id}">
         <td><strong>${esc(e.numero)}</strong></td><td class="muted">${esc(e.secteur || '—')}</td>
         <td class="muted">${esc(e.type || '—')}</td><td><span class="badge ${e.statut}">${lib(e.statut)}</span></td>
         <td class="right">${eur(e.loyer_base)}</td>
@@ -2143,8 +2204,8 @@ async function vueFactures() {
     <div class="page-head"><div><div class="eyebrow">Facturation</div><h1>Factures</h1></div>
       <div class="toolbar">
         <input id="fac-periode" type="month" value="${mois}">
-        <button class="btn btn-ghost" onclick="formFacture()">Nouvelle facture</button>
-        <button class="btn btn-primary" onclick="runFacturation()">Générer la facturation du mois</button>
+        <button class="btn btn-ghost" data-act="formFacture">Nouvelle facture</button>
+        <button class="btn btn-primary" data-act="runFacturation">Générer la facturation du mois</button>
       </div></div>
     <div class="card"><table><thead><tr><th>N°</th><th>Période</th><th>Date</th><th>Statut</th><th class="right">TTC</th><th class="right">Réglé</th><th></th></tr></thead>
     <tbody>${factures.map((f) => `
@@ -2153,10 +2214,10 @@ async function vueFactures() {
         <td class="muted">${dfr(f.date_emission)}</td><td><span class="badge ${f.statut}">${lib(f.statut)}</span></td>
         <td class="right">${eur(f.total_ttc)}</td><td class="right">${eur(f.montant_regle)}</td>
         <td class="right">
-          <button class="btn btn-ghost btn-sm" onclick="pdfFacture('${f.id}')">PDF</button>
-          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" onclick="dupliquerFacture('${f.id}')">Dupliquer</button>` : ''}
-          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="emailFacture('${f.id}')">E-mail</button>` : ''}
-          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" onclick="faireAvoir('${f.id}')">Avoir</button>` : ''}
+          <button class="btn btn-ghost btn-sm" data-act="pdfFacture" data-a1="${f.id}">PDF</button>
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm" data-act="dupliquerFacture" data-a1="${f.id}">Dupliquer</button>` : ''}
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" data-act="emailFacture" data-a1="${f.id}">E-mail</button>` : ''}
+          ${!['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-ghost btn-sm hide-sm" data-act="faireAvoir" data-a1="${f.id}">Avoir</button>` : ''}
         </td>
       </tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune facture. Générer la facturation du mois pour commencer.</td></tr>'}</tbody></table></div>`;
 }
@@ -2166,14 +2227,14 @@ async function vueMessagerie() {
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Échanges clients</div><h1>Messagerie</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost" onclick="messageRapide()">Message rapide</button>
-        <button class="btn btn-primary" onclick="messageGroupe()">Message à tous</button>
+        <button class="btn btn-ghost" data-act="messageRapide">Message rapide</button>
+        <button class="btn btn-primary" data-act="messageGroupe">Message à tous</button>
       </div></div>
     ${conversations === null
       ? '<p class="form-error">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
       : `<div class="card" style="padding:6px 0">
       ${conversations.length ? conversations.map((c) => `
-        <div class="conv${c.non_lus ? ' unread' : ''}" onclick="ouvrirConversation('${c.resident_id}')">
+        <div class="conv${c.non_lus ? ' unread' : ''}" data-act="ouvrirConversation" data-a1="${c.resident_id}">
           <div style="min-width:0">
             <div class="who">${esc(c.resident_nom)}</div>
             <div class="prev">${c.dernier_message.auteur === 'camping' ? 'Vous : ' : ''}${esc(c.dernier_message.corps)}</div>
@@ -2207,11 +2268,11 @@ async function vueCompteurs() {
     <div class="page-head"><div><div class="eyebrow">Énergie &amp; eau</div><h1>Compteurs</h1></div>
       <div class="toolbar" style="align-items:center;gap:10px">
         <span class="muted">${prixOk ? `Prix du ${U} : <strong>${Number(d.prix)} € TTC</strong> · TVA ${d.taux_tva} %` : ''}</span>
-        <button class="btn btn-ghost btn-sm" onclick="imprimerTournee()" title="Feuille papier pour relever sur le terrain">Feuille de tournée</button>
+        <button class="btn btn-ghost btn-sm" data-act="imprimerTournee" title="Feuille papier pour relever sur le terrain">Feuille de tournée</button>
       </div></div>
     <div class="fiche-tabs" style="margin-bottom:14px">
-      <button class="fiche-tab ${t === 'elec' ? 'active' : ''}" onclick="switchCompteurType('elec')">Électricité (kWh)</button>
-      <button class="fiche-tab ${t === 'eau' ? 'active' : ''}" onclick="switchCompteurType('eau')">Eau (m³)</button>
+      <button class="fiche-tab ${t === 'elec' ? 'active' : ''}" data-act="switchCompteurType" data-a1="elec">Électricité (kWh)</button>
+      <button class="fiche-tab ${t === 'eau' ? 'active' : ''}" data-act="switchCompteurType" data-a1="eau">Eau (m³)</button>
     </div>
     ${prixOk ? '' : `<p class="form-error" style="margin-bottom:14px">Prix du ${U} non configuré — les relevés seront enregistrés mais aucune charge ne sera créée. <a href="#/parametres">Configurer dans Paramètres → Énergie &amp; eau</a>.</p>`}
     <div class="card"><table><thead><tr><th>Empl.</th><th>Résident</th><th>Dernier relevé</th><th class="right">Index</th><th class="right">Nouvel index</th><th></th></tr></thead>
@@ -2222,7 +2283,7 @@ async function vueCompteurs() {
         <td class="muted">${e.dernier_releve ? dfr(e.dernier_releve.date_releve) + (e.dernier_releve.conso_kwh != null ? ` <span class="badge occupe">${Number(e.dernier_releve.conso_kwh)} ${U}</span>` : '') : '<span class="badge emise">jamais relevé</span>'}</td>
         <td class="right">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
         <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
-        <td class="right"><button class="btn btn-primary btn-sm" onclick="releverCompteur('${e.id}')">Relever</button></td>
+        <td class="right"><button class="btn btn-primary btn-sm" data-act="releverCompteur" data-a1="${e.id}">Relever</button></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>
     <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix du ${U}) — à facturer depuis sa fiche. Chaque fluide a sa propre série d\u2019index.</p>`;
 }
@@ -2294,11 +2355,11 @@ async function vueAdministration() {
   $('#main').innerHTML = `
     <div class="page-head">
       <div><div class="eyebrow">Administration</div><h1>Comptes &amp; activité</h1></div>
-      <button class="btn btn-primary" onclick="formUtilisateur()">Ajouter un compte</button>
+      <button class="btn btn-primary" data-act="formUtilisateur">Ajouter un compte</button>
     </div>
 
     <div class="fiche-tabs">
-      <button class="fiche-tab active" data-tab="comptes" onclick="switchFicheTab('comptes')">Comptes (${utilisateurs.length})</button>
+      <button class="fiche-tab active" data-tab="comptes" data-act="switchFicheTab" data-a1="comptes">Comptes (${utilisateurs.length})</button>
       <button class="fiche-tab" data-tab="moyens" onclick="switchFicheTab('moyens');chargerMoyens()">Moyens de paiement</button>
       <button class="fiche-tab" data-tab="journal" onclick="switchFicheTab('journal');chargerJournal()">Journal d'activité</button>
       <button class="fiche-tab" data-tab="fiscal" onclick="switchFicheTab('fiscal');chargerFiscal()">Conformité fiscale</button>
@@ -2320,7 +2381,7 @@ async function vueAdministration() {
             <h2 style="margin:0">Moyens de paiement</h2>
             <p class="muted" style="margin:4px 0 0">Un moyen « remisable » (chèques, ANCV) apparaît dans les remises en banque, avec son propre bordereau.</p>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="formMoyen()">Ajouter un moyen</button>
+          <button class="btn btn-primary btn-sm" data-act="formMoyen">Ajouter un moyen</button>
         </div>
         <div id="moyens-body" style="margin-top:12px"><p class="muted">Chargement…</p></div>
       </div>
@@ -2338,8 +2399,8 @@ async function vueAdministration() {
             <td><span class="badge ${u.role === 'admin' ? 'reglee' : 'occupe'}">${esc(u.role)}</span></td>
             <td style="max-width:340px">${puces(u.droits)}</td>
             <td class="right">
-              <button class="btn btn-ghost btn-sm" onclick="formUtilisateur('${u.id}')">Modifier</button>
-              ${u.est_moi ? '' : `<button class="btn btn-ghost btn-sm" onclick="retirerAcces('${u.id}','${esc((u.prenom || '') + ' ' + (u.nom || ''))}')">Retirer</button>`}
+              <button class="btn btn-ghost btn-sm" data-act="formUtilisateur" data-a1="${u.id}">Modifier</button>
+              ${u.est_moi ? '' : `<button class="btn btn-ghost btn-sm" data-act="retirerAcces" data-a1="${u.id}" data-a2="${esc((u.prenom || '') + ' ' + (u.nom || ''))}">Retirer</button>`}
             </td>
           </tr>`).join('')}</tbody></table>
       </div>
@@ -2362,8 +2423,8 @@ async function vueAdministration() {
               <option value="residents">Résidents</option>
               <option value="user_campings">Accès utilisateurs</option>
             </select>
-            <button class="btn btn-ghost btn-sm" onclick="chargerJournal()">Filtrer</button>
-            <button class="btn btn-primary btn-sm" onclick="exportJournal()">Export fisc (CSV)</button>
+            <button class="btn btn-ghost btn-sm" data-act="chargerJournal">Filtrer</button>
+            <button class="btn btn-primary btn-sm" data-act="exportJournal">Export fisc (CSV)</button>
           </div>
         </div>
         <div id="journal-body" style="margin-top:14px"><p class="muted">Chargement…</p></div>
@@ -2394,8 +2455,8 @@ window.chargerMoyens = async () => {
           <td>${m.remisable ? '<span class="badge reglee">bordereau</span>' : '<span class="muted">—</span>'}</td>
           <td>${m.actif ? '<span class="badge libre">actif</span>' : '<span class="badge indisponible">inactif</span>'}</td>
           <td class="right">
-            <button class="btn btn-ghost btn-sm" onclick="formMoyen('${m.id}')">Modifier</button>
-            ${m.actif ? `<button class="btn btn-ghost btn-sm" onclick="retirerMoyen('${m.id}','${esc(m.libelle)}')">Désactiver</button>` : ''}
+            <button class="btn btn-ghost btn-sm" data-act="formMoyen" data-a1="${m.id}">Modifier</button>
+            ${m.actif ? `<button class="btn btn-ghost btn-sm" data-act="retirerMoyen" data-a1="${m.id}" data-a2="${esc(m.libelle)}">Désactiver</button>` : ''}
           </td>
         </tr>`).join('')}</tbody></table>`
       : '<p class="muted">Aucun moyen de paiement. Ajoute-en un.</p>';
@@ -2468,7 +2529,7 @@ window.chargerRgpd = async () => {
             <h2 style="margin:0">Protection des données personnelles</h2>
             <p class="muted" style="margin:4px 0 0">Règlement (UE) 2016/679. Le registre des traitements (art. 30) est obligatoire et doit être présentable à la CNIL.</p>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="registreRgpd()">Registre des traitements</button>
+          <button class="btn btn-primary btn-sm" data-act="registreRgpd">Registre des traitements</button>
         </div>
         <div class="kpis" style="margin-top:14px">
           <div class="kpi"><div class="v">${d.anonymises}</div><div class="l">Résidents anonymisés</div></div>
@@ -2485,7 +2546,7 @@ window.chargerRgpd = async () => {
         <tbody>${d.candidats_purge.map((r) => `<tr>
           <td><strong>${esc(r.nom)}</strong></td>
           <td class="muted">${dfr(r.inactif_depuis)}</td>
-          <td class="right"><button class="btn btn-ghost btn-sm" onclick="anonymiserResident('${r.id}','${esc(r.nom)}')">Anonymiser</button></td>
+          <td class="right"><button class="btn btn-ghost btn-sm" data-act="anonymiserResident" data-a1="${r.id}" data-a2="${esc(r.nom)}">Anonymiser</button></td>
         </tr>`).join('')}</tbody></table>`
         : '<p class="muted" style="margin-top:10px">Aucun résident à anonymiser. ✓</p>'}
       </div>
@@ -2496,7 +2557,7 @@ window.chargerRgpd = async () => {
             <h2 style="margin:0">Registre des violations de données</h2>
             <p class="muted" style="margin:4px 0 0">Une violation présentant un risque doit être notifiée à la CNIL sous <strong>72 heures</strong> (art. 33).</p>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="formViolation()">Déclarer une violation</button>
+          <button class="btn btn-ghost btn-sm" data-act="formViolation">Déclarer une violation</button>
         </div>
         ${d.violations.length ? `<table style="margin-top:12px"><thead><tr><th>Date</th><th>Nature</th><th>Description</th><th class="right">Personnes</th><th>CNIL</th></tr></thead>
         <tbody>${d.violations.map((v) => `<tr>
@@ -2596,7 +2657,7 @@ window.chargerFiscal = async () => {
             <h2 style="margin:0">Inaltérabilité des données</h2>
             <p class="muted" style="margin:4px 0 0">Loi anti-fraude TVA — article 286-I-3° bis du CGI. Chaque facture, avoir et encaissement est chaîné par empreinte SHA-256.</p>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="attestationFiscale()">Attestation de conformité</button>
+          <button class="btn btn-primary btn-sm" data-act="attestationFiscale">Attestation de conformité</button>
         </div>
 
         <div class="kpis" style="margin-top:14px">
@@ -2630,8 +2691,8 @@ window.chargerFiscal = async () => {
               <option value="annuelle">Annuelle</option>
             </select>
             <input id="clot-periode" value="${mois}" style="width:130px" placeholder="2026-07">
-            <button class="btn btn-ghost btn-sm" onclick="lancerCloture()">Clôturer</button>
-            <button class="btn btn-ghost btn-sm" onclick="archiveFiscale()">Archive (JSON)</button>
+            <button class="btn btn-ghost btn-sm" data-act="lancerCloture">Clôturer</button>
+            <button class="btn btn-ghost btn-sm" data-act="archiveFiscale">Archive (JSON)</button>
           </div>
         </div>
         ${clotures.length ? `<table style="margin-top:12px"><thead><tr><th>Type</th><th>Période</th><th class="right">Factures</th><th class="right">Encaissements</th><th class="right">CA TTC</th><th class="right">Encaissé</th><th class="right">Cumul perpétuel</th><th>Scellée le</th></tr></thead>
@@ -2859,7 +2920,7 @@ async function vueSignatures() {
   $('#main').innerHTML = `
     <div class="page-head">
       <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
-      <button class="btn btn-primary" onclick="formDocSignature()">Déposer un document</button>
+      <button class="btn btn-primary" data-act="formDocSignature">Déposer un document</button>
     </div>
     <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
 
@@ -2878,13 +2939,13 @@ async function vueSignatures() {
             return `${badge}<input type="date" value="${d.date_fin || ''}" onchange="majTermeDoc('${d.id}', this.value)" title="Terme du document — modifiable directement, les échéances suivent" style="width:130px;font-size:12px">`; })()}</td>
           <td class="right">
             ${d.statut === 'signe'
-              ? `<button class="btn btn-ghost btn-sm" onclick="recapSignature('${d.id}')" title="Récapitulatif de transaction (dossier de preuve)">Récapitulatif</button>
-                 <button class="btn btn-ghost btn-sm" onclick="voirSignature('${d.id}')">Preuve</button>`
+              ? `<button class="btn btn-ghost btn-sm" data-act="recapSignature" data-a1="${d.id}" title="Récapitulatif de transaction (dossier de preuve)">Récapitulatif</button>
+                 <button class="btn btn-ghost btn-sm" data-act="voirSignature" data-a1="${d.id}">Preuve</button>`
               : d.statut === 'annule'
                 ? '<span class="muted">—</span>'
-                : `<button class="btn btn-ghost btn-sm" onclick="editeurZones('${d.id}')">Zones</button>
-                 ${(d.champs || []).length && d.resident_id ? `<button class="btn btn-primary btn-sm" onclick="envoyerSignature('${d.id}')">Envoyer</button>` : ''}
-                 <button class="btn btn-ghost btn-sm" onclick="annulerDocSignature('${d.id}')">Annuler</button>`}
+                : `<button class="btn btn-ghost btn-sm" data-act="editeurZones" data-a1="${d.id}">Zones</button>
+                 ${(d.champs || []).length && d.resident_id ? `<button class="btn btn-primary btn-sm" data-act="envoyerSignature" data-a1="${d.id}">Envoyer</button>` : ''}
+                 <button class="btn btn-ghost btn-sm" data-act="annulerDocSignature" data-a1="${d.id}">Annuler</button>`}
           </td>
         </tr>`).join('')}</tbody></table>`
       : '<p class="muted" style="margin:0">Aucun document. Dépose un PDF pour commencer.</p>'}
@@ -2907,8 +2968,8 @@ window.chargerModelesContrat = async () => {
           <td class="muted">${esc(m.type || '—')}</td>
           <td class="right muted">${(m.clauses || '').length.toLocaleString('fr-FR')} car.</td>
           <td class="right">
-            <button class="btn btn-ghost btn-sm" onclick="formModeleContrat('${m.id}')">Éditer</button>
-            <button class="btn btn-ghost btn-sm" onclick="supprimerModeleContrat('${m.id}')">Supprimer</button>
+            <button class="btn btn-ghost btn-sm" data-act="formModeleContrat" data-a1="${m.id}">Éditer</button>
+            <button class="btn btn-ghost btn-sm" data-act="supprimerModeleContrat" data-a1="${m.id}">Supprimer</button>
           </td></tr>`).join('')}</tbody></table>`
       : '<span class="muted">Aucun modèle. Importe ton contrat PDF ou crée un modèle vierge.</span>';
   } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
@@ -2923,7 +2984,7 @@ window.formModeleContrat = async (id) => {
   openDrawer(`
     <h2>${m ? 'Modifier le modèle' : 'Nouveau modèle de contrat'}</h2>
     <p class="muted" style="margin-top:4px">Clique une variable pour l\u2019insérer à l\u2019endroit du curseur — elle sera remplacée automatiquement à la création de chaque contrat.</p>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${VARS_CONTRAT.map(([v, l]) => `<button type="button" class="btn btn-ghost btn-sm" onclick="insererVarModele('${v}')" title="${esc(l)}">${esc(v)}</button>`).join('')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${VARS_CONTRAT.map(([v, l]) => `<button type="button" class="btn btn-ghost btn-sm" data-act="insererVarModele" data-a1="${v}" title="${esc(l)}">${esc(v)}</button>`).join('')}</div>
     <form id="f-modele" class="form-grid">
       <label class="full">Nom du modèle *<input name="nom" required value="${m ? esc(m.nom) : ''}" placeholder="Contrat résidentiel annuel"></label>
       <label class="full">Texte du contrat (clauses)
@@ -3119,7 +3180,7 @@ window.editeurZones = async (id) => {
         <h1>${esc(doc.titre)}</h1></div>
       <div class="toolbar">
         <button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'">Fermer</button>
-        <button class="btn btn-primary btn-sm" onclick="enregistrerZones()">Enregistrer les zones</button>
+        <button class="btn btn-primary btn-sm" data-act="enregistrerZones">Enregistrer les zones</button>
       </div>
     </div>
 
@@ -3133,9 +3194,9 @@ window.editeurZones = async (id) => {
         <div class="map-panel-sec">
           <h3>Outil</h3>
           <div class="map-chips" id="outils">
-            <button class="map-chip actif" data-t="signature" onclick="choisirOutil('signature')">Signature</button>
-            <button class="map-chip" data-t="texte" onclick="choisirOutil('texte')">Texte</button>
-            <button class="map-chip" data-t="case" onclick="choisirOutil('case')">Case à cocher</button>
+            <button class="map-chip actif" data-t="signature" data-act="choisirOutil" data-a1="signature">Signature</button>
+            <button class="map-chip" data-t="texte" data-act="choisirOutil" data-a1="texte">Texte</button>
+            <button class="map-chip" data-t="case" data-act="choisirOutil" data-a1="case">Case à cocher</button>
           </div>
           <p class="map-aide" style="padding:12px 0 0;background:none;border:none">Clique sur le document à l'endroit où placer la zone.</p>
         </div>
@@ -3313,7 +3374,7 @@ function renderEfactureCard(cx, plateformes) {
       <div class="stat" style="margin-top:10px"><span class="k">Adresse de routage</span><span class="v">${esc(cx.adresse_routage || '&mdash;')}</span></div>
       ${cx.message ? `<p class="muted">${esc(cx.message)}</p>` : ''}
       <div class="card-actions" style="margin-top:10px">
-        <button class="btn btn-ghost btn-sm" onclick="deconnecterPA()">Deconnecter</button></div>
+        <button class="btn btn-ghost btn-sm" data-act="deconnecterPA">Deconnecter</button></div>
 
       <div style="border-top:1px solid var(--trait,#E4DCC8);margin-top:16px;padding-top:12px">
         <h3 style="margin:0 0 2px;font-size:15px">E-reporting (ventes aux particuliers)</h3>
@@ -3321,7 +3382,7 @@ function renderEfactureCard(cx, plateformes) {
         <div class="form-grid">
           <label>Periode<input type="month" id="erep-periode" value="${new Date().toISOString().slice(0, 7)}"></label>
           <label>Type<select id="erep-type"><option value="transaction">Transactions (ventes)</option><option value="encaissement">Encaissements (paiements recus)</option></select></label>
-          <div class="full"><button class="btn btn-primary btn-sm" onclick="efApercu()">Apercu de la periode</button></div>
+          <div class="full"><button class="btn btn-primary btn-sm" data-act="efApercu">Apercu de la periode</button></div>
         </div>
         <div id="erep-apercu" style="margin-top:10px"></div>
         <h3 style="margin:16px 0 6px;font-size:14px">Periodes deja transmises</h3>
@@ -3330,7 +3391,7 @@ function renderEfactureCard(cx, plateformes) {
 
       <div style="border-top:1px solid var(--trait,#E4DCC8);margin-top:16px;padding-top:12px">
         <div class="card-actions"><h3 style="margin:0;font-size:15px">Factures fournisseurs reçues</h3>
-          <button class="btn btn-ghost btn-sm" onclick="efRecuesSync()">Synchroniser</button></div>
+          <button class="btn btn-ghost btn-sm" data-act="efRecuesSync">Synchroniser</button></div>
         <p class="muted" style="margin:2px 0 8px;font-size:12px">Les factures que vos fournisseurs vous adressent via la plateforme. À accepter ou refuser (statut renvoyé à l'émetteur).</p>
         <div id="recues-zone" class="muted">Chargement&hellip;</div>
       </div>
@@ -3344,9 +3405,9 @@ function renderEfactureCard(cx, plateformes) {
       ${intro}
       <div class="form-grid" style="margin-top:12px">
         <label>Plateforme agreee
-          <select id="ef-pa" onchange="efRenderChamps()">${opts || '<option value="">Aucune disponible</option>'}</select></label>
+          <select id="ef-pa" data-act="efRenderChamps" data-evt="change">${opts || '<option value="">Aucune disponible</option>'}</select></label>
         <div id="ef-champs" class="full"></div>
-        <div class="full"><button class="btn btn-primary btn-sm" onclick="connecterPA()">Connecter</button></div>
+        <div class="full"><button class="btn btn-primary btn-sm" data-act="connecterPA">Connecter</button></div>
       </div>
     </div>`;
 }
@@ -3388,7 +3449,7 @@ window.efApercu = async () => {
       <div class="stat"><span class="k">Total TTC</span><span class="v">${eur(lot.total_ttc)}</span></div>
       ${type === 'transaction' ? `<table style="margin-top:8px"><thead><tr><th>Taux</th><th class="right">Base HT</th><th class="right">TVA</th></tr></thead><tbody>${vent || '<tr><td colspan="3" class="muted">Aucune vente sur la periode.</td></tr>'}</tbody></table>` : ''}
       ${exclues ? `<p class="muted" style="margin-top:6px">${exclues} facture(s) entreprise exclue(s) (transmises en Factur-X).</p>` : ''}
-      <div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="efTransmettre()">Transmettre cette periode a la PA</button></div>`;
+      <div style="margin-top:10px"><button class="btn btn-primary btn-sm" data-act="efTransmettre">Transmettre cette periode a la PA</button></div>`;
   } catch (e) { zone.innerHTML = `<p class="bad">${esc(e.message || 'Erreur')}</p>`; }
 };
 window.efTransmettre = async () => {
@@ -3433,9 +3494,9 @@ window.efRecuesLoad = async () => {
         <td class="right">${eur(f.total_ttc)}</td>
         <td><span class="badge ${EF_RECUE_BADGE[f.statut] || ''}">${EF_RECUE_STATUT[f.statut] || esc(f.statut)}</span>${f.motif ? `<br><span class="muted" style="font-size:11px">${esc(f.motif)}</span>` : ''}</td>
         <td class="right">${f.statut === 'recue'
-          ? `<button class="btn btn-ghost btn-sm" onclick="efRecueStatut('${f.id}','acceptee')">Accepter</button>
-             <button class="btn btn-ghost btn-sm" onclick="efRecueStatut('${f.id}','refusee')">Refuser</button>`
-          : (f.statut === 'acceptee' ? `<button class="btn btn-ghost btn-sm" onclick="efRecueStatut('${f.id}','comptabilisee')">Marquer comptabilisée</button>` : '')}</td>
+          ? `<button class="btn btn-ghost btn-sm" data-act="efRecueStatut" data-a1="${f.id}" data-a2="acceptee">Accepter</button>
+             <button class="btn btn-ghost btn-sm" data-act="efRecueStatut" data-a1="${f.id}" data-a2="refusee">Refuser</button>`
+          : (f.statut === 'acceptee' ? `<button class="btn btn-ghost btn-sm" data-act="efRecueStatut" data-a1="${f.id}" data-a2="comptabilisee">Marquer comptabilisée</button>` : '')}</td>
       </tr>`).join('')
     }</tbody></table>`;
   } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
@@ -3487,8 +3548,8 @@ async function vueParametres() {
     <div class="card">
       <div class="card-actions"><h2>Modèles de contrats</h2>
         <div class="toolbar">
-          <button class="btn btn-ghost btn-sm" onclick="importerModeleContrat()" title="Dépose un contrat PDF existant : Locamp en extrait le texte pour en faire un modèle">Importer un PDF</button>
-          <button class="btn btn-primary btn-sm" onclick="formModeleContrat()">Nouveau modèle</button>
+          <button class="btn btn-ghost btn-sm" data-act="importerModeleContrat" title="Dépose un contrat PDF existant : Locamp en extrait le texte pour en faire un modèle">Importer un PDF</button>
+          <button class="btn btn-primary btn-sm" data-act="formModeleContrat">Nouveau modèle</button>
         </div></div>
       <p class="muted">Un modèle = le texte de ton contrat avec des variables (nom du résident, emplacement, montant, dates) remplies automatiquement à la création. Chaque camping a ses propres modèles.</p>
       <div id="modeles-zone" class="muted" style="margin-top:10px">Chargement&hellip;</div>
@@ -3502,7 +3563,7 @@ async function vueParametres() {
         <div class="logo-preview">${logoUrl ? `<img src="${logoUrl}" alt="logo">` : '<span class="muted">Aucun logo</span>'}</div>
         <div>
           <input type="file" id="logo-file" accept="image/png,image/jpeg">
-          <button class="btn btn-ghost btn-sm" onclick="uploadLogo()">Téléverser</button>
+          <button class="btn btn-ghost btn-sm" data-act="uploadLogo">Téléverser</button>
           <p class="muted" style="margin:6px 0 0">PNG ou JPG, format paysage de préférence. Apparaît en haut des factures.</p>
         </div>
       </div>
@@ -3576,7 +3637,7 @@ async function vueParametres() {
         <td class="muted">${esc(a.unite || '—')}</td>
         <td class="right">${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))}</td>
         <td class="right">${Number(a.taux_tva)} %</td>
-        <td class="right"><button class="btn btn-ghost btn-sm" onclick="supprimerArticle('${a.id}')">Retirer</button></td>
+        <td class="right"><button class="btn btn-ghost btn-sm" data-act="supprimerArticle" data-a1="${a.id}">Retirer</button></td>
       </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
   };
   renderArts(articles);
@@ -3701,12 +3762,12 @@ window.formFacture = async (presetResidentId, preset) => {
       ${articles.length ? `<div class="full" style="display:flex;gap:8px;align-items:flex-end">
         <label style="flex:1;margin:0">Article du catalogue
           <select id="cat-select">${articles.map((a) => `<option value="${a.id}">${esc(a.designation)} — ${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))} TTC</option>`).join('')}</select></label>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneCatalogue()">+ Ajouter</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="ajouterLigneCatalogue">+ Ajouter</button>
       </div>` : ''}
       <div class="full">
         <div class="muted" style="margin-bottom:6px">Lignes — loyer, taxe, charges, ventes…</div>
         <div id="fac-lignes">${(preset && preset.lignes ? preset.lignes.map((l) => ligneRow(l)).join('') : ligneRow())}</div>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="ajouterLigneFacture()" style="margin-top:4px">+ Ligne libre</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="ajouterLigneFacture" style="margin-top:4px">+ Ligne libre</button>
       </div>
       <div class="full"><button class="btn btn-primary btn-block">Créer la facture</button></div>
     </form>`);
@@ -3848,7 +3909,7 @@ async function chargerRemises() {
       <div class="card">
         <div class="card-actions">
           <h2>${esc(m.libelle)} à remettre <span class="map-count">${list.length}</span></h2>
-          <button class="btn btn-primary btn-sm" onclick="creerRemise('${esc(m.code)}','${esc(m.libelle)}')">Créer le bordereau</button>
+          <button class="btn btn-primary btn-sm" data-act="creerRemise" data-a1="${esc(m.code)}" data-a2="${esc(m.libelle)}">Créer le bordereau</button>
         </div>
         <table><thead><tr><th></th><th>Date</th><th>Tireur</th><th>Référence</th><th class="right">Montant</th></tr></thead>
         <tbody>${list.map((c) => `<tr>
@@ -3880,8 +3941,8 @@ async function chargerRemises() {
           <td class="right">${eur(r.total)}</td>
           <td>${badgeStatut(r.statut)}${r.motif_annulation ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(r.motif_annulation)}</div>` : ''}</td>
           <td class="right">
-            <button class="btn btn-ghost btn-sm" onclick="pdfRemise('${r.id}','${esc(r.numero)}')">Bordereau</button>
-            ${r.statut === 'remise' ? `<button class="btn btn-ghost btn-sm" onclick="encaisserRemise('${r.id}')">Encaissée ✓</button>` : ''}
+            <button class="btn btn-ghost btn-sm" data-act="pdfRemise" data-a1="${r.id}" data-a2="${esc(r.numero)}">Bordereau</button>
+            ${r.statut === 'remise' ? `<button class="btn btn-ghost btn-sm" data-act="encaisserRemise" data-a1="${r.id}">Encaissée ✓</button>` : ''}
             ${r.statut !== 'annulee' ? `<button class="btn btn-ghost btn-sm" onclick="annulerRemise('${r.id}','${esc(r.numero)}',${r.statut === 'encaissee'})">Annuler</button>` : ''}
           </td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune remise.</p>'}
       </div>`;
@@ -3933,7 +3994,7 @@ async function vueImpayes() {
   const a = imp.aging;
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Recouvrement</div><h1>Impayés</h1></div>
-      <button class="btn btn-primary" onclick="runRelancesBtn()">Envoyer les relances</button></div>
+      <button class="btn btn-primary" data-act="runRelancesBtn">Envoyer les relances</button></div>
     <div class="kpis">
       <div class="kpi"><div class="v">${eur(imp.total_du)}</div><div class="l">Total dû</div></div>
       <div class="kpi"><div class="v">${eur(a.a_echoir)}</div><div class="l">À échoir (délai ${imp.delai} j)</div></div>
@@ -3990,7 +4051,7 @@ async function vueCompta() {
     <div class="card">
       <div class="card-actions"><h2>TVA sur les encaissements</h2>
         <div class="toolbar"><input id="tva-mois" type="month" value="${mois}">
-        <button class="btn btn-primary btn-sm" onclick="chargerTva()">Calculer</button></div></div>
+        <button class="btn btn-primary btn-sm" data-act="chargerTva">Calculer</button></div></div>
       <p class="muted">TVA exigible au titre des paiements reçus sur le mois (régime des encaissements), ventilée par taux via le lettrage.</p>
       <div id="tva-resultat" style="margin-top:12px"><p class="muted">Choisir un mois puis « Calculer ».</p></div>
     </div>
@@ -4000,7 +4061,7 @@ async function vueCompta() {
         <div class="toolbar">
           <input id="idx-taux" type="number" step="0.01" placeholder="taux %" style="width:90px" title="ex. 3.26 pour +3,26 %">
           <input id="idx-ref" type="text" placeholder="référence (ex. IRL T1 2026)" style="width:180px">
-          <button class="btn btn-primary btn-sm" onclick="idxApercu()">Aperçu</button>
+          <button class="btn btn-primary btn-sm" data-act="idxApercu">Aperçu</button>
         </div></div>
       <p class="muted">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
       <div id="idx-zone" style="margin-top:10px"></div>
@@ -4014,8 +4075,8 @@ async function vueCompta() {
       <div class="toolbar" style="margin-top:10px">
         <label style="margin:0">Racine<input id="cc-racine" value="${esc((camping?.parametres?.comptabilite || {}).racine_client || '411')}" style="width:110px"></label>
         <label style="margin:0">Chiffres de séquence<input id="cc-lng" type="number" min="2" max="8" value="${(camping?.parametres?.comptabilite || {}).longueur_seq_client || 5}" style="width:90px"></label>
-        <button class="btn btn-ghost" onclick="enregistrerRacine()">Enregistrer</button>
-        <button class="btn btn-primary" onclick="attribuerComptes()">Attribuer aux clients existants</button>
+        <button class="btn btn-ghost" data-act="enregistrerRacine">Enregistrer</button>
+        <button class="btn btn-primary" data-act="attribuerComptes">Attribuer aux clients existants</button>
       </div>
       <p class="muted" style="margin-top:8px">Aperçu : <strong id="cc-apercu"></strong></p>
     </div>
