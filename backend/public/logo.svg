@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Locamp">
+  
+  <defs>
+    <linearGradient id="lcFond" x1=".1" y1="0" x2=".9" y2="1">
+      <stop offset="0" stop-color="#1D5344"></stop><stop offset=".55" stop-color="#123A2F"></stop><stop offset="1" stop-color="#0B1A15"></stop>
+    </linearGradient>
+    <linearGradient id="lcOr" x1="0" y1="0" x2=".35" y2="1">
+      <stop offset="0" stop-color="#F6E3B0"></stop><stop offset=".35" stop-color="#D9B466"></stop><stop offset=".62" stop-color="#B98A3C"></stop><stop offset="1" stop-color="#8A6526"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#lcFond)"></rect>
+  <rect x="7" y="7" width="50" height="50" rx="11" fill="none" stroke="url(#lcOr)" stroke-width=".9" opacity=".7"></rect>
+  <rect x="9.6" y="9.6" width="44.8" height="44.8" rx="8.6" fill="none" stroke="url(#lcOr)" stroke-width=".5" opacity=".32"></rect>
+  <text x="25.5" y="46" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="33" font-weight="600" fill="url(#lcOr)">L</text>
+  <g fill="none" stroke="url(#lcOr)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M42.5 17 38.5 23h8z"></path><path d="M42.5 21.5 36.5 30h12z"></path><path d="M42.5 27.5 35 37.5h15z"></path>
+  </g>
+  <path d="M42.5 37.5v5.5" stroke="url(#lcOr)" stroke-width="1.8" stroke-linecap="round"></path>
+</svg>

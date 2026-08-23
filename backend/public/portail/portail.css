@@ -1,14 +1,12 @@
-/* ============ Portail locataire — mobile-first, chaleureux ============ */
+/* ============================================================
+   Mon espace Locamp — l'espace du locataire
+   ============================================================
+   Les jetons de marque et le bloc .brand vivent dans marque.css,
+   partage avec l'outil de gestion. Cette feuille ne porte que ce qui
+   est propre au portail : fond en degrades doux, tailles mobile.
+   ============================================================ */
 :root{
-  --ivoire:#F6F3EC; --carte:#FFFFFF; --nuit:#0F231D; --encre:#1B2E28;
-  --sapin:#175243; --sapin-hover:#1C614F; --sapin-pale:#E8F0EC;
-  --laiton:#B98A3C; --laiton-pale:#F7EFDD; --brume:#75837C;
-  --hairline:#E7E1D4; --rouge:#A8402A; --rouge-pale:#F6E7E2;
-  --shadow-s:0 1px 2px rgba(15,35,29,.05), 0 2px 8px rgba(15,35,29,.04);
-  --shadow-m:0 2px 6px rgba(15,35,29,.06), 0 12px 32px rgba(15,35,29,.07);
-  --shadow-l:0 8px 24px rgba(15,35,29,.10), 0 24px 64px rgba(15,35,29,.12);
-  --r:16px; --r-s:11px;
-}
+  }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{background:
@@ -25,11 +23,10 @@ h2{font-size:18px;font-weight:600}
 .form-error{color:var(--rouge);font-size:13px;margin:2px 0 0;font-weight:500}
 
 /* ---- marque ---- */
-.brand{display:flex;align-items:center;gap:12px}
-.brand-mark{width:42px;height:42px;border-radius:13px;flex:none;
-  background:linear-gradient(145deg,var(--sapin),#163028);color:#F2EBDD;
-  display:flex;align-items:center;justify-content:center;font-family:"Fraunces",serif;font-size:24px;font-weight:700;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 4px 12px rgba(15,35,29,.22)}
+/* .brand et .brand-mark sont dans marque.css. Le portail affichait
+   ici un simple « L » en CSS, sans les chevrons du monogramme : deux
+   portes du meme produit ne peuvent pas porter deux marques. */
+.brand-mark{width:42px;height:42px}
 .brand-name{font-family:"Fraunces",serif;font-size:18px;font-weight:700}
 .brand-sub{font-size:12.5px;color:var(--brume)}
 

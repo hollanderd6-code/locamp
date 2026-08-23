@@ -1,34 +1,21 @@
 /* ================================================================
-   Locamp — design "luxe plein air" v2
-   Ivoire chaud · vert sapin profond · laiton doré · Fraunces/Inter
+   Locamp Gestion — l'outil du camping
+   ================================================================
+   Les jetons de marque et le bloc .brand vivent dans marque.css, qui
+   se charge AVANT cette feuille et sert aussi au portail locataire.
+   Ne sont declares ici que les jetons propres a l'interface de
+   gestion : nuances secondaires, couleurs de categories, courbe
+   d'animation. Une couleur commune aux deux faces va dans marque.css.
    ================================================================ */
 :root{
-  --ivoire:#F6F3EC;
   --ivoire-2:#EFEAE0;
-  --carte:#FFFFFF;
-  --nuit:#0F231D;
   --nuit-2:#163028;
-  --encre:#1B2E28;
-  --sapin:#175243;
-  --sapin-hover:#1C614F;
-  --sapin-pale:#E8F0EC;
-  --laiton:#B98A3C;
   --laiton-vif:#E8A13A;
-  --laiton-pale:#F7EFDD;
-  --brume:#75837C;
-  --hairline:#E7E1D4;
   --creme:#FDFBF7;
-  --rouge:#A8402A;
-  --rouge-pale:#F6E7E2;
   --bleu:#2F5D8A;
   --bleu-pale:#E8EFF7;
   --violet:#7A4E9E;
   --violet-pale:#F3EDF7;
-  --shadow-s:0 1px 2px rgba(15,35,29,.05), 0 2px 8px rgba(15,35,29,.04);
-  --shadow-m:0 2px 6px rgba(15,35,29,.06), 0 12px 32px rgba(15,35,29,.07);
-  --shadow-l:0 8px 24px rgba(15,35,29,.10), 0 24px 64px rgba(15,35,29,.12);
-  --r:16px;
-  --r-s:11px;
   --ease:cubic-bezier(.3,.9,.3,1);
 }
 *{box-sizing:border-box}
@@ -76,14 +63,7 @@ a{color:var(--sapin)}
 .login-card{background:var(--carte);border:1px solid var(--hairline);border-radius:22px;padding:42px 40px;width:100%;max-width:410px;box-shadow:var(--shadow-l)}
 .login-card form{display:flex;flex-direction:column;gap:16px;margin-top:28px}
 
-/* ---------------- Marque ---------------- */
-.brand{display:flex;align-items:center;gap:13px}
-.brand-mark{width:44px;height:44px;flex-shrink:0;line-height:0;
-  border-radius:13px;overflow:hidden;
-  box-shadow:0 3px 10px rgba(15,35,29,.30), inset 0 1px 0 rgba(255,255,255,.10)}
-.brand-mark svg{width:100%;height:100%;display:block}
-.brand-name{font-family:"Fraunces",serif;font-size:21px;font-weight:700;letter-spacing:-.01em}
-.brand-sub{font-size:12.5px;color:var(--brume);margin-top:1px}
+/* Le bloc de marque (.brand, .brand-mark, .brand-name) est dans marque.css. */
 
 /* ---------------- Formulaires ---------------- */
 label{display:flex;flex-direction:column;gap:7px;font-size:11.5px;font-weight:700;

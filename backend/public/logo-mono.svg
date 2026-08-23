@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Locamp">
+  
+  <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 14v30h13"></path>
+    <path d="M46 18 41 25.5h10z"></path><path d="M46 24.5 38.5 34h15z"></path><path d="M46 32 35.5 46h21z"></path>
+  </g>
+</svg>

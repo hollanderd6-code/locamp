@@ -1,0 +1,56 @@
+/* ================================================================
+   Locamp — la marque, une seule fois
+   ================================================================
+   Charge par les DEUX faces du produit :
+     · Locamp Gestion   (l'outil du camping)     /index.html
+     · Mon espace Locamp (l'espace du locataire) /portail/index.html
+
+   POURQUOI CE FICHIER
+   Ces 18 jetons etaient declares deux fois, dans styles.css et dans
+   portail.css, avec les memes valeurs. Aucune n'avait encore diverge
+   — c'est exactement le moment d'unifier : le jour ou l'on ajuste le
+   vert de marque, on ne veut pas avoir a le faire a deux endroits et
+   decouvrir six mois plus tard que le portail est reste en arriere.
+
+   Une couleur nouvelle se declare ICI, jamais en clair dans une page.
+   ================================================================ */
+:root{
+  /* Fonds */
+  --ivoire:#F6F3EC;        /* fond general */
+  --carte:#FFFFFF;         /* surfaces posees sur le fond */
+  --hairline:#E7E1D4;      /* filets */
+
+  /* Marque */
+  --nuit:#0F231D;          /* barre laterale, aplats profonds */
+  --encre:#1B2E28;         /* texte courant */
+  --brume:#75837C;         /* texte secondaire */
+  --sapin:#175243;         /* couleur d'action */
+  --sapin-hover:#1C614F;
+  --sapin-pale:#E8F0EC;
+  --laiton:#B98A3C;        /* accent, jamais une action */
+  --laiton-pale:#F7EFDD;
+
+  /* Etats */
+  --rouge:#A8402A;
+  --rouge-pale:#F6E7E2;
+
+  /* Elevation et rayons */
+  --shadow-s:0 1px 2px rgba(15,35,29,.05), 0 2px 8px rgba(15,35,29,.04);
+  --shadow-m:0 2px 6px rgba(15,35,29,.06), 0 12px 32px rgba(15,35,29,.07);
+  --shadow-l:0 8px 24px rgba(15,35,29,.10), 0 24px 64px rgba(15,35,29,.12);
+  --r:16px;
+  --r-s:11px;
+}
+
+/* ---------------- Le bloc de marque ----------------
+   Meme rendu des deux cotes. Le portail affichait jusqu'ici un simple
+   « L » en CSS, sans les chevrons : deux portes du meme produit ne
+   peuvent pas porter deux marques differentes. */
+.brand{display:flex;align-items:center;gap:13px}
+.brand-mark{width:44px;height:44px;flex:none;line-height:0;
+  border-radius:13px;overflow:hidden;
+  box-shadow:0 3px 10px rgba(15,35,29,.30), inset 0 1px 0 rgba(255,255,255,.10)}
+.brand-mark svg,
+.brand-mark img{width:100%;height:100%;display:block}
+.brand-name{font-family:"Fraunces",serif;font-size:21px;font-weight:700;letter-spacing:-.01em}
+.brand-sub{font-size:12.5px;color:var(--brume);margin-top:1px}
