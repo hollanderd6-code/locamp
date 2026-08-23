@@ -9,6 +9,25 @@ const { auth, campingScope, requireRole, requirePerm } = require('../middleware/
 const router = express.Router();
 router.use(auth, campingScope);
 
+/* Types de moyens de paiement pour lesquels la référence est obligatoire :
+   sans elle, la ligne du relevé bancaire ne peut plus être reliée à
+   l'encaissement au moment du rapprochement.
+
+   Indexé par TYPE et non par code, comme la règle de remise en banque juste
+   en dessous : un moyen ajouté par le camping (« Chèque BNP », code maison)
+   hérite de la règle du moment qu'il est typé « cheque ». Une liste de codes
+   l'aurait oublié en silence.
+
+   Absents volontairement : espece (rien à référencer), carte (le TPE porte
+   sa trace), stripe (aucune saisie humaine), autre (on ne sait pas ce que
+   c'est — exiger un champ sans savoir ce qu'il doit contenir bloquerait la
+   saisie sans rien garantir). */
+const REF_REQUISE = {
+  cheque: 'le numéro du chèque',
+  virement: 'le libellé du virement',
+  ancv: 'le numéro du titre ANCV',
+};
+
 // GET /api/reglements  (filtre: resident_id)
 // GET /api/reglements/journal?du=&au=  -> encaissements agrégés par mode de paiement.
 router.get('/journal', async (req, res) => {
@@ -88,19 +107,42 @@ router.post('/relettrer', requireRole('admin'), async (req, res) => {
 router.post('/', requirePerm('encaisser'), async (req, res) => {
   try {
     const { resident_id, mode, montant, date_reglement, reference, statut_cheque } = req.body || {};
-    if (!mode || montant == null) return res.status(400).json({ error: 'mode et montant requis' });
+    if (!mode) return res.status(400).json({ error: 'mode requis' });
+    /* montant == null laissait passer 0 et les négatifs : un règlement à 0 €
+       entre dans la chaîne fiscale et lettre sur rien ; un négatif retire de
+       l'argent d'une facture sans avoir pour le justifier. */
+    const m = Number(montant);
+    if (!Number.isFinite(m) || m <= 0) {
+      return res.status(400).json({ error: 'Le montant doit être un nombre supérieur à zéro.' });
+    }
 
     // Le mode doit correspondre à un moyen de paiement actif du camping.
     let moyen = null;
     const { data: moyens } = await supabase.from('moyens_paiement')
-      .select('code,libelle,remisable,actif').eq('camping_id', req.activeCampingId).eq('code', mode).maybeSingle()
+      .select('code,libelle,type,remisable,actif').eq('camping_id', req.activeCampingId).eq('code', mode).maybeSingle()
       .then((r) => r, () => ({ data: null }));
     moyen = moyens || null;
     if (moyen && moyen.actif === false) return res.status(400).json({ error: `Moyen de paiement « ${moyen.libelle} » désactivé` });
 
+    /* Référence obligatoire selon le type du moyen. Même forme que la règle de
+       remise ci-dessous : la configuration du camping d'abord, un repli sur le
+       code ensuite (un camping sans moyens configurés utilise 'cheque' tel quel).
+
+       Ce contrôle vivait uniquement dans le formulaire. Tout autre chemin
+       d'écriture — import de relevé, application mobile — le contournait sans
+       que rien ne le signale. */
+    const typeMoyen = moyen ? moyen.type : mode;
+    const refAttendue = REF_REQUISE[String(typeMoyen || '')];
+    if (refAttendue && !String(reference || '').trim()) {
+      return res.status(400).json({
+        error: `Référence obligatoire pour ce moyen de paiement : indiquez ${refAttendue}. `
+          + 'Sans elle, l\'encaissement ne pourra pas être retrouvé au rapprochement bancaire.',
+      });
+    }
+
     const autoMode = !Array.isArray(req.body.affectations);
     let affectations = autoMode ? null : req.body.affectations;
-    if (!affectations && resident_id) affectations = await autoAffectations(req.activeCampingId, resident_id, montant);
+    if (!affectations && resident_id) affectations = await autoAffectations(req.activeCampingId, resident_id, m);
     affectations = affectations || [];
 
     // Un moyen remisable (chèque, ANCV…) entre dans le circuit des remises : statut « reçu ».
@@ -108,7 +150,7 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
     const statut = statut_cheque || (remisable ? 'recu' : null);
 
     const { data: reglement, error } = await supabase.from('reglements').insert({
-      camping_id: req.activeCampingId, resident_id: resident_id || null, mode, montant,
+      camping_id: req.activeCampingId, resident_id: resident_id || null, mode, montant: m,
       date_reglement: date_reglement || new Date().toISOString().slice(0, 10),
       reference: reference || null, statut_cheque: statut, affectations,
       auteur_id: req.user.uid,
@@ -130,7 +172,7 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
     }
 
     await writeAudit(req, { action: 'create', entite: 'reglements', entite_id: reglement.id,
-      apres: { mode, montant, affectations: affectations.length } });
+      apres: { mode, montant: m, affectations: affectations.length } });
     res.status(201).json({ reglement });
   } catch (e) { console.error('[reglements:create]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
