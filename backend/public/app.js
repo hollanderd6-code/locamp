@@ -415,7 +415,7 @@ async function changerCamping(id) {
 window.formNouveauCamping = () => {
   openDrawer(`
     <h2>Nouvel espace camping</h2>
-    <p class="muted" style="margin-top:4px">Un espace séparé, avec ses propres résidents, emplacements et factures. Tu en seras administrateur.</p>
+    <p class="muted" style="margin-top:4px">Un espace séparé, avec ses propres résidents, emplacements et factures. Vous en serez administrateur.</p>
     <form id="f-newcamp" class="form-grid" style="margin-top:14px">
       <label class="full">Nom *<input name="nom" required placeholder="Camping des Princes"></label>
       <label class="full">Raison sociale<input name="raison_sociale"></label>
@@ -981,7 +981,7 @@ function renderCarte() {
           <button class="btn btn-primary btn-sm" data-act="toggleCarteEdit">Éditer le plan</button>
         </div>`}
     </div>
-    ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
+    ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécutez la migration db/11_echanges_carte_suivi.sql.</p>' : ''}
     ${edit ? '' : `<div class="map-search">
       <input id="map-q" type="search" placeholder="Numéro ou nom de l'occupant" autocomplete="off"
         aria-label="Rechercher un emplacement">
@@ -1683,7 +1683,7 @@ async function vueFicheClient(id) {
           </div>
         </div>
         ${migrationManquante
-          ? '<p class="form-error" style="margin-top:12px">Table « prestations » absente — exécute la migration db/09_prestations.sql dans Supabase.</p>'
+          ? '<p class="form-error" style="margin-top:12px">Table « prestations » absente — exécutez la migration db/07_catalogue_facturation.sql dans Supabase.</p>'
           : `<table style="margin-top:12px"><thead><tr><th style="width:30px"></th><th></th><th>Intitulé</th><th>Du</th><th>Au</th><th class="right">Montant TTC</th><th>État</th><th></th></tr></thead>
         <tbody>${(prestations || []).map((p) => `
           <tr>
@@ -1788,7 +1788,7 @@ async function vueFicheClient(id) {
       <div class="card">
         <h2>Messages</h2>
         ${messages === null
-          ? '<p class="form-error" style="margin-top:12px">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
+          ? '<p class="form-error" style="margin-top:12px">Table « messages » absente — exécutez la migration db/11_echanges_carte_suivi.sql dans Supabase.</p>'
           : `<div id="fil-messages" class="msg-fil">
           ${(messages || []).map((m) => `
             <div class="msg-row ${m.auteur === 'camping' ? 'me' : 'them'}">
@@ -2494,7 +2494,7 @@ async function vueMessagerie() {
         <button class="btn btn-primary" data-act="messageRapide">Message à un résident</button>
       </div></div>
     ${conversations === null
-      ? '<p class="form-error">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
+      ? '<p class="form-error">Table « messages » absente — exécutez la migration db/11_echanges_carte_suivi.sql dans Supabase.</p>'
       : `<div class="card" style="padding:6px 0">
       ${conversations.length ? conversations.map((c) => `
         <div class="conv${c.non_lus ? ' unread' : ''}" data-act="ouvrirConversation" data-a1="${c.resident_id}">
@@ -2506,7 +2506,7 @@ async function vueMessagerie() {
             <span class="when">${new Date(c.dernier_message.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
             ${c.non_lus ? `<span class="pill-count">${c.non_lus}</span>` : ''}
           </div>
-        </div>`).join('') : '<p class="muted" style="padding:18px 20px;margin:0">Aucune conversation. Les échanges apparaissent ici dès qu\u2019un client écrit depuis son portail, ou que tu écris depuis une fiche client.</p>'}
+        </div>`).join('') : '<p class="muted" style="padding:18px 20px;margin:0">Aucune conversation. Les échanges apparaissent ici dès qu\u2019un client écrit depuis son portail, ou que vous écrivez depuis une fiche client.</p>'}
     </div>`}`;
 }
 
@@ -2704,7 +2704,7 @@ window.chargerMoyens = async () => {
   try {
     const { moyens, migration_manquante } = await api('/api/moyens-paiement?tous=1');
     if (migration_manquante) {
-      box.innerHTML = '<p class="form-error">Table « moyens_paiement » absente — exécute la migration db/16_moyens_paiement_remises.sql dans Supabase.</p>';
+      box.innerHTML = '<p class="form-error">Table « moyens_paiement » absente — exécutez la migration db/07_catalogue_facturation.sql dans Supabase.</p>';
       return;
     }
     box.innerHTML = moyens.length ? `
@@ -3171,6 +3171,36 @@ window.retirerAcces = async (id, nom) => {
 };
 
 /* ---------- Signatures électroniques ---------- */
+/** Filtre la liste des signatures par statut.
+    Agit sur les lignes déjà rendues plutôt que de relancer une requête :
+    la liste est courte, et le résultat est immédiat. Le compteur dit
+    combien de lignes sont masquées — sinon un filtre actif se confond
+    avec une liste vide. */
+function filtrerSignatures(statut) {
+  const lignes = document.querySelectorAll('#main tr[data-sig-statut]');
+  let visibles = 0;
+  lignes.forEach((tr) => {
+    const ok = !statut || tr.getAttribute('data-sig-statut') === statut;
+    tr.style.display = ok ? '' : 'none';
+    if (ok) visibles += 1;
+  });
+
+  let info = document.getElementById('sig-filtre-info');
+  if (!info) {
+    const sel = document.getElementById('sig-filtre');
+    if (!sel) return;
+    info = document.createElement('span');
+    info.id = 'sig-filtre-info';
+    info.className = 'muted';
+    info.style.fontSize = '13px';
+    sel.insertAdjacentElement('afterend', info);
+  }
+  info.textContent = statut
+    ? visibles + ' sur ' + lignes.length
+    : '';
+}
+
+
 const SIG_STATUT = { brouillon: 'brouillon', envoye: 'envoyé — en attente', signe: 'signé', refuse: 'refusé', annule: 'annulé' };
 
 async function vueSignatures() {
@@ -3183,20 +3213,36 @@ async function vueSignatures() {
   $('#main').innerHTML = `
     <div class="page-head">
       <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
-      <button class="btn btn-primary" data-act="formDocSignature">Déposer un document</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <select id="sig-filtre" data-act="filtrerSignatures" data-evt="change" data-a1="@value"
+                aria-label="Filtrer les documents par statut" style="width:auto">
+          <option value="">Tous les statuts</option>
+          <option value="envoye">En attente de signature</option>
+          <option value="signe">Signés</option>
+          <option value="brouillon">Brouillons</option>
+          <option value="annule">Annulés</option>
+          <option value="refuse">Refusés</option>
+        </select>
+        <button class="btn btn-primary" data-act="formDocSignature">Déposer un document</button>
+      </div>
     </div>
     <p class="muted" style="margin:-14px 0 18px">Contrats, règlements intérieurs, avenants… Le signataire signe à la main depuis son téléphone. Adresse IP, horodatage et empreinte du document sont conservés comme preuve.</p>
 
     <div class="card">
       ${documents.length ? `<table><thead><tr><th>Document</th><th>Signataire</th><th>Zones</th><th>Statut</th><th>Signé le</th><th>Terme</th><th></th></tr></thead>
       <tbody>${documents.map((d) => `
-        <tr>
+        <tr data-sig-statut="${d.statut}">
           <td><strong>${esc(d.titre)}</strong><div class="muted">${d.nb_pages || 1} page(s)</div></td>
           <td>${esc(d.resident_nom || '—')}</td>
           <td class="muted">${(d.champs || []).length}</td>
           <td><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
-          <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR') : '—'}</td>
-          <td data-stop>${(() => {
+          <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+          <td data-stop>${d.statut === 'annule' || d.statut === 'refuse'
+            /* Un document annulé ou refusé n'a pas de terme : proposer de le
+               modifier n'a pas de sens, et le badge « expiré » y donnait
+               l'impression qu'il restait quelque chose à refaire. */
+            ? '<span class="muted">—</span>'
+            : (() => {
             const jr = d.date_fin ? Math.floor((new Date(d.date_fin) - new Date()) / 86400000) : null;
             const badge = jr == null ? '' : jr < 0 ? `<span class="badge en_retard" title="À refaire / re-signer">expiré</span> ` : jr <= 60 ? `<span class="badge partielle">${jr} j</span> ` : '';
             return `${badge}<input type="date" value="${d.date_fin || ''}" data-act="majTermeDoc" data-evt="change" data-a1="${d.id}" data-a2="@value" title="Terme du document — modifiable directement, les échéances suivent" style="width:130px;font-size:12px">`; })()}</td>
@@ -3234,7 +3280,7 @@ window.chargerModelesContrat = async () => {
             <button class="btn btn-ghost btn-sm" data-act="formModeleContrat" data-a1="${m.id}">Éditer</button>
             <button class="btn btn-ghost btn-sm" data-act="supprimerModeleContrat" data-a1="${m.id}">Supprimer</button>
           </td></tr>`).join('')}</tbody></table>`
-      : '<span class="muted">Aucun modèle. Importe ton contrat PDF ou crée un modèle vierge.</span>';
+      : '<span class="muted">Aucun modèle. Importez votre contrat PDF ou créez un modèle vierge.</span>';
   } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
 };
 
@@ -3281,7 +3327,7 @@ window.supprimerModeleContrat = async (id) => {
 window.importerModeleContrat = () => {
   openDrawer(`
     <h2>Importer un contrat existant</h2>
-    <p class="muted" style="margin-top:4px">Dépose ton contrat PDF : Locamp en extrait le texte et en fait un modèle. Tu n\u2019auras plus qu\u2019à remplacer le nom, les dates et le montant par les variables — clique-les dans l\u2019éditeur qui s\u2019ouvrira.</p>
+    <p class="muted" style="margin-top:4px">Déposez votre contrat PDF : Locamp en extrait le texte et en fait un modèle. Vous n\u2019aurez plus qu\u2019à remplacer le nom, les dates et le montant par les variables — clique-les dans l\u2019éditeur qui s\u2019ouvrira.</p>
     <form id="f-import-modele" class="form-grid" style="margin-top:12px">
       <label class="full">Contrat PDF *<input type="file" name="file" accept="application/pdf" required></label>
       <label class="full">Nom du modèle<input name="nom" placeholder="(par défaut : nom du fichier)"></label>
@@ -3418,7 +3464,7 @@ window.formDocSignature = async () => {
   const actifs = residents.filter((r) => r.actif !== false && r.email);
   openDrawer(`
     <h2>Déposer un document à signer</h2>
-    <p class="muted" style="margin-top:4px">PDF uniquement. Tu placeras ensuite les zones de signature sur le document.</p>
+    <p class="muted" style="margin-top:4px">PDF uniquement. Vous placerez ensuite les zones de signature sur le document.</p>
     <form id="f-docsig" class="form-grid" style="margin-top:14px">
       <label class="full">Fichier PDF *<input type="file" name="file" accept="application/pdf" required></label>
       <label class="full">Titre *<input name="titre" required placeholder="Contrat de location — emplacement 077"></label>
@@ -3832,7 +3878,7 @@ async function vueParametres() {
           <button class="btn btn-ghost btn-sm" data-act="importerModeleContrat" title="Dépose un contrat PDF existant : Locamp en extrait le texte pour en faire un modèle">Importer un PDF</button>
           <button class="btn btn-primary btn-sm" data-act="formModeleContrat">Nouveau modèle</button>
         </div></div>
-      <p class="muted">Un modèle = le texte de ton contrat avec des variables (nom du résident, emplacement, montant, dates) remplies automatiquement à la création. Chaque camping a ses propres modèles.</p>
+      <p class="muted">Un modèle = le texte de votre contrat avec des variables (nom du résident, emplacement, montant, dates) remplies automatiquement à la création. Chaque camping a ses propres modèles.</p>
       <div id="modeles-zone" class="muted" style="margin-top:10px">Chargement&hellip;</div>
     </div>
 
@@ -3919,7 +3965,7 @@ async function vueParametres() {
         <td class="right">${eur(Number(a.prix_ht) * (1 + Number(a.taux_tva || 0) / 100))}</td>
         <td class="right">${Number(a.taux_tva)} %</td>
         <td class="right"><button class="btn btn-ghost btn-sm" data-act="supprimerArticle" data-a1="${a.id}">Retirer</button></td>
-      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoute ton premier ci-dessous.</td></tr>';
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun article. Ajoutez le premier ci-dessous.</td></tr>';
   };
   renderArts(articles);
 
