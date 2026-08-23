@@ -727,7 +727,6 @@ window.messageRapide = async (presetResidentId) => {
 
 /* ---------- Carte du camping (plan réel : emplacements + décor) ---------- */
 const STATUT_COLOR = { libre: '#1E5C4A', occupe: '#2C5282', reserve: '#C98B2D', indisponible: '#8A8A8A', impaye: '#B3492F' };
-window.statutReel = (e) => statutReel(e);
 const CARTE_W = 1000, CARTE_H = 620, CARTE_PAD = 20;
 const SNAP = 10;                       // aimantation à la grille
 let carteState = null;
