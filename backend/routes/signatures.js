@@ -241,4 +241,50 @@ router.delete('/:id', requirePerm('gerer_residents'), async (req, res) => {
   } catch (e) { console.error('[sign:delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+
+// GET /api/signatures/:id/recap  -> PDF du dossier de preuve
+// buildRecapPdf existait deja dans lib/pdf.js et le bouton appelait deja cette
+// adresse : seul le fil entre les deux manquait.
+router.get('/:id/recap', async (req, res) => {
+  try {
+    const { data: doc } = await supabase.from('documents_signature').select('*')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!doc) return res.status(404).json({ error: 'Document introuvable' });
+    if (doc.statut !== 'signe') {
+      return res.status(400).json({ error: 'Le récapitulatif n\u2019existe qu\u2019une fois le document signé.' });
+    }
+
+    const [camping, resident, preuve] = await Promise.all([
+      supabase.from('campings').select('nom,raison_sociale,adresse,email,siret')
+        .eq('id', req.activeCampingId).maybeSingle(),
+      doc.resident_id
+        ? supabase.from('residents').select('civilite,nom,prenom,email,adresse')
+            .eq('id', doc.resident_id).maybeSingle()
+        : Promise.resolve({ data: {} }),
+      supabase.from('signatures_preuves').select('*').eq('document_id', doc.id).maybeSingle(),
+    ]);
+
+    const { buildRecapPdf } = require('../lib/pdf');
+    const pdf = await buildRecapPdf({
+      camping: camping.data || {},
+      resident: resident.data || {},
+      document: doc,
+      preuve: preuve.data || null,
+    });
+
+    /* Consulter un dossier de preuve est un acte : il laisse une trace, au
+       meme titre que le telechargement d'un contrat. */
+    await writeAudit(req, { action: 'access', entite: 'documents_signature',
+      entite_id: doc.id, apres: { titre: doc.titre, piece: 'recapitulatif' } });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      'inline; filename="recapitulatif-' + String(doc.id).slice(0, 8) + '.pdf"');
+    res.send(pdf);
+  } catch (e) {
+    console.error('[sign:recap]', e.message);
+    res.status(500).json({ error: 'Récapitulatif impossible : ' + e.message });
+  }
+});
+
 module.exports = router;
