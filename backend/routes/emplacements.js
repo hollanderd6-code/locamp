@@ -24,7 +24,18 @@ router.get('/', async (req, res) => {
     if (req.query.type) q = q.eq('type', req.query.type);
     const { data, error } = await q.order('numero');
     if (error) throw error;
-    res.json({ emplacements: data });
+
+    /* Le resident rattache voyage avec l'emplacement : c'est lui qui dit si
+       l'emplacement est occupe. La colonne « statut » ne le sait pas — rien
+       ne la met a jour quand quelqu'un s'installe. */
+    const { data: ress } = await supabase.from('residents')
+      .select('id,nom,prenom,emplacement_id')
+      .eq('camping_id', req.activeCampingId).not('emplacement_id', 'is', null);
+
+    const byEmp = {};
+    (ress || []).forEach((r) => { byEmp[r.emplacement_id] = { id: r.id, nom: r.nom, prenom: r.prenom }; });
+
+    res.json({ emplacements: (data || []).map((e) => ({ ...e, resident: byEmp[e.id] || null })) });
   } catch (e) {
     console.error('[emplacements:list]', e.message);
     res.status(500).json({ error: 'Erreur serveur' });

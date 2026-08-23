@@ -727,6 +727,7 @@ window.messageRapide = async (presetResidentId) => {
 
 /* ---------- Carte du camping (plan réel : emplacements + décor) ---------- */
 const STATUT_COLOR = { libre: '#1E5C4A', occupe: '#2C5282', reserve: '#C98B2D', indisponible: '#8A8A8A', impaye: '#B3492F' };
+window.statutReel = (e) => statutReel(e);
 const CARTE_W = 1000, CARTE_H = 620, CARTE_PAD = 20;
 const SNAP = 10;                       // aimantation à la grille
 let carteState = null;
@@ -816,9 +817,25 @@ async function vueCarte() {
   renderCarte();
 }
 
+/* Le statut reel d'un emplacement.
+
+   La colonne « statut » ne se met pas a jour toute seule : personne ne la
+   passe a « occupe » quand un resident arrive. S'y fier affichait un camping
+   complet comme entierement libre. Un emplacement est occupe parce qu'un
+   resident y habite — c'est une consequence, pas une saisie.
+
+   Les deux etats qui ne se deduisent de rien (travaux, reservation a venir)
+   restent saisis a la main et sont respectes, mais jamais au point de nier
+   un resident present. */
+function statutReel(e) {
+  if (e.resident) return 'occupe';
+  if (e.statut === 'indisponible' || e.statut === 'reserve') return e.statut;
+  return 'libre';
+}
+
 function carteColor(e) {
-  const imp = e.resident && carteState.enRetard.has(e.resident.id);
-  return imp ? STATUT_COLOR.impaye : (STATUT_COLOR[e.statut] || '#999');
+  if (e.resident && carteState.enRetard.has(e.resident.id)) return STATUT_COLOR.impaye;
+  return STATUT_COLOR[statutReel(e)] || '#999';
 }
 function carteCoords(e) {
   if (carteState.dirty.has(e.id)) return carteState.dirty.get(e.id);
@@ -2169,8 +2186,11 @@ window.formResident = async (id = null) => {
     api('/api/emplacements'),
     id ? api('/api/residents/' + id).then((d) => d.resident) : Promise.resolve(null),
   ]);
-  // à la modification, on garde l'emplacement actuel dans la liste (il n'est plus « libre »)
-  const dispo = emplacements.filter((e) => e.statut === 'libre' || (r && e.id === r.emplacement_id));
+  /* Meme deduction que sur la carte : la colonne « statut » ne dit pas qui
+     habite ou. S'y fier proposait des emplacements deja occupes, et ecartait
+     des emplacements libres mal etiquetes. On garde l'emplacement actuel du
+     resident a la modification — il n'est plus libre, mais c'est le sien. */
+  const dispo = emplacements.filter((e) => statutReel(e) === 'libre' || (r && e.id === r.emplacement_id));
   const v = (k) => esc((r && r[k]) || '');
   openDrawer(`
     <h2>${r ? 'Modifier le résident' : 'Nouveau résident'}</h2>
