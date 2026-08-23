@@ -849,6 +849,27 @@ const nbModifs = () => carteState.dirty.size + carteState.dirtyElems.size;
 
 /* ------------------------------- rendu ------------------------------- */
 
+/* Le nom d'une allee, sans son trace. Dessine dans une couche posee apres les
+   pastilles : en SVG le dernier dessine passe au-dessus, et les pastilles
+   hachaient les noms d'allees des zones denses. Rend une chaine vide pour
+   tout ce qui n'est pas une allee nommee. */
+function dessinerLibelleAllee(el) {
+  const v = elemVals(el);
+  const def = ELEM_DEFS[v.type] || {};
+  if (def.forme !== 'ligne' || v.type !== 'allee') return '';
+  const lib = v.libelle || def.lib || '';
+  if (!lib) return '';
+
+  const x2 = v.x2 ?? v.x + (def.long || 200), y2 = v.y2 ?? v.y;
+  const mx = v.x + (x2 - v.x) * 0.32, my = v.y + (y2 - v.y) * 0.32;
+  const angle = Math.atan2(y2 - v.y, x2 - v.x) * 180 / Math.PI;
+  const larg = lib.length * 6.6 + 18;
+
+  return `<g transform="rotate(${angle} ${mx} ${my})">
+    <rect class="celem-allee-bg" x="${mx - larg / 2}" y="${my - 8}" width="${larg}" height="16" rx="8"></rect>
+    <text class="celem-allee" x="${mx}" y="${my}">${esc(lib)}</text></g>`;
+}
+
 function dessinerElement(el, edit) {
   const v = elemVals(el);
   const def = ELEM_DEFS[v.type] || {};
@@ -867,9 +888,8 @@ function dessinerElement(el, edit) {
       <line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="${allee ? '#E4DCC8' : '#8A8A7E'}"
         stroke-width="${allee ? 22 : 4}" stroke-linecap="round" ${allee ? '' : 'stroke-dasharray="9 7"'}></line>
       ${allee ? `<line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="#F7F2E4" stroke-width="16" stroke-linecap="round"></line>` : ''}
-      ${lib && allee ? `<g transform="rotate(${angle} ${mx} ${my})">
-        <rect class="celem-allee-bg" x="${mx - larg / 2}" y="${my - 8}" width="${larg}" height="16" rx="8"></rect>
-        <text class="celem-allee" x="${mx}" y="${my}">${esc(lib)}</text></g>` : ''}
+      ${/* le libelle est dessine par dessinerLibelleAllee, dans une couche
+            posee APRES les pastilles — sinon elles le recouvrent */ ''}
       ${edit && sel ? `<circle class="handle" data-h="a" cx="${v.x}" cy="${v.y}" r="7"></circle>
                        <circle class="handle" data-h="b" cx="${x2}" cy="${y2}" r="7"></circle>` : ''}
     </g>`;
@@ -911,6 +931,7 @@ function renderCarte() {
   st.emplacements.forEach((e) => (carteCoords(e) ? placed : unplaced).push(e));
 
   const decor = st.elements.map((el) => dessinerElement(el, edit)).join('');
+  const alleeLibelles = st.elements.map((el) => dessinerLibelleAllee(el)).join('');
   const pins = placed.map((e) => {
     const c = carteCoords(e);
     const x = carteClamp(c.coord_x, CARTE_PAD, CARTE_W - CARTE_PAD);
@@ -947,6 +968,7 @@ function renderCarte() {
           <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
             <g class="layer-decor">${decor}</g>
             <g class="layer-pins">${pins}</g>
+            <g class="layer-allees">${alleeLibelles}</g>
           </svg>
           <div class="map-legend">
             <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>

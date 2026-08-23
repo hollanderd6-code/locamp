@@ -870,3 +870,11 @@ input:-webkit-autofill:active{
 .compta-exercice{font-size:13px;color:var(--muted);text-align:right;line-height:1.5}
 .compta-exercice strong{display:block;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
 @media (max-width:640px){.compta-exercice{text-align:left;margin-top:6px}}
+
+
+/* ── Carte : couche des noms d'allées ──
+   Posée après les pastilles pour rester lisible. Transparente au clic :
+   sinon elle intercepterait la sélection en mode édition, le libellé se
+   plaçant au tiers de l'allée, juste au-dessus de sa zone de touche. */
+.layer-allees{pointer-events:none}
+.layer-allees .celem-allee-bg{fill:#F7F2E4;fill-opacity:.94}
