@@ -4216,7 +4216,13 @@ async function vueReglements() {
     <div class="card">
       <h2>Enregistrer un paiement</h2>
       <form id="f-reg" class="form-grid" style="margin-top:10px">
-        <label>Résident *<select name="resident_id" required>${residents.map((r) => `<option value="${r.id}">${esc(rmap[r.id])}</option>`).join('')}</select></label>
+        ${/* Sans option vide, un <select required> est considéré rempli par le
+             navigateur : valider sans y toucher enregistrait le paiement au nom
+             du PREMIER résident de la liste, avec lettrage automatique sur ses
+             factures. Le tiroir « Nouvelle facture » ouvre bien sur « choisir ». */''}
+        <label>Résident *<select name="resident_id" required>
+          <option value="">— choisir —</option>
+          ${residents.map((r) => `<option value="${r.id}">${esc(rmap[r.id])}</option>`).join('')}</select></label>
         <label>Moyen de paiement *<select name="mode" required>
           ${moyens.length
             ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
@@ -4226,18 +4232,45 @@ async function vueReglements() {
         <label>Référence<input name="reference" placeholder="n° chèque, n° titre ANCV, libellé virement…"></label>
         <div class="full"><button class="btn btn-primary">Encaisser (lettrage automatique)</button></div>
       </form>
-      ${moyens.length ? '' : '<p class="muted" style="margin-top:8px">Moyens de paiement par défaut — configure-les dans Administration.</p>'}
+      ${moyens.length ? '' : '<p class="muted" style="margin-top:8px">Moyens de paiement par défaut — configurez-les dans Administration.</p>'}
     </div>
     <div class="card"><table><thead><tr><th>Date</th><th>Résident</th><th>Moyen</th><th>Référence</th><th class="right">Montant</th></tr></thead>
     <tbody>${reglements.map((g) => `
-      <tr><td class="muted">${dfr(g.date_reglement)}</td><td>${esc(rmap[g.resident_id] || '—')}</td>
+      ${/* L'heure de saisie en infobulle : deux paiements de même date, même
+           résident, même montant et sans référence étaient indistinguables —
+           impossible de dire si c'était une double saisie. */''}
+      <tr><td class="muted"${g.created_at ? ` title="Saisi le ${new Date(g.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}"` : ''}>${dfr(g.date_reglement)}</td><td>${esc(rmap[g.resident_id] || '—')}</td>
       <td class="muted">${esc(mlib[g.mode] || g.mode)}</td><td class="muted">${esc(g.reference || '—')}</td>
-      <td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun règlement enregistré.</td></tr>'}</tbody></table></div>`;
+      <td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun règlement enregistré.</td></tr>'}</tbody>
+    ${reglements.length ? `<tfoot><tr><td colspan="4" class="right muted">Total encaissé — ${reglements.length} règlement${reglements.length > 1 ? 's' : ''}</td>
+      <td class="right"><strong>${eur(reglements.reduce((s, g) => s + Number(g.montant || 0), 0))}</strong></td></tr></tfoot>` : ''}</table></div>`;
 
   $('#f-reg').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
     body.montant = Number(body.montant);
+    if (!body.resident_id) { toast('Choisissez le résident.', true); return; }
+    if (!(body.montant > 0)) { toast('Le montant doit être supérieur à zéro.', true); return; }
+
+    /* Un même montant, le même jour, pour le même résident : c'est peut-être
+       deux versements réels, c'est peut-être une double saisie. On ne bloque
+       pas — on force le regard, parce qu'après lettrage la correction demande
+       d'annuler un règlement déjà imputé sur des factures. */
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const doublonProbable = (reglements || []).some((g) =>
+      g.resident_id === body.resident_id
+      && String(g.date_reglement).slice(0, 10) === aujourdhui
+      && Math.abs(Number(g.montant) - body.montant) < 0.005
+      && String(g.mode) === String(body.mode));
+    if (doublonProbable) {
+      const ok = await askConfirm(
+        'Un paiement de ' + eur(body.montant) + ' a déjà été enregistré aujourd\u2019hui pour '
+        + (rmap[body.resident_id] || 'ce résident') + ', avec le même moyen.\n\n'
+        + 'S\u2019agit-il bien d\u2019un second versement ?'
+      );
+      if (!ok) return;
+    }
+
     try { await api('/api/reglements', { method: 'POST', body }); toast('Paiement enregistré et lettré'); route(); }
     catch (err) { toast(err.message, true); }
   });
@@ -4284,7 +4317,14 @@ async function chargerRemises() {
       : '<span class="badge emise">remise</span>';
 
     zone.innerHTML = `
-      ${blocsAttente || '<div class="card"><p class="muted" style="margin:0">Aucun règlement en attente de remise (chèques, ANCV…).</p></div>'}
+      ${blocsAttente || `<div class="card"><p class="muted" style="margin:0">Aucun règlement en attente de remise${(() => {
+        /* Le message énumérait « chèques, ANCV » en dur, alors que « se remet en
+           banque » est une case à cocher par moyen dans Administration : un
+           camping peut y mettre les espèces, et la remise R-2026-001 le prouve.
+           On nomme donc ce qui est réellement configuré. */
+        const noms = (moyens || []).filter((m) => m.remisable).map((m) => m.libelle);
+        return noms.length ? ' (' + noms.join(', ') + ')' : '';
+      })()}.</p></div>`}
       <div class="card">
         <h2>Remises en banque</h2>
         ${(remises || []).length ? `<table><thead><tr><th>N°</th><th>Date</th><th>Moyen</th><th>Banque</th><th>Titres</th><th class="right">Total</th><th>Statut</th><th></th></tr></thead>
@@ -4298,7 +4338,7 @@ async function chargerRemises() {
           <td>${badgeStatut(r.statut)}${r.motif_annulation ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(r.motif_annulation)}</div>` : ''}</td>
           <td class="right">
             <button class="btn btn-ghost btn-sm" data-act="pdfRemise" data-a1="${r.id}" data-a2="${esc(r.numero)}">Bordereau</button>
-            ${r.statut === 'remise' ? `<button class="btn btn-ghost btn-sm" data-act="encaisserRemise" data-a1="${r.id}">Encaissée ✓</button>` : ''}
+            ${r.statut === 'remise' ? `<button class="btn btn-ghost btn-sm" data-act="encaisserRemise" data-a1="${r.id}">Marquer encaissée</button>` : ''}
             ${r.statut !== 'annulee' ? `<button class="btn btn-ghost btn-sm" data-act="annulerRemise" data-a1="${r.id}" data-a2="${esc(r.numero)}" data-a3="${r.statut === 'encaissee'}" data-bool="3">Annuler</button>` : ''}
           </td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune remise.</p>'}
       </div>`;
