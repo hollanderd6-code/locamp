@@ -65,6 +65,26 @@ router.post('/lettrer', requirePerm('encaisser'), async (req, res) => {
   } catch (e) { console.error('[reglements:lettrer]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// POST /api/reglements/relettrer  { resident_id }
+// Remet a plat l'imputation des paiements d'un resident. Reserve a l'admin :
+// l'operation reecrit toutes ses affectations.
+router.post('/relettrer', requireRole('admin'), async (req, res) => {
+  try {
+    const residentId = req.body && req.body.resident_id;
+    if (!residentId) return res.status(400).json({ error: 'resident_id requis' });
+
+    const { relettrerResident } = require('../lib/lettrage');
+    const r = await relettrerResident(req.activeCampingId, residentId);
+
+    await writeAudit(req, { action: 'update', entite: 'residents', entite_id: residentId,
+      apres: { relettrage: true, reglements: r.remis, affecte: r.affecte, factures: r.factures } });
+    res.json(r);
+  } catch (e) {
+    console.error('[reglements:relettrer]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/', requirePerm('encaisser'), async (req, res) => {
   try {
     const { resident_id, mode, montant, date_reglement, reference, statut_cheque } = req.body || {};

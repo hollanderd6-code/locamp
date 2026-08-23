@@ -65,4 +65,36 @@ async function appliquerCredit(campingId, residentId, factureId = null) {
   return { affecte: total, factures: touchees.size };
 }
 
-module.exports = { appliquerCredit };
+/* Remet a plat l'imputation d'un resident : vide les affectations de tous
+   ses reglements, puis les refait dans l'ordre chronologique.
+
+   Les MONTANTS encaisses ne bougent pas — seule leur imputation change. La
+   chaine d'inalterabilite scelle mode, date, montant et reference, pas les
+   affectations (voir l'en-tete de ce fichier). Rien de fiscal n'est touche.
+
+   C'est ce qui repare les dossiers ou le meme paiement a ete impute
+   plusieurs fois faute de montant_regle a jour. */
+async function relettrerResident(campingId, residentId) {
+  if (!campingId || !residentId) return { remis: 0, affecte: 0, factures: 0 };
+
+  const { data: regs, error } = await supabase.from('reglements')
+    .select('id,affectations').eq('camping_id', campingId).eq('resident_id', residentId);
+  if (error) throw error;
+
+  /* Les factures a recalculer : celles que les anciennes affectations
+     touchaient, plus celles que les nouvelles toucheront. Sans la premiere
+     moitie, une facture qui perd son imputation garderait son ancien solde. */
+  const aRecalculer = new Set();
+  for (const r of (regs || [])) {
+    for (const a of (r.affectations || [])) if (a.facture_id) aRecalculer.add(a.facture_id);
+    if ((r.affectations || []).length) {
+      await supabase.from('reglements').update({ affectations: [] }).eq('id', r.id);
+    }
+  }
+  for (const fid of aRecalculer) await recomputeFacture(campingId, fid);
+
+  const r = await appliquerCredit(campingId, residentId);
+  return { remis: (regs || []).length, affecte: r.affecte, factures: r.factures };
+}
+
+module.exports = { appliquerCredit, relettrerResident };

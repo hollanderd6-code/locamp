@@ -6,9 +6,21 @@ async function recomputeFacture(campingId, factureId) {
     .select('id,total_ttc,statut').eq('camping_id', campingId).eq('id', factureId).maybeSingle();
   if (!facture || ['avoir', 'annulee'].includes(facture.statut)) return;
 
-  const { data: regs } = await supabase.from('reglements')
+  /* .contains() avec un TABLEAU JS serialise en tableau Postgres —
+     join(',') sur des objets donne « cs.{[object Object]} », qui ne
+     matche jamais. .filter(…, 'cs', …) passe la valeur telle quelle :
+     affectations=cs.[{"facture_id":"…"}], la syntaxe du containment JSONB. */
+  const { data: regs, error: errRegs } = await supabase.from('reglements')
     .select('affectations').eq('camping_id', campingId)
-    .contains('affectations', [{ facture_id: factureId }]);
+    .filter('affectations', 'cs', JSON.stringify([{ facture_id: factureId }]));
+
+  /* Ce bug a vecu parce qu'il ne disait rien : la requete echouait, le
+     resultat valait zero, et zero est un montant plausible. */
+  if (errRegs) {
+    console.error('[paiement:recompute] lecture des reglements impossible —',
+      'facture', factureId, ':', errRegs.message);
+    return;
+  }
 
   let regle = 0;
   for (const r of (regs || [])) {
@@ -18,6 +30,15 @@ async function recomputeFacture(campingId, factureId) {
   }
   regle = Math.round(regle * 100) / 100;
   const ttc = Number(facture.total_ttc || 0);
+
+  /* Plafond : on n'impute jamais plus que le du. Un calcul juste n'en a pas
+     besoin — c'est pour le jour ou il cessera de l'etre. Sans lui, un
+     trop-percu passe la facture en « soldee » et on cesse de la relancer. */
+  if (ttc > 0 && regle > ttc) {
+    console.warn('[paiement:recompute] affectations superieures au du —',
+      'facture', factureId, ':', regle, '>', ttc);
+    regle = Math.round(ttc * 100) / 100;
+  }
   let statut = 'emise';
   if (ttc > 0 && regle >= ttc) statut = 'reglee';
   else if (regle > 0) statut = 'partielle';
