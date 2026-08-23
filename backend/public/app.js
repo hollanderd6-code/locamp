@@ -1627,8 +1627,14 @@ async function vueFicheClient(id) {
       ${banItem(eur(syn.a_facturer), 'À facturer', syn.a_facturer > 0 ? 'warn' : '')}
       ${banItem(eur(syn.a_regler), 'À régler', syn.a_regler > 0 ? 'bad' : '')}
       ${banItem(eur(syn.regle_total), 'Réglé (total)')}
-      ${banItem(`${syn.nb_sejours} <small>(${syn.nb_nuits} nuits)</small>`, 'Séjours')}
-      ${banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <small>→ ${dfr(syn.dernier_sejour.au)}</small>` : '—', 'Dernier séjour')}
+      ${/* passage seulement — vocabulaire d'hotellerie : sur un resident a
+            l'annee ces deux cases afficheraient « 0 » et « — » pendant toute
+            la vie du dossier, et devalueraient les chiffres voisins. C'est la
+            donnee qui decide, pas un reglage. */
+        (Number(syn.nb_sejours) > 0 || syn.dernier_sejour)
+          ? banItem(`${syn.nb_sejours} <small>(${syn.nb_nuits} nuits)</small>`, 'Séjours')
+            + banItem(syn.dernier_sejour ? `${dfr(syn.dernier_sejour.du)} <small>→ ${dfr(syn.dernier_sejour.au)}</small>` : '—', 'Dernier séjour')
+          : ''}
       ${banItem(eur(syn.cautions_en_cours), 'Cautions')}
     </div>` : ''}
 
