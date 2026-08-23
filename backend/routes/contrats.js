@@ -115,12 +115,24 @@ router.post('/', requireRole('admin', 'gestionnaire'), async (req, res) => {
     }).select().single();
     if (error) throw error;
 
-    // génération PDF
-    const full = await loadFullContrat(req.activeCampingId, contrat.id);
-    const { path, hash } = await genererPdfNonSigne(full);
-    const { data: updated } = await supabase.from('contrats')
-      .update({ pdf_path: path, hash_document: hash, statut: 'emis' })
-      .eq('id', contrat.id).select().single();
+    /* Le contrat est insere, il reste a lui donner son PDF. Si cette seconde
+       etape echoue, on retire le contrat : sans PDF il ne peut ni etre
+       telecharge, ni envoye en signature, ni marque signe — un brouillon
+       inerte que rien ne permet meme de supprimer. Un contrat existe
+       entierement ou pas du tout. */
+    let updated;
+    try {
+      const full = await loadFullContrat(req.activeCampingId, contrat.id);
+      const g = await genererPdfNonSigne(full);
+      const r = await supabase.from('contrats')
+        .update({ pdf_path: g.path, hash_document: g.hash, statut: 'emis' })
+        .eq('id', contrat.id).select().single();
+      updated = r.data;
+    } catch (ePdf) {
+      await supabase.from('contrats').delete().eq('id', contrat.id);
+      console.error('[contrats:create] PDF impossible, contrat retire —', ePdf.message);
+      return res.status(500).json({ error: 'Génération du PDF impossible : ' + ePdf.message });
+    }
 
     await writeAudit(req, { action: 'create', entite: 'contrats', entite_id: contrat.id,
       apres: { numero, resident_id, statut: 'emis' } });
@@ -250,10 +262,19 @@ router.post('/:id/renouveler', requireRole('admin', 'gestionnaire'), async (req,
     }).select().single();
     if (error) throw error;
 
-    const full2 = await loadFullContrat(req.activeCampingId, neuf.id);
-    const { path, hash } = await genererPdfNonSigne(full2);
-    await supabase.from('contrats').update({ pdf_path: path, hash_document: hash, statut: 'emis' })
-      .eq('id', neuf.id);
+    let path;
+    try {
+      const full2 = await loadFullContrat(req.activeCampingId, neuf.id);
+      const g = await genererPdfNonSigne(full2);
+      path = g.path;
+      await supabase.from('contrats').update({ pdf_path: g.path, hash_document: g.hash, statut: 'emis' })
+        .eq('id', neuf.id);
+    } catch (ePdf) {
+      // Meme regle qu'a la creation : pas de contrat sans PDF.
+      await supabase.from('contrats').delete().eq('id', neuf.id);
+      console.error('[contrats:renouveler] PDF impossible, contrat retire —', ePdf.message);
+      return res.status(500).json({ error: 'Génération du PDF impossible : ' + ePdf.message });
+    }
 
     await writeAudit(req, { action: 'contrat.renouvellement', entite: 'contrats', entite_id: neuf.id,
       avant: { ancien: anc.id, numero: anc.numero }, apres: { numero, date_debut, date_fin, montant_mensuel } });
@@ -334,6 +355,61 @@ router.post('/:id/signer-papier', requireRole('admin', 'gestionnaire'), upload.s
       apres: { numero: c.numero, scan_joint: scan } });
     res.json({ ok: true, scan_joint: scan });
   } catch (e) { console.error('[contrats:signer-papier]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// ---------- POST regenerer-pdf : reprendre un brouillon reste sans PDF ----------
+// Repare les contrats crees avant que la creation ne nettoie derriere elle.
+router.post('/:id/regenerer-pdf', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const full = await loadFullContrat(req.activeCampingId, req.params.id);
+    if (!full) return res.status(404).json({ error: 'Contrat introuvable' });
+    if (full.contrat.statut === 'signe') {
+      return res.status(409).json({ error: 'Contrat signé : le PDF est scellé.' });
+    }
+
+    const { path: p, hash } = await genererPdfNonSigne(full);
+    const patch = { pdf_path: p, hash_document: hash };
+    // Un brouillon qui obtient enfin son PDF rejoint le circuit normal.
+    if (full.contrat.statut === 'brouillon') patch.statut = 'emis';
+
+    const { data, error } = await supabase.from('contrats').update(patch)
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).select().single();
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'update', entite: 'contrats', entite_id: data.id,
+      apres: { numero: data.numero, statut: data.statut, pdf: 'regenere' } });
+    res.json({ contrat: data });
+  } catch (e) {
+    console.error('[contrats:regenerer-pdf]', e.message);
+    res.status(500).json({ error: 'Génération du PDF impossible : ' + e.message });
+  }
+});
+
+// ---------- DELETE : brouillons uniquement ----------
+// Un contrat emis ou signe est une piece : il se resilie, il ne s'efface pas.
+router.delete('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: c } = await supabase.from('contrats').select('id,numero,statut,pdf_path')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!c) return res.status(404).json({ error: 'Contrat introuvable' });
+    if (c.statut !== 'brouillon') {
+      return res.status(409).json({
+        error: 'Seul un brouillon peut être supprimé. Un contrat émis ou signé se résilie.'
+      });
+    }
+
+    if (c.pdf_path) await removeDocument(c.pdf_path).catch(() => {});
+    const { error } = await supabase.from('contrats').delete()
+      .eq('camping_id', req.activeCampingId).eq('id', c.id);
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'delete', entite: 'contrats', entite_id: c.id,
+      avant: { numero: c.numero, statut: c.statut } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[contrats:delete]', e.message);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 module.exports = router;

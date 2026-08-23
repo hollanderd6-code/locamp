@@ -1805,6 +1805,11 @@ async function vueFicheClient(id) {
             ${c.statut !== 'signe' && c.statut !== 'brouillon' ? `
               <button class="btn btn-ghost btn-sm" data-act="contratVersSignature" data-a1="${c.id}" title="Signature électronique par e-mail">Envoyer en signature</button>
               <button class="btn btn-ghost btn-sm" data-act="signerContratPapier" data-a1="${c.id}" title="Le résident a signé sur papier : marquer signé (scan facultatif)">Signé (papier)</button>` : ''}
+            ${/* Un brouillon est un contrat dont le PDF n'a pas abouti : sans lui
+                 aucune suite n'est possible. Deux issues, reprendre ou jeter. */
+              c.statut === 'brouillon' ? `
+              <button class="btn btn-ghost btn-sm" data-act="regenererContrat" data-a1="${c.id}" title="Le PDF n'a pas été généré : réessayer">Réessayer</button>
+              <button class="btn btn-ghost btn-sm" data-act="supprimerContrat" data-a1="${c.id}" data-a2="${esc(c.numero || '')}" title="Supprimer ce brouillon">Supprimer</button>` : ''}
           </td></tr>`).join('')}</tbody></table>` : '<p class="muted" style="margin-top:8px">Aucun contrat. « Nouveau contrat » le génère depuis un modèle, puis signature en ligne ou sur papier.</p>'}
       </div>
 
@@ -3303,6 +3308,24 @@ window.majTermeDoc = async (id, val) => {
     await api(`/api/signatures/${id}/dates`, { method: 'PUT', body: { date_fin: val || null } });
     toast(val ? 'Terme mis à jour — le document est suivi dans les échéances' : 'Terme retiré');
   } catch (e) { toast(e.message || 'Erreur', true); route(); }
+};
+
+window.regenererContrat = async (id) => {
+  try {
+    await api(`/api/contrats/${id}/regenerer-pdf`, { method: 'POST' });
+    toast('Contrat émis — PDF généré');
+    route();
+  } catch (e) { toast(e.message || 'Erreur', true); }
+};
+
+window.supprimerContrat = async (id, numero) => {
+  if (!await askConfirm(`Supprimer le brouillon ${numero || ''} ?\n\nIl n'a pas de PDF et n'a jamais été envoyé.`,
+    { titre: 'Supprimer le brouillon', ok: 'Supprimer', danger: true })) return;
+  try {
+    await api(`/api/contrats/${id}`, { method: 'DELETE' });
+    toast('Brouillon supprimé');
+    route();
+  } catch (e) { toast(e.message || 'Erreur', true); }
 };
 
 window.telechargerContrat = async (id) => {
