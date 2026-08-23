@@ -1492,8 +1492,16 @@ async function vueResidents() {
         <input class="search" id="res-search" placeholder="Rechercher nom, e-mail, emplacement…">
         <button class="btn btn-primary" data-act="formResident">Nouveau résident</button>
       </div></div>
-    <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th><th>Conformité</th><th class="right">Solde</th></tr></thead>
-    <tbody id="res-body"></tbody></table></div>`;
+    <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th>
+      <th>Conformité<span class="conf-cle">A assurance · C contrat</span></th>
+      <th class="right">Solde</th></tr></thead>
+    <tbody id="res-body"></tbody></table>
+    <div class="conf-legende">
+      <span><i style="background:var(--vert,#3f7d4e)"></i>à jour</span>
+      <span><i style="background:var(--orange,#c07a1f)"></i>expire bientôt</span>
+      <span><i style="background:var(--rouge,#b03a2e)"></i>manquante ou expirée</span>
+      <span class="conf-legende-note">Survolez une pastille pour la date.</span>
+    </div></div>`;
   const J = 86400000;
   const pastille = (lettre, etat, titre) => {
     const c = etat === 'ok' ? 'var(--vert,#3f7d4e)' : etat === 'bientot' ? 'var(--orange,#c07a1f)' : 'var(--rouge,#b03a2e)';
