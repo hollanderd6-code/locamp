@@ -4202,6 +4202,30 @@ window.faireAvoir = async (id) => {
 };
 
 /* ---------- Règlements ---------- */
+
+/** Ce qu'on attend comme référence, par TYPE de moyen de paiement.
+    La règle suit le type configuré dans Administration, pas une liste de
+    codes : un moyen ajouté demain (« Chèque BNP », code maison) hérite de
+    la règle du moment qu'il est typé « cheque ». Une liste de codes
+    l'aurait oublié en silence.
+
+    obligatoire : sans cette référence, la ligne du relevé bancaire ne peut
+    plus être reliée à l'encaissement au moment du rapprochement. */
+const REF_PAR_TYPE = {
+  cheque:   { requis: true,  aide: 'N° du chèque', exemple: 'ex. 7845213' },
+  virement: { requis: true,  aide: 'Libellé du virement', exemple: 'tel qu\u2019il apparaît sur le relevé' },
+  ancv:     { requis: true,  aide: 'N° du titre ANCV', exemple: 'ex. 0123456789' },
+  espece:   { requis: false, aide: 'Référence', exemple: 'facultatif — rien à référencer' },
+  carte:    { requis: false, aide: 'Référence', exemple: 'facultatif — n° de ticket TPE' },
+  stripe:   { requis: false, aide: 'Référence', exemple: 'facultatif' },
+  autre:    { requis: false, aide: 'Référence', exemple: 'facultatif' },
+};
+/* Repli quand le moyen n'a pas de type connu : facultatif. Rendre
+   obligatoire un champ dont on ne sait pas ce qu'il doit contenir
+   bloquerait la saisie sans rien apprendre à personne. */
+const REF_DEFAUT = { requis: false, aide: 'Référence', exemple: 'facultatif' };
+function regleRef(type) { return REF_PAR_TYPE[String(type || '')] || REF_DEFAUT; }
+
 async function vueReglements() {
   const [{ reglements }, { residents }, moyRes] = await Promise.all([
     api('/api/reglements' + exQS()), api('/api/residents'),
@@ -4229,7 +4253,10 @@ async function vueReglements() {
             : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'}
         </select></label>
         <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
-        <label>Référence<input name="reference" placeholder="n° chèque, n° titre ANCV, libellé virement…"></label>
+        ${/* L'ancien texte d'aide énumérait les trois cas — « n° chèque, n° titre
+             ANCV, libellé virement… » — et laissait trier mentalement lequel
+             s'applique. Le libellé suit maintenant le moyen choisi. */''}
+        <label><span id="reg-ref-label">Référence</span><input name="reference" id="reg-ref"></label>
         <div class="full"><button class="btn btn-primary">Encaisser (lettrage automatique)</button></div>
       </form>
       ${moyens.length ? '' : '<p class="muted" style="margin-top:8px">Moyens de paiement par défaut — configurez-les dans Administration.</p>'}
@@ -4245,12 +4272,45 @@ async function vueReglements() {
     ${reglements.length ? `<tfoot><tr><td colspan="4" class="right muted">Total encaissé — ${reglements.length} règlement${reglements.length > 1 ? 's' : ''}</td>
       <td class="right"><strong>${eur(reglements.reduce((s, g) => s + Number(g.montant || 0), 0))}</strong></td></tr></tfoot>` : ''}</table></div>`;
 
+  /* Le type du moyen, par code : c'est lui qui décide si la référence est
+     obligatoire. moyens vient de /api/moyens-paiement ; sans configuration,
+     les deux options de repli portent leur type dans leur valeur. */
+  const typeParCode = {};
+  moyens.forEach((m) => { typeParCode[m.code] = m.type; });
+  if (!moyens.length) { typeParCode.espece = 'espece'; typeParCode.cheque = 'cheque'; }
+
+  const majChampRef = () => {
+    const champ = $('#reg-ref');
+    const lab = $('#reg-ref-label');
+    if (!champ || !lab) return;
+    const code = $('#f-reg').mode?.value;
+    const r = regleRef(typeParCode[code]);
+    lab.innerHTML = esc(r.aide) + (r.requis ? ' *' : '');
+    champ.placeholder = r.exemple;
+    champ.required = r.requis;
+  };
+  $('#f-reg').mode?.addEventListener('change', majChampRef);
+  majChampRef();
+
   $('#f-reg').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
     body.montant = Number(body.montant);
     if (!body.resident_id) { toast('Choisissez le résident.', true); return; }
     if (!(body.montant > 0)) { toast('Le montant doit être supérieur à zéro.', true); return; }
+
+    /* Refait ici et pas seulement par l'attribut required : changer le moyen
+       après avoir saisi la référence, ou l'inverse, ne doit pas passer entre
+       les mailles. Sans référence, un chèque ou un virement est introuvable
+       au rapprochement bancaire. */
+    const regle = regleRef(typeParCode[body.mode]);
+    if (regle.requis && !String(body.reference || '').trim()) {
+      const nom = (mlib[body.mode] || body.mode || 'ce moyen').toLowerCase();
+      toast(regle.aide + ' obligatoire pour un paiement par ' + nom
+        + ' : sans elle, l\u2019encaissement ne pourra pas être retrouvé au rapprochement bancaire.', true);
+      $('#reg-ref')?.focus();
+      return;
+    }
 
     /* Un même montant, le même jour, pour le même résident : c'est peut-être
        deux versements réels, c'est peut-être une double saisie. On ne bloque
