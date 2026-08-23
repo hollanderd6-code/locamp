@@ -18,10 +18,20 @@
    ============================================================ */
 (function () {
   function lireArgs(el) {
+    // Un attribut HTML ne contient que du texte. data-num et data-bool
+    // disent quels arguments doivent redevenir un nombre ou un booléen :
+    // passer « 0 » là où la fonction attend 0 inverserait un test, et
+    // passer « false » là où elle attend false le rendrait vrai.
+    const nums = (el.getAttribute('data-num') || '').split(',').filter(Boolean);
+    const bools = (el.getAttribute('data-bool') || '').split(',').filter(Boolean);
     const out = [];
     for (let i = 1; i <= 6; i++) {
-      const v = el.getAttribute('data-a' + i);
+      let v = el.getAttribute('data-a' + i);
       if (v === null) break;
+      // @value : la valeur du champ au moment du clic, et non au rendu.
+      if (v === '@value') v = el.value;
+      else if (nums.includes(String(i))) v = Number(v);
+      else if (bools.includes(String(i))) v = (v === 'true' || v === '1');
       out.push(v);
     }
     return out;
@@ -41,6 +51,11 @@
   }
 
   document.addEventListener('click', function (e) {
+    // data-stop : cet élément absorbe le clic, sans rien déclencher.
+    // Sert aux cellules interactives dans une ligne elle-même cliquable.
+    const stop = e.target.closest('[data-stop]');
+    if (stop) { e.stopPropagation(); if (!stop.hasAttribute('data-act')) return; }
+
     const el = e.target.closest('[data-act]');
     if (!el) return;
     // Les éléments qui déclarent un autre événement ne réagissent pas au clic.
@@ -60,6 +75,56 @@
     }, true);
   });
 })();
+
+/* ---- Fonctions appelées par data-act ----------------------------
+   Elles remplacent du code qui vivait dans des attributs HTML. */
+
+/** Navigation interne. Remplace location.hash='…' écrit dans le HTML. */
+function allerA(hash) { location.hash = hash; }
+
+/** Retire la ligne à laquelle appartient le bouton.
+    Appelée avec this = l'élément cliqué (voir l'écouteur).
+    Sans sélecteur : le parent direct. Avec : le premier ancêtre qui
+    correspond — pour une ligne de facture, par exemple. */
+function retirerLigne(selecteur) {
+  const cible = selecteur ? this.closest(selecteur) : this.parentElement;
+  if (cible) cible.remove();
+}
+
+/** Onglets de la fiche camping : afficher l'onglet ET charger son
+    contenu. C'étaient deux appels enchaînés dans le HTML, répétés
+    quatre fois — ajouter un onglet demandait de ne pas oublier le
+    second. Ici, un seul endroit. */
+function ouvrirOngletParam(onglet) {
+  switchFicheTab(onglet);
+  const charge = {
+    moyens: typeof chargerMoyens === 'function' ? chargerMoyens : null,
+    journal: typeof chargerJournal === 'function' ? chargerJournal : null,
+    fiscal: typeof chargerFiscal === 'function' ? chargerFiscal : null,
+    rgpd: typeof chargerRgpd === 'function' ? chargerRgpd : null,
+  }[onglet];
+  if (charge) charge();
+}
+
+/** Exports comptables. L'URL était assemblée dans l'attribut onclick
+    en lisant deux champs — donc sans pouvoir vérifier qu'ils sont
+    remplis. Un export sur une période vide produisait un fichier vide
+    sans rien dire. */
+function exporterCompta(format) {
+  const debut = ($('#exp-debut') || {}).value || '';
+  const fin = ($('#exp-fin') || {}).value || '';
+  if (!debut || !fin) {
+    if (typeof toast === 'function') toast('Choisissez une date de début et une date de fin.');
+    return;
+  }
+  if (debut > fin) {
+    if (typeof toast === 'function') toast('La date de début est postérieure à la date de fin.');
+    return;
+  }
+  const q = '?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin);
+  if (format === 'fec') telechargerExport('/api/compta/fec' + q, 'FEC_' + fin + '.txt');
+  else telechargerExport('/api/compta/export.csv' + q, 'ecritures_' + debut + '_' + fin + '.csv');
+}
 const API = window.LOCAMP_API || '';   // '' en web (relatif) ; URL Render absolue en app mobile
 let TOKEN = localStorage.getItem('lc_token') || null;
 let CAMPINGS = [];
@@ -543,7 +608,7 @@ async function vueDashboard() {
           <td class="right">${x.type === 'contrat'
             ? `<button class="btn btn-ghost btn-sm" data-act="renouvelerContrat" data-a1="${x.contrat_id}" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
             : x.type === 'document'
-            ? `<button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'" title="Déposer la nouvelle version à signer">Voir / refaire</button>`
+            ? `<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/signatures" title="Déposer la nouvelle version à signer">Voir / refaire</button>`
             : (x.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="ouvrirConversation" data-a1="${x.resident_id}">Écrire</button>` : '')}</td>
         </tr>`).join('')}</tbody></table>
       ${echeances.length > 10 ? `<p class="muted" style="margin-top:8px">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
@@ -1305,7 +1370,7 @@ async function vueResidents() {
   };
   const render = (list) => {
     $('#res-body').innerHTML = list.map((r) => `
-      <tr class="row-click" onclick="location.hash='#/residents/${r.id}'">
+      <tr class="row-click" data-act="allerA" data-a1="#/residents/${r.id}">
         <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
         <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
         <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
@@ -1490,7 +1555,7 @@ async function vueFicheClient(id) {
                 <button class="btn btn-ghost btn-sm" data-act="editerLignesFacture" data-a1="${f.id}">Modifier</button>
                 <button class="btn btn-ghost btn-sm" data-act="supprimerBrouillon" data-a1="${f.id}">Supprimer</button>
                 <button class="btn btn-primary btn-sm" data-act="emettreFacture" data-a1="${f.id}">Émettre</button>` : ''}
-              ${payable ? `<button class="btn btn-primary btn-sm" onclick="encaisserFacture('${f.id}','${id}',${reste})">Encaisser</button>` : ''}
+              ${payable ? `<button class="btn btn-primary btn-sm" data-act="encaisserFacture" data-a1="${f.id}" data-a2="${id}" data-a3="${reste}" data-num="3">Encaisser</button>` : ''}
             </td>
           </tr>
           ${!brouillon && (payParFacture[f.id] || []).length ? `<tr class="pay-detail"><td colspan="7" style="padding:2px 8px 8px">
@@ -1586,7 +1651,7 @@ async function vueFicheClient(id) {
       <div class="card" style="margin-top:16px">
         <div class="card-actions"><h2 style="margin:0">Documents</h2>
           <button class="btn btn-ghost btn-sm" data-act="ajouterDocResident" data-a1="${id}" title="Attestation d\u2019assurance, contrat papier scanné, pièce d\u2019identité…">Ajouter un document</button></div>
-        ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" onclick="voirDoc('${d.id}');return false">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
+        ${documents.length ? `<ul class="list-tight">${documents.map((d) => `<li><span>${esc(d.type || 'document')} — ${esc(d.nom_fichier || '')}</span><a href="#" data-act="voirDoc" data-a1="${d.id}">ouvrir</a></li>`).join('')}</ul>` : '<p class="muted">Aucun document.</p>'}
       </div>
     </section>`;
 
@@ -1632,7 +1697,7 @@ window.chargerReleve = async (id, annee) => {
             <p class="muted" style="margin:4px 0 0">Historique chronologique : factures, avoirs et paiements, avec le solde après chaque opération.</p>
           </div>
           <div class="toolbar">
-            <select id="rel-annee" style="width:auto" onchange="chargerReleve('${id}', this.value)">
+            <select id="rel-annee" style="width:auto" data-act="chargerReleve" data-evt="change" data-a1="${id}" data-a2="@value">
               ${d.annees.map((a) => `<option value="${a}"${a === d.annee ? ' selected' : ''}>${a}</option>`).join('') || `<option>${d.annee}</option>`}
             </select>
             <button class="btn btn-primary btn-sm" data-act="relevePdf" data-a1="${id}">Relevé PDF</button>
@@ -1867,7 +1932,7 @@ window.formFacturation = async (residentId) => {
       <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : ''}" style="width:76px" title="Taux de TVA">
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:500" title="Ajuster au nombre de jours de présence (mois partiel)">
         <input name="prorata" type="checkbox" ${l.prorata ? 'checked' : ''} style="width:16px;height:16px"> prorata</label>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="retirerLigne">✕</button>
     </div>`;
   openDrawer(`
     <h2>Facturation récurrente</h2>
@@ -1922,7 +1987,7 @@ window.editerLignesFacture = async (factureId) => {
       <input name="quantite" type="number" step="0.01" value="${l.quantite != null ? l.quantite : 1}" style="width:66px" title="Quantité">
       <input name="pu_ttc" type="number" step="0.01" placeholder="PU TTC" value="${l.pu_ttc != null ? l.pu_ttc : ''}" style="width:96px" title="Prix unitaire TTC">
       <input name="taux_tva" type="number" step="0.1" placeholder="TVA %" value="${l.taux_tva != null ? l.taux_tva : 0}" style="width:76px" title="Taux de TVA">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="retirerLigne">✕</button>
     </div>`;
   // le PDF stocke pu_ht ; on réaffiche le TTC pour l'édition
   const enTtc = (l) => ({ ...l, pu_ttc: l.pu_ttc != null ? l.pu_ttc
@@ -2062,7 +2127,7 @@ window.encaisserFacture = async (factureId, residentId, reste) => {
       <select name="mode" style="flex:1">${opts}</select>
       <input name="montant" type="number" step="0.01" placeholder="Montant" value="${montant}" style="width:120px">
       <input name="reference" placeholder="Réf." style="width:100px">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()">✕</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="retirerLigne">✕</button>
     </div>`;
   openDrawer(`
     <h2>Encaisser sur la facture</h2>
@@ -2360,10 +2425,10 @@ async function vueAdministration() {
 
     <div class="fiche-tabs">
       <button class="fiche-tab active" data-tab="comptes" data-act="switchFicheTab" data-a1="comptes">Comptes (${utilisateurs.length})</button>
-      <button class="fiche-tab" data-tab="moyens" onclick="switchFicheTab('moyens');chargerMoyens()">Moyens de paiement</button>
-      <button class="fiche-tab" data-tab="journal" onclick="switchFicheTab('journal');chargerJournal()">Journal d'activité</button>
-      <button class="fiche-tab" data-tab="fiscal" onclick="switchFicheTab('fiscal');chargerFiscal()">Conformité fiscale</button>
-      <button class="fiche-tab" data-tab="rgpd" onclick="switchFicheTab('rgpd');chargerRgpd()">RGPD</button>
+      <button class="fiche-tab" data-tab="moyens" data-act="ouvrirOngletParam" data-a1="moyens">Moyens de paiement</button>
+      <button class="fiche-tab" data-tab="journal" data-act="ouvrirOngletParam" data-a1="journal">Journal d'activité</button>
+      <button class="fiche-tab" data-tab="fiscal" data-act="ouvrirOngletParam" data-a1="fiscal">Conformité fiscale</button>
+      <button class="fiche-tab" data-tab="rgpd" data-act="ouvrirOngletParam" data-a1="rgpd">RGPD</button>
     </div>
 
     <section data-panel="rgpd" class="hidden">
@@ -2734,7 +2799,7 @@ window.idxApercu = async () => {
         <td class="right"><strong>${eur(x.apres)}</strong></td>
       </tr>`).join('')}</tbody></table>
       <div style="margin-top:12px;text-align:right">
-        <button class="btn btn-primary" onclick="idxAppliquer(${taux})">Appliquer +${taux} % à ${concernes.filter((x) => x.source !== 'modele').length + modeles.length} loyer(s)/modèle(s)</button>
+        <button class="btn btn-primary" data-act="idxAppliquer" data-a1="${taux}" data-num="1">Appliquer +${taux} % à ${concernes.filter((x) => x.source !== 'modele').length + modeles.length} loyer(s)/modèle(s)</button>
       </div>`;
   } catch (e) { zone.innerHTML = `<span class="bad">${esc(e.message || 'Erreur')}</span>`; }
 };
@@ -2933,10 +2998,10 @@ async function vueSignatures() {
           <td class="muted">${(d.champs || []).length}</td>
           <td><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
           <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR') : '—'}</td>
-          <td onclick="event.stopPropagation()">${(() => {
+          <td data-stop>${(() => {
             const jr = d.date_fin ? Math.floor((new Date(d.date_fin) - new Date()) / 86400000) : null;
             const badge = jr == null ? '' : jr < 0 ? `<span class="badge en_retard" title="À refaire / re-signer">expiré</span> ` : jr <= 60 ? `<span class="badge partielle">${jr} j</span> ` : '';
-            return `${badge}<input type="date" value="${d.date_fin || ''}" onchange="majTermeDoc('${d.id}', this.value)" title="Terme du document — modifiable directement, les échéances suivent" style="width:130px;font-size:12px">`; })()}</td>
+            return `${badge}<input type="date" value="${d.date_fin || ''}" data-act="majTermeDoc" data-evt="change" data-a1="${d.id}" data-a2="@value" title="Terme du document — modifiable directement, les échéances suivent" style="width:130px;font-size:12px">`; })()}</td>
           <td class="right">
             ${d.statut === 'signe'
               ? `<button class="btn btn-ghost btn-sm" data-act="recapSignature" data-a1="${d.id}" title="Récapitulatif de transaction (dossier de preuve)">Récapitulatif</button>
@@ -3179,7 +3244,7 @@ window.editeurZones = async (id) => {
       <div><div class="eyebrow"><a href="#/signatures" style="color:inherit;text-decoration:none">← Signatures</a></div>
         <h1>${esc(doc.titre)}</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" onclick="location.hash='#/signatures'">Fermer</button>
+        <button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/signatures">Fermer</button>
         <button class="btn btn-primary btn-sm" data-act="enregistrerZones">Enregistrer les zones</button>
       </div>
     </div>
@@ -3357,7 +3422,7 @@ window.voirSignature = async (id) => {
       ${preuve.signature_png ? `<h2 style="margin-top:18px">Signature manuscrite</h2>
         <img src="${preuve.signature_png}" alt="signature" style="max-width:100%;border:1px solid var(--hairline);border-radius:8px;background:#fff;padding:8px">` : ''}
     ` : '<p class="muted">Dossier de preuve introuvable.</p>'}
-    <button class="btn btn-primary btn-block" style="margin-top:18px" onclick="window.open('${url}','_blank')">Ouvrir le document signé</button>`);
+    <a class="btn btn-primary btn-block" style="margin-top:18px" href="${url}" target="_blank" rel="noopener">Ouvrir le document signé</a>`);
 };
 
 /* ---------- Facturation electronique : connecteur Plateforme Agreee (OD) ---------- */
@@ -3746,7 +3811,7 @@ window.formFacture = async (presetResidentId, preset) => {
         <label >TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}"></label>
       </div>
       <div class="fac-foot">
-        <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.fac-ligne').remove()">Retirer la ligne</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="retirerLigne" data-a1=".fac-ligne">Retirer la ligne</button>
       </div>
     </div>`;
 
@@ -3943,7 +4008,7 @@ async function chargerRemises() {
           <td class="right">
             <button class="btn btn-ghost btn-sm" data-act="pdfRemise" data-a1="${r.id}" data-a2="${esc(r.numero)}">Bordereau</button>
             ${r.statut === 'remise' ? `<button class="btn btn-ghost btn-sm" data-act="encaisserRemise" data-a1="${r.id}">Encaissée ✓</button>` : ''}
-            ${r.statut !== 'annulee' ? `<button class="btn btn-ghost btn-sm" onclick="annulerRemise('${r.id}','${esc(r.numero)}',${r.statut === 'encaissee'})">Annuler</button>` : ''}
+            ${r.statut !== 'annulee' ? `<button class="btn btn-ghost btn-sm" data-act="annulerRemise" data-a1="${r.id}" data-a2="${esc(r.numero)}" data-a3="${r.statut === 'encaissee'}" data-bool="3">Annuler</button>` : ''}
           </td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune remise.</p>'}
       </div>`;
   } catch (e) {
@@ -4087,8 +4152,8 @@ async function vueCompta() {
       <div class="toolbar" style="margin-top:10px">
         <label style="margin:0">Du<input id="exp-debut" type="date" value="${ex.debut}"></label>
         <label style="margin:0">Au<input id="exp-fin" type="date" value="${ex.fin}"></label>
-        <button class="btn btn-primary" onclick="telechargerExport('/api/compta/fec?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'FEC_' + $('#exp-fin').value + '.txt')">Export FEC</button>
-        <button class="btn btn-ghost" onclick="telechargerExport('/api/compta/export.csv?debut=' + $('#exp-debut').value + '&fin=' + $('#exp-fin').value, 'ecritures_' + $('#exp-debut').value + '_' + $('#exp-fin').value + '.csv')">Écritures CSV</button>
+        <button class="btn btn-primary" data-act="exporterCompta" data-a1="fec">Export FEC</button>
+        <button class="btn btn-ghost" data-act="exporterCompta" data-a1="csv">Écritures CSV</button>
       </div>
     </div>`;
   majApercuCompte();
