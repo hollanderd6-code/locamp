@@ -554,7 +554,7 @@ async function vueDashboard() {
     <div class="page-head">
       <div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" data-act="messageRapide">Prévenir un client</button>
+        <button class="btn btn-ghost btn-sm" data-act="messageRapide">Message à un résident</button>
         <button class="btn btn-ghost btn-sm" data-act="messageGroupe">Message à tous</button>
         ${enRetard.length ? `<button class="btn btn-primary btn-sm" data-act="relancerImpayes">Relancer ${enRetard.length} retard${enRetard.length > 1 ? 's' : ''}</button>` : ''}
       </div>
@@ -663,19 +663,36 @@ window.relancerImpayes = async () => {
 };
 
 /* --- messages rapides & groupés --- */
-window.messageGroupe = () => {
+window.messageGroupe = async () => {
+  /* Combien de personnes exactement. « Tous » est une formule ; « 124 residents »
+     est une decision — et c'est la meme phrase qui s'affiche sur un camping de
+     deux et sur un camping de cent vingt-quatre. */
+  let nbDestinataires = null;
+  try {
+    const { residents } = await api('/api/residents');
+    nbDestinataires = (residents || []).filter((r) => r.actif !== false).length;
+  } catch (e) { /* le compte manque, la diffusion reste possible */ }
+
+  const combien = nbDestinataires == null
+    ? 'chaque résident actif'
+    : `${nbDestinataires} résident${nbDestinataires > 1 ? 's' : ''} actif${nbDestinataires > 1 ? 's' : ''}`;
+
   openDrawer(`
     <h2>Message à tous les résidents</h2>
-    <p class="muted" style="margin-top:4px">Envoyé sur le portail de chaque résident actif, avec notification e-mail.</p>
+    <p class="muted" style="margin-top:4px">Envoyé sur le portail de <strong>${combien}</strong>, avec notification e-mail. Un message diffusé ne peut pas être rappelé.</p>
     <form id="f-groupe" style="margin-top:14px">
       <textarea name="corps" required rows="5" placeholder="Ex. : Coupure d'eau prévue mardi de 9h à 12h…" style="width:100%;resize:vertical"></textarea>
-      <button class="btn btn-primary btn-block" style="margin-top:12px">Envoyer à tous</button>
+      <button class="btn btn-primary btn-block" style="margin-top:12px">${nbDestinataires == null ? 'Envoyer à tous' : `Envoyer à ${nbDestinataires} résident${nbDestinataires > 1 ? 's' : ''}`}</button>
     </form>`);
   $('#f-groupe').addEventListener('submit', async (e) => {
     e.preventDefault();
     const corps = e.target.corps.value.trim();
     if (!corps) return;
-    if (!await askConfirm('Envoyer ce message à TOUS les résidents actifs ?')) return;
+    if (!await askConfirm(
+      nbDestinataires == null
+        ? 'Envoyer ce message à tous les résidents actifs ?\n\nIl ne pourra pas être rappelé.'
+        : `Envoyer ce message à ${nbDestinataires} résident${nbDestinataires > 1 ? 's' : ''} ?\n\nChacun le recevra sur son portail et par e-mail. Il ne pourra pas être rappelé.`,
+      { titre: 'Diffusion à tout le camping', ok: 'Envoyer' })) return;
     try {
       const r = await api('/api/messages/groupe', { method: 'POST', body: { corps } });
       closeDrawer(); toast(`Message envoyé à ${r.destinataires} résident(s)`);
@@ -693,7 +710,7 @@ window.messageRapide = async (presetResidentId) => {
     libre: '',
   };
   openDrawer(`
-    <h2>Message rapide</h2>
+    <h2>Message à un résident</h2>
     <form id="f-rapide" class="form-grid" style="margin-top:14px">
       <label class="full">Résident *
         <select name="resident_id" required>
@@ -2470,8 +2487,11 @@ async function vueMessagerie() {
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Échanges clients</div><h1>Messagerie</h1></div>
       <div class="toolbar">
-        <button class="btn btn-ghost" data-act="messageRapide">Message rapide</button>
-        <button class="btn btn-primary" data-act="messageGroupe">Message à tous</button>
+        ${/* Le vert plein va a l'action courante. Ecrire a un resident se fait
+             tous les jours ; diffuser a tout le camping quelques fois par an, et
+             ne se rattrape pas. */ ''}
+        <button class="btn btn-ghost" data-act="messageGroupe">Message à tous</button>
+        <button class="btn btn-primary" data-act="messageRapide">Message à un résident</button>
       </div></div>
     ${conversations === null
       ? '<p class="form-error">Table « messages » absente — exécute la migration db/10_messages.sql dans Supabase.</p>'
