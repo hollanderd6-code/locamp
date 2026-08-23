@@ -2527,17 +2527,46 @@ async function vueCompteurs() {
   window._tourneeType = t;
   const prixOk = d.prix != null && d.prix > 0;
   const U = d.unite;
+
+  /* Combien de compteurs restent à relever. « Jamais relevé » et « relevé
+     il y a plus d'un mois » ne sont pas la même tournée : le premier est un
+     compteur à initialiser, le second un compteur en retard. */
+  const ilYAUnMois = new Date(Date.now() - 31 * 86400000);
+  const cptRestants = { jamais: 0, retard: 0, ok: 0 };
+  d.emplacements.forEach((e) => {
+    if (!e.dernier_releve) cptRestants.jamais += 1;
+    else if (new Date(e.dernier_releve.date_releve) < ilYAUnMois) cptRestants.retard += 1;
+    else cptRestants.ok += 1;
+  });
+  const cptResume = [
+    cptRestants.jamais ? cptRestants.jamais + ' jamais relevé' + (cptRestants.jamais > 1 ? 's' : '') : '',
+    cptRestants.retard ? cptRestants.retard + ' en retard' : '',
+    cptRestants.ok ? cptRestants.ok + ' à jour' : '',
+  ].filter(Boolean).join(' · ');
+
+  /* Un prix se saisit à quatre décimales (Paramètres, step 0.0001) : eur()
+     arrondirait à deux et afficherait 0,39 € pour 0,3912 €. */
+  const prixTexte = Number(d.prix || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Énergie &amp; eau</div><h1>Compteurs</h1></div>
       <div class="toolbar" style="align-items:center;gap:10px">
-        <span class="muted">${prixOk ? `Prix du ${U} : <strong>${Number(d.prix)} € TTC</strong> · TVA ${d.taux_tva} %` : ''}</span>
+        <span class="muted">${prixOk
+          ? `Prix du ${U} : <strong>${prixTexte} € TTC</strong> · TVA ${d.taux_tva} %`
+          /* Le prix manquant s'annonce ICI, à la place du prix. Un <span> vide
+             faisait glisser le bouton « Feuille de tournée » d'un onglet à
+             l'autre, et l'information réapparaissait ailleurs. */
+          : `<span style="color:var(--laiton)">Prix du ${U} non configuré</span>`}</span>
         <button class="btn btn-ghost btn-sm" data-act="imprimerTournee" title="Feuille papier pour relever sur le terrain">Feuille de tournée</button>
       </div></div>
     <div class="fiche-tabs" style="margin-bottom:14px">
       <button class="fiche-tab ${t === 'elec' ? 'active' : ''}" data-act="switchCompteurType" data-a1="elec">Électricité (kWh)</button>
       <button class="fiche-tab ${t === 'eau' ? 'active' : ''}" data-act="switchCompteurType" data-a1="eau">Eau (m³)</button>
+      ${cptResume ? `<span class="muted" style="margin-left:14px;font-size:13px">${cptResume}</span>` : ''}
     </div>
-    ${prixOk ? '' : `<p class="form-error" style="margin-bottom:14px">Prix du ${U} non configuré — les relevés seront enregistrés mais aucune charge ne sera créée. <a href="#/parametres">Configurer dans Paramètres → Énergie &amp; eau</a>.</p>`}
+    ${prixOk ? '' : `<p style="margin:0 0 14px;padding:11px 14px;border-radius:var(--r-s);
+        background:var(--laiton-pale);border:1px solid rgba(185,138,60,.28);color:#7A5A22;font-size:13.5px;line-height:1.5">
+        — Prix du ${U} non configuré. Les relevés sont bien enregistrés, mais aucune charge n\u2019est créée sur les fiches résidents.
+        <a href="#/parametres" style="color:inherit;font-weight:600">Renseigner le prix dans Paramètres → Énergie &amp; eau</a>.</p>`}
     <div class="card"><table><thead><tr><th>Empl.</th><th>Résident</th><th>Dernier relevé</th><th class="right">Index</th><th class="right">Nouvel index</th><th></th></tr></thead>
     <tbody>${d.emplacements.map((e) => `
       <tr>
@@ -2545,7 +2574,7 @@ async function vueCompteurs() {
         <td class="muted">${e.resident ? esc((e.resident.prenom || '') + ' ' + e.resident.nom) : '—'}</td>
         <td class="muted">${e.dernier_releve ? dfr(e.dernier_releve.date_releve) + (e.dernier_releve.conso_kwh != null ? ` <span class="badge occupe">${Number(e.dernier_releve.conso_kwh)} ${U}</span>` : '') : '<span class="badge emise">jamais relevé</span>'}</td>
         <td class="right">${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : '—'}</td>
-        <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:110px;text-align:right"></td>
+        <td class="right"><input type="number" step="0.01" min="0" id="idx-${e.id}" placeholder="${e.dernier_releve ? Number(e.dernier_releve.index_kwh) : 'index initial'}" style="width:132px;text-align:right"></td>
         <td class="right"><button class="btn btn-primary btn-sm" data-act="releverCompteur" data-a1="${e.id}">Relever</button></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>
     <p class="muted" style="margin-top:12px">Un relevé crée automatiquement une charge « en cours » sur la fiche du résident rattaché (conso × prix du ${U}) — à facturer depuis sa fiche. Chaque fluide a sa propre série d\u2019index.</p>`;

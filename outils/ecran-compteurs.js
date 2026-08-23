@@ -107,8 +107,8 @@ const edits = [
     cptRestants.ok ? cptRestants.ok + ' à jour' : '',
   ].filter(Boolean).join(' · ');
 
-  /* Un prix du ${U} se saisit à quatre décimales (Paramètres, step 0.0001) :
-     eur() arrondirait à deux et afficherait 0,39 € pour 0,3912 €. */
+  /* Un prix se saisit à quatre décimales (Paramètres, step 0.0001) : eur()
+     arrondirait à deux et afficherait 0,39 € pour 0,3912 €. */
   const prixTexte = Number(d.prix || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });`],
 
   /* ── 1 et 2. Le prix, au même endroit dans les deux onglets ─ */
