@@ -878,3 +878,18 @@ input:-webkit-autofill:active{
    plaçant au tiers de l'allée, juste au-dessus de sa zone de touche. */
 .layer-allees{pointer-events:none}
 .layer-allees .celem-allee-bg{fill:#F7F2E4;fill-opacity:.94}
+
+
+/* ── Carte : recherche ──
+   Ce qui ne correspond pas est estompé, pas retiré : un emplacement se
+   comprend par ses voisins et son allée. Sortir le reste du plan ferait
+   perdre le repère qu'on est venu chercher. */
+.map-search{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.map-search input{width:260px;max-width:100%;padding:8px 12px;border:1px solid var(--border);
+  border-radius:10px;font-family:inherit;font-size:13px;background:#fff}
+.map-search input:focus{outline:none;border-color:var(--pg);box-shadow:0 0 0 3px rgba(30,92,74,.12)}
+@media (max-width:560px){.map-search input{width:100%}}
+
+.map-svg.filtre .pin{opacity:.16;transition:opacity .12s}
+.map-svg.filtre .pin.trouve{opacity:1}
+.map-svg.filtre .pin.trouve circle{stroke:#C98B2D;stroke-width:3.5}

@@ -936,7 +936,11 @@ function renderCarte() {
     const x = carteClamp(c.coord_x, CARTE_PAD, CARTE_W - CARTE_PAD);
     const y = carteClamp(c.coord_y, CARTE_PAD, CARTE_H - CARTE_PAD);
     const sel = st.selected?.kind === 'emp' && st.selected.id === e.id ? ' selected' : '';
-    return `<g class="pin${sel}" data-id="${e.id}" data-kind="emp" transform="translate(${x},${y})">
+    /* Numero et occupant, normalises une fois au rendu : la recherche n'a
+       plus qu'a comparer des chaines, sans retraiter 124 fiches par frappe. */
+    const occ = e.resident ? `${e.resident.prenom || ''} ${e.resident.nom || ''}` : '';
+    return `<g class="pin${sel}" data-id="${e.id}" data-kind="emp" transform="translate(${x},${y})"
+      data-cherche="${esc(sansAccents(`${e.numero} ${occ}`))}">
       <circle r="13" fill="${carteColor(e)}"></circle><text>${esc(e.numero)}</text></g>`;
   }).join('');
 
@@ -959,7 +963,11 @@ function renderCarte() {
         </div>`}
     </div>
     ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécute la migration db/15_carte_elements.sql.</p>' : ''}
-    ${edit ? '' : `<span class="muted">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>`}
+    ${edit ? '' : `<div class="map-search">
+      <input id="map-q" type="search" placeholder="Numéro ou nom de l'occupant" autocomplete="off"
+        aria-label="Rechercher un emplacement">
+      <span class="muted" id="map-q-info">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>
+    </div>`}
 
     <div class="${edit ? 'map-edit-layout' : ''}">
       <div>
@@ -998,6 +1006,55 @@ function renderCarte() {
 
   wireCarte();
   renderProps();
+
+  const champ = $('#map-q');
+  if (champ) {
+    champ.addEventListener('input', () => filtrerCarte(champ.value));
+    champ.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') { champ.value = ''; filtrerCarte(''); }
+    });
+  }
+}
+
+/* --------------------- recherche sur le plan --------------------- */
+
+/* Minuscules sans accents : « BERTHIER », « Berthier » et « berthier »
+   doivent se valoir. Sur le numero c'est sans effet, sur les noms c'est
+   ce qui fait la difference entre trouver et ne pas trouver. */
+function sansAccents(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/* On pose des classes sur le SVG en place plutot que de redessiner : un
+   nouveau rendu par frappe recalculerait 124 pastilles et tout le decor. */
+function filtrerCarte(q) {
+  const svg  = document.querySelector('.map-svg');
+  const info = $('#map-q-info');
+  if (!svg) return;
+
+  const terme = sansAccents(q);
+  const pins = svg.querySelectorAll('.pin');
+
+  if (!terme) {
+    svg.classList.remove('filtre');
+    pins.forEach((p) => p.classList.remove('trouve'));
+    if (info) info.textContent = `${pins.length} emplacements — cliquer une pastille pour ouvrir la fiche`;
+    return;
+  }
+
+  let n = 0;
+  pins.forEach((p) => {
+    const ok = (p.dataset.cherche || '').includes(terme);
+    p.classList.toggle('trouve', ok);
+    if (ok) n += 1;
+  });
+  svg.classList.add('filtre');
+
+  if (info) {
+    info.textContent = n === 0
+      ? `Aucun emplacement ne correspond à « ${q.trim()} »`
+      : n === 1 ? '1 emplacement trouvé' : `${n} emplacements trouvés`;
+  }
 }
 
 /* --------------------- panneau de propriétés --------------------- */
