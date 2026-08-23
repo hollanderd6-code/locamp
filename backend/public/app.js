@@ -4112,14 +4112,15 @@ async function vueCompta() {
   const mois = new Date().toISOString().slice(0, 7);
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Comptabilité</div><h1>Compta & TVA</h1></div>
-      <span class="muted">Exercice en cours : <strong>${dfr(ex.debut)} → ${dfr(ex.fin)}</strong>${dm !== 1 ? '' : ' (année civile)'}</span></div>
+      <div class="compta-exercice">Exercice en cours
+        <strong>${dfr(ex.debut)} → ${dfr(ex.fin)}</strong>${dm !== 1 ? '' : '<span class="muted"> (année civile)</span>'}</div></div>
 
     <div class="card">
       <div class="card-actions"><h2>TVA sur les encaissements</h2>
         <div class="toolbar"><input id="tva-mois" type="month" value="${mois}">
         <button class="btn btn-primary btn-sm" data-act="chargerTva">Calculer</button></div></div>
       <p class="muted">TVA exigible au titre des paiements reçus sur le mois (régime des encaissements), ventilée par taux via le lettrage.</p>
-      <div id="tva-resultat" style="margin-top:12px"><p class="muted">Choisir un mois puis « Calculer ».</p></div>
+      <div id="tva-resultat" style="margin-top:12px"></div>
     </div>
 
     <div class="card">
@@ -4135,6 +4136,7 @@ async function vueCompta() {
       <div id="idx-histo" class="muted">Chargement&hellip;</div>
     </div>
 
+    <div class="compta-duo">
     <div class="card">
       <div class="card-actions"><h2>Comptes clients (auxiliaires)</h2></div>
       <p class="muted">Chaque client reçoit automatiquement un numéro de compte à sa création (ex. 41100001). Réglez la racine ci-dessous, puis attribuez un compte aux clients existants qui n'en ont pas.</p>
@@ -4156,6 +4158,7 @@ async function vueCompta() {
         <button class="btn btn-primary" data-act="exporterCompta" data-a1="fec">Export FEC</button>
         <button class="btn btn-ghost" data-act="exporterCompta" data-a1="csv">Écritures CSV</button>
       </div>
+    </div>
     </div>`;
   majApercuCompte();
   $('#cc-racine').addEventListener('input', majApercuCompte);

@@ -855,3 +855,18 @@ input:-webkit-autofill:active{
   caret-color:var(--encre);
   transition:background-color 100000s ease-in-out 0s;
 }
+
+
+/* ── Comptabilité ──
+   Les deux cartes courtes de la page — réglage des comptes clients et
+   exports — tiennent côte à côte. Empilées sur toute la largeur, elles
+   repoussaient les exports sous la ligne de flottaison, alors que c'est
+   ce qu'un comptable vient chercher en fin d'exercice. */
+.compta-duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media (max-width:900px){.compta-duo{grid-template-columns:1fr}}
+
+/* L'exercice conditionne la période des exports : il ne peut pas être
+   du gris de bas de page. */
+.compta-exercice{font-size:13px;color:var(--muted);text-align:right;line-height:1.5}
+.compta-exercice strong{display:block;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+@media (max-width:640px){.compta-exercice{text-align:left;margin-top:6px}}
