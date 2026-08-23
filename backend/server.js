@@ -132,33 +132,24 @@ app.use(express.json({ limit: '2mb' }));
 // Front admin (fichiers statiques)
 app.use(express.static('public'));
 
-// ---------- Relances automatiques quotidiennes ----------
-// Pour chaque camping ayant activé parametres.relances.auto, relance les factures
-// en retard (au plus une relance par facture tous les 7 jours).
-async function relancesAutomatiques() {
-  try {
-    const { runRelances } = require('./lib/relances');
-    const { supabase } = require('./lib/supabase');
-    const { data: campings } = await supabase.from('campings').select('id,nom,parametres');
-    for (const c of (campings || [])) {
-      if (c.parametres?.relances?.auto !== true) continue;
-      try {
-        const out = await runRelances(c.id, { cooldownJours: 7 });
-        if (out.envoyees) console.log(`[relances auto] ${c.nom || c.id} : ${out.envoyees} envoyée(s)`);
-      } catch (e) { console.error('[relances auto]', c.id, e.message); }
-    }
-  } catch (e) { console.error('[relances auto]', e.message); }
-}
-// Clôture fiscale journalière automatique (archivage — art. 286-I-3° bis du CGI)
-async function cloturesAutomatiques() {
-  try { await require('./lib/fiscal').cloturerVeille(); }
-  catch (e) { console.error('[fiscal:cloture auto]', e.message); }
-}
-setTimeout(cloturesAutomatiques, 120 * 1000);
-setInterval(cloturesAutomatiques, 6 * 60 * 60 * 1000);
+/* ---------- Tâches planifiées ----------
+   Elles ne tournent plus dans ce process. Deux boucles setInterval
+   lançaient ici les relances (12 h) et la clôture fiscale (6 h) :
 
-setTimeout(relancesAutomatiques, 90 * 1000);              // au démarrage (après 90 s)
-setInterval(relancesAutomatiques, 12 * 60 * 60 * 1000);   // puis toutes les 12 h
+     · si Render met le service en veille, elles ne partent jamais —
+       les relances d'impayés s'arrêtent sans que personne ne le voie ;
+     · si Render lance deux instances, elles partent deux fois.
+
+   Elles sont désormais déclenchées de l'extérieur, par les Cron Jobs
+   Render, sur /api/cron/* (protégé par x-cron-secret) :
+
+     quotidien 05:00   POST /api/cron/cloture-fiscale
+     quotidien 07:00   POST /api/cron/relances
+     quotidien 08:00   POST /api/cron/echeances
+     1er du mois 06:00 POST /api/cron/facturation-mensuelle
+
+   Si ces tâches semblent ne plus s'exécuter, c'est ici qu'il faut
+   regarder : le code n'en déclenche plus aucune de lui-même. */
 
 // Compat liens magiques déjà envoyés : /portail/connexion?token=... -> /portail/?token=...
 app.get('/portail/connexion', (req, res) => {
