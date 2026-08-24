@@ -314,3 +314,38 @@ body[data-onglet="documents"] #sec-signer:not(.hidden){order:-2}
   background:var(--rouge);color:#fff;
   font-size:10px;font-weight:700;font-style:normal;line-height:17px;text-align:center}
 .onglets em.hidden{display:none}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ BLOC REPLIABLE ══
+   ────────────────────────────────────────────────────────────────
+   « Mes données personnelles » occupait une carte de plein format,
+   au meme rang que les factures, pour une fonction utilisee une fois
+   dans une vie. Donner le meme poids a tout dit au lecteur que rien ne
+   compte : c'est ce qui use un ecran.
+
+   Replie, pas cache — le droit d'acces des articles 15 et 20 doit
+   rester atteignable, et Google Play le verifie.
+   ──────────────────────────────────────────────────────────────── */
+
+/* L'enveloppe n'a plus a se donner l'allure d'une carte. */
+.carte-nue{background:none;border:none;box-shadow:none;padding:0}
+/* En dernier dans l'onglet Documents, apres le dossier. */
+body[data-onglet="documents"] #sec-rgpd{order:9}
+
+.repli{border:1px solid var(--hairline);border-radius:12px;background:#fff}
+.repli summary{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 15px;cursor:pointer;list-style:none;
+  font-size:13.5px;font-weight:600;color:var(--brume);
+  /* 44 px : la hauteur au-dessous de laquelle un doigt vise mal. */
+  min-height:44px;box-sizing:border-box}
+.repli summary::-webkit-details-marker{display:none}
+.repli summary:hover{color:var(--sapin)}
+.repli summary svg{flex:none;opacity:.55;transition:transform .18s}
+.repli[open] summary{color:var(--sapin);border-bottom:1px solid var(--hairline)}
+.repli[open] summary svg{transform:rotate(180deg)}
+.repli-corps{padding:14px 15px 16px}
+.repli-corps .note:first-child{margin-top:0}
+
+@media (prefers-reduced-motion:reduce){ .repli summary svg{transition:none} }

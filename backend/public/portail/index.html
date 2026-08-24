@@ -224,11 +224,22 @@
     </section>
 
     <!-- Mes données personnelles (RGPD) -->
-    <section class="card" id="sec-rgpd">
-      <div class="card-head"><div class="eyebrow">Vos droits</div><h2>Mes données personnelles</h2></div>
-      <p class="note">Vous pouvez à tout moment obtenir une copie de l'ensemble des données que le camping détient sur vous (articles 15 et 20 du RGPD).</p>
-      <button class="btn btn-ghost btn-sm" id="btn-mes-donnees" style="margin-top:10px">Télécharger mes données</button>
-      <p class="note" style="margin-top:10px">Pour rectifier une information ou demander l'effacement de vos données, contactez l'accueil du camping. Les factures et encaissements sont conservés au titre des obligations légales de comptabilité.</p>
+    <section class="card carte-nue" id="sec-rgpd">
+      <!-- Replie : un droit qu'on exerce une fois dans sa vie n'a pas le meme
+           poids que ses factures. Un <details> plutot qu'un panneau maison —
+           il fonctionne sans JavaScript, se plie au clavier, et les lecteurs
+           d'ecran l'annoncent comme depliable. -->
+      <details class="repli">
+        <summary>
+          <span>Mes données personnelles</span>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="repli-corps">
+          <p class="note">Vous pouvez à tout moment obtenir une copie de l'ensemble des données que le camping détient sur vous (articles 15 et 20 du RGPD).</p>
+          <button class="btn btn-ghost btn-sm" id="btn-mes-donnees" style="margin-top:10px">Télécharger mes données</button>
+          <p class="note" style="margin-top:10px">Pour rectifier une information ou demander l'effacement de vos données, contactez l'accueil du camping. Les factures et encaissements sont conservés au titre des obligations légales de comptabilité.</p>
+        </div>
+      </details>
     </section>
 
     <!-- Documents -->
