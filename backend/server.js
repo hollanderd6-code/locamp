@@ -130,6 +130,42 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stri
 app.use(express.json({ limit: '2mb' }));
 
 // Front admin (fichiers statiques)
+/* La politique de confidentialite, sur une adresse sans extension : elle
+   figure dans la fiche du Play Store et doit survivre a un changement de
+   technologie. Posee avant le routage de l'application, qui renverrait
+   sinon l'ecran de connexion — de quoi faire rejeter la soumission. */
+app.get(['/confidentialite', '/politique-de-confidentialite'], (req, res) =>
+  res.sendFile(require('path').join(__dirname, 'public', 'confidentialite.html')));
+
+/* Lien de confiance de l'application Android. Android verifie ici que le
+   site autorise l'application a s'afficher sans barre d'adresse.
+
+   Une route explicite est indispensable : express.static repond 404 sur
+   tout segment commencant par un point, donc un fichier depose dans
+   public/.well-known/ existerait sans jamais etre servi.
+
+   L'empreinte vient de l'environnement : elle identifie la cle de
+   signature, et changera le jour ou la cle changera. */
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  const empreinte = process.env.ANDROID_FINGERPRINT;
+  if (!empreinte) {
+    /* Le dire plutot que servir un fichier vide : un JSON incomplet
+       donnerait la meme barre d'adresse, sans en indiquer la raison. */
+    return res.status(503).type('application/json').send(JSON.stringify({
+      erreur: 'ANDROID_FINGERPRINT absente de l\'environnement.',
+      ou: 'Console Play, Integrite de l\'application, SHA-256 du certificat de signature.'
+    }, null, 2));
+  }
+  res.type('application/json').send(JSON.stringify([{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: process.env.ANDROID_APP_ID || 'com.locamp.gestion',
+      sha256_cert_fingerprints: empreinte.split(',').map((f) => f.trim()).filter(Boolean)
+    }
+  }], null, 2));
+});
+
 app.use(express.static('public'));
 
 /* ---------- Tâches planifiées ----------
