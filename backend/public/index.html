@@ -127,5 +127,32 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="/app.js"></script>
+
+<script>
+/* ---- Service worker ----
+   Enregistre APRES le chargement : s'installer pendant le premier affichage
+   reviendrait a disputer la bande passante a ce que l'utilisateur attend.
+
+   Pas sur localhost — pendant le developpement, un cache de coquille ne fait
+   que masquer les modifications qu'on vient d'ecrire. */
+if ('serviceWorker' in navigator
+    && location.hostname !== 'localhost'
+    && location.hostname !== '127.0.0.1') {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function (e) {
+      console.warn('[PWA] enregistrement impossible :', e.message);
+    });
+
+    /* Une nouvelle version prend la main : on recharge une fois pour que
+       l'utilisateur la voie. Sans le drapeau, deux onglets peuvent se
+       recharger l'un l'autre indefiniment. */
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (sessionStorage.getItem('locamp_sw_recharge')) return;
+      sessionStorage.setItem('locamp_sw_recharge', '1');
+      location.reload();
+    });
+  });
+}
+</script>
 </body>
 </html>
