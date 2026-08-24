@@ -4448,12 +4448,25 @@ async function vueImpayes() {
   const [imp, { residents }] = await Promise.all([api('/api/relances/impayes' + exQS()), api('/api/residents')]);
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const a = imp.aging;
+
+  /* Ce qui est EN RETARD, distingué de ce qui est simplement dû. Le total
+     additionnait les deux : un gestionnaire lisant « Total dû 12 400 € »
+     croyait voir son retard de paiement. */
+  const enRetard = imp.impayes.filter((f) => f.en_retard);
+  const nbEnRetard = enRetard.length;
+  const montantRetard = enRetard.reduce((s, f) => s + Number(f.reste || 0), 0);
+  const nbTotal = imp.impayes.length;
+
+  /* Le bouton de relance n'agit que sur les factures échues : le nombre
+     annoncé avant l'envoi doit être celui-là, pas le total. */
+  window._impayesEnRetard = nbEnRetard;
+
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Recouvrement</div><h1>Impayés</h1></div>
       <button class="btn btn-primary" data-act="runRelancesBtn">Envoyer les relances</button></div>
     <div class="kpis">
-      <div class="kpi"><div class="v">${eur(imp.total_du)}</div><div class="l">Total dû</div></div>
-      <div class="kpi"><div class="v">${eur(a.a_echoir)}</div><div class="l">À échoir (délai ${imp.delai} j)</div></div>
+      <div class="kpi"><div class="v">${eur(imp.total_du)}</div><div class="l">Créance totale · ${nbTotal} facture${nbTotal > 1 ? 's' : ''}<br><span class="muted" style="font-size:12px">dont ${eur(montantRetard)} en retard</span></div></div>
+      <div class="kpi"><div class="v">${eur(a.a_echoir)}</div><div class="l">Pas encore échu (délai ${imp.delai} j)</div></div>
       <div class="kpi warn"><div class="v">${eur(a.j0_30 + a.j31_60)}</div><div class="l">Retard 1 à 60 j</div></div>
       <div class="kpi bad"><div class="v">${eur(a.j61_90 + a.j90_plus)}</div><div class="l">Retard 61 j et +</div></div>
     </div>
@@ -4461,11 +4474,45 @@ async function vueImpayes() {
     <tbody>${imp.impayes.map((f) => `
       <tr><td><strong>${esc(f.numero)}</strong></td><td>${esc(rmap[f.resident_id] || '—')}</td>
       <td class="right">${eur(f.reste)}</td>
-      <td class="right">${f.en_retard ? `<span class="badge en_retard">${f.jours_retard} j</span>` : '<span class="badge reglee">à échoir</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun impayé. 🎉</td></tr>'}</tbody></table></div>`;
+      <td class="right">${f.en_retard ? `<span class="badge en_retard">${f.jours_retard} j</span>` : '<span class="badge reglee">à échoir</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun impayé : toutes les factures de l\u2019exercice sont réglées.</td></tr>'}</tbody></table></div>`;
 }
 window.runRelancesBtn = async () => {
-  try { const r = await api('/api/relances/run', { method: 'POST' }); toast(`Relances : ${r.envoyees} envoyée(s), ${r.ignorees} à échoir`); route(); }
-  catch (e) { toast(e.message, true); }
+  /* Chaque relance est un e-mail réel, enregistré avec son niveau : la
+     prochaine sera une relance de niveau 2, puis 3. Rien ne se rattrape,
+     et le bouton partait au premier clic. */
+  const n = window._impayesEnRetard || 0;
+  if (!n) { toast('Aucune facture en retard : il n\u2019y a rien à relancer.'); return; }
+
+  const ok = await askConfirm(
+    'Relancer ' + n + ' facture' + (n > 1 ? 's' : '') + ' en retard ?\n\n'
+    + 'Un e-mail part vers chaque résident concerné. La relance est '
+    + 'enregistrée : la prochaine sera de niveau supérieur.\n\n'
+    + 'Les factures non échues, et celles déjà relancées ces derniers jours, '
+    + 'sont laissées de côté.'
+  );
+  if (!ok) return;
+
+  try {
+    const r = await api('/api/relances/run', { method: 'POST' });
+
+    /* Le serveur regroupe sous « ignorees » deux cas distincts : la facture
+       n'est pas échue, ou elle a été relancée trop récemment. Les annoncer
+       toutes comme « à échoir » laissait croire qu'aucune facture en retard
+       n'avait été omise. On ne peut pas les départager depuis la réponse :
+       on dit donc les deux raisons, plutôt qu'une seule qui serait fausse. */
+    const parts = [r.envoyees + ' relance' + (r.envoyees > 1 ? 's' : '') + ' envoyée' + (r.envoyees > 1 ? 's' : '')];
+    if (r.ignorees) parts.push(r.ignorees + ' laissée' + (r.ignorees > 1 ? 's' : '') + ' de côté (non échues ou déjà relancées)');
+
+    /* Les échecs d'envoi — adresse invalide, refus du serveur de mail —
+       n'étaient pas affichés : on croyait ses relances parties. */
+    if (r.erreurs) {
+      toast(parts.join(', ') + ' · ' + r.erreurs + ' envoi' + (r.erreurs > 1 ? 's ont' : ' a')
+        + ' échoué : vérifiez les adresses e-mail de ces résidents.', true);
+    } else {
+      toast(parts.join(', ') + '.');
+    }
+    route();
+  } catch (e) { toast(e.message, true); }
 };
 
 /* ---------- Comptabilité ---------- */
