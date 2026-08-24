@@ -3006,7 +3006,7 @@ window.chargerFiscal = async () => {
 
 window.idxApercu = async () => {
   const taux = Number($('#idx-taux').value);
-  if (!Number.isFinite(taux) || taux === 0) { toast('Saisis un taux (ex. 3.26)', true); return; }
+  if (!Number.isFinite(taux) || taux === 0) { toast('Saisissez un taux d\u2019indexation, par exemple 3,26 pour +3,26 %. Un taux de zéro ne changerait aucun loyer.', true); return; }
   const zone = $('#idx-zone'); zone.innerHTML = '<span class="muted">Calcul&hellip;</span>';
   try {
     const { loyers, modeles } = await api('/api/indexation/apercu?taux=' + encodeURIComponent(taux));
@@ -4565,7 +4565,7 @@ async function vueCompta() {
       <div class="card-actions"><h2>Indexation des loyers</h2>
         <div class="toolbar">
           <input id="idx-taux" type="number" step="0.01" placeholder="taux %" style="width:90px" title="ex. 3.26 pour +3,26 %">
-          <input id="idx-ref" type="text" placeholder="référence (ex. IRL T1 2026)" style="width:180px">
+          <input id="idx-ref" type="text" placeholder="référence (ex. IRL T1 2026)" style="width:230px" title="L’indice qui justifie la revalorisation. Il est conservé dans l’historique et opposable au résident.">
           <button class="btn btn-primary btn-sm" data-act="idxApercu">Aperçu</button>
         </div></div>
       <p class="muted">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
@@ -4622,10 +4622,70 @@ window.enregistrerRacine = async () => {
   } catch (e) { toast(e.message, true); }
 };
 window.attribuerComptes = async () => {
-  if (!await askConfirm('Attribuer un numéro de compte à tous les clients qui n\u2019en ont pas ?')) return;
+  /* Cette action n'envoie PAS la racine : le serveur utilise celle qui est
+     enregistrée dans les paramètres. Un utilisateur qui modifie le champ
+     puis clique directement ici — « Attribuer » est le bouton plein, donc
+     le plus visible — obtient des comptes avec l'ANCIENNE racine, alors
+     que l'aperçu juste en dessous affiche la nouvelle.
+
+     Les numéros attribués entrent dans les écritures comptables : on ne
+     les reprend pas. Mieux vaut refuser que produire un plan de comptes
+     que personne n'a voulu. */
+  let racineEnregistree = null;
+  let longueurEnregistree = null;
+  try {
+    const { camping } = await api('/api/camping');
+    const c = (camping.parametres || {}).comptabilite || {};
+    racineEnregistree = String(c.racine_client || '411');
+    longueurEnregistree = Number(c.longueur_seq_client || 5);
+  } catch (e) { /* on continue : le contrôle ci-dessous est simplement ignoré */ }
+
+  const racineSaisie = ($('#cc-racine')?.value || '411').replace(/[^0-9A-Za-z]/g, '');
+  const longueurSaisie = Math.min(Math.max(Number($('#cc-lng')?.value || 5), 2), 8);
+
+  if (racineEnregistree !== null
+      && (racineSaisie !== racineEnregistree || longueurSaisie !== longueurEnregistree)) {
+    toast('La racine affichée (' + racineSaisie + ', ' + longueurSaisie + ' chiffres) n\u2019est pas celle '
+      + 'enregistrée (' + racineEnregistree + ', ' + longueurEnregistree + ' chiffres). '
+      + 'Cliquez d\u2019abord sur « Enregistrer » : sinon les comptes seraient créés avec l\u2019ancienne racine.', true);
+    $('#cc-racine')?.focus();
+    return;
+  }
+
+  /* Combien de clients sont concernés. Trois ou trois cents, ce n'est pas
+     la même décision — et la confirmation ne le disait pas. */
+  let sansCompte = null;
+  try {
+    const { residents } = await api('/api/residents');
+    if (Array.isArray(residents) && residents.length && 'compte_comptable' in residents[0]) {
+      sansCompte = residents.filter((r) => !String(r.compte_comptable || '').trim()).length;
+    }
+  } catch (e) { /* compte indisponible : on le dira plutôt que d'inventer un nombre */ }
+
+  const laRacine = racineEnregistree || racineSaisie;
+  if (sansCompte === 0) {
+    toast('Tous les clients ont déjà un numéro de compte.');
+    return;
+  }
+
+  const combien = sansCompte === null
+    ? 'aux clients qui n\u2019en ont pas'
+    : sansCompte + ' client' + (sansCompte > 1 ? 's' : '');
+
+  const ok = await askConfirm(
+    'Attribuer un numéro de compte à ' + combien + ' ?\n\n'
+    + 'Les comptes seront créés en ' + laRacine + ', sur '
+    + (longueurEnregistree || longueurSaisie) + ' chiffres — par exemple '
+    + laRacine + String(1).padStart(longueurEnregistree || longueurSaisie, '0') + '.\n\n'
+    + 'Un numéro de compte auxiliaire entre dans les écritures comptables : '
+    + 'il ne se reprend pas ensuite.'
+  );
+  if (!ok) return;
+
   try {
     const r = await api('/api/residents/attribuer-comptes', { method: 'POST' });
-    toast(`${r.attribues} compte(s) attribué(s)`);
+    toast(r.attribues + ' compte' + (r.attribues > 1 ? 's' : '') + ' attribué' + (r.attribues > 1 ? 's' : '')
+      + (r.attribues ? ' en ' + laRacine + '.' : '.'));
   } catch (e) { toast(e.message, true); }
 };
 
