@@ -1111,7 +1111,10 @@ function renderCarte() {
    deux doivent dire la meme chose, sinon l'infobulle contredit la pastille. */
 function libelleEtat(e) {
   if (e.resident && carteState.enRetard.has(e.resident.id)) return 'impayé';
-  return LABELS[statutReel(e)] || statutReel(e);
+  /* lib() lit STATUT_LIB, la table des libelles du fichier. L'infobulle
+     doit nommer l'etat comme le reste du produit — et il n'existe qu'une
+     table, meme si j'en avais invente une seconde sous un autre nom. */
+  return lib(statutReel(e));
 }
 
 /* --------------------- recherche sur le plan --------------------- */
