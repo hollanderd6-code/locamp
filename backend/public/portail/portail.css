@@ -277,3 +277,40 @@ body[data-onglet="documents"] #sec-signer:not(.hidden){order:-2}
 #sec-signer::before{content:"";display:block;height:2px;margin:-1px -1px 0;
   border-radius:2px 2px 0 0;
   background:linear-gradient(90deg,#C9A24E,#E5C98F 60%,transparent)}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ MESSAGES DU PORTAIL ══
+   ────────────────────────────────────────────────────────────────
+   Le champ etait un <input> d'une ligne : impossible d'y ecrire trois
+   phrases sans perdre le debut de vue. Le bouton passe SOUS le champ —
+   cote a cote, un champ qui grandit deforme le bouton ou le repousse.
+   ──────────────────────────────────────────────────────────────── */
+
+.msg-form{display:flex;flex-direction:column;gap:9px;align-items:stretch}
+
+#msg-corps{
+  width:100%;min-height:56px;resize:none;overflow-y:auto;
+  font-family:inherit;font-size:15px;line-height:1.5;
+  padding:11px 13px;border:1px solid var(--hairline);border-radius:12px;
+  background:#fff;color:inherit;
+  /* 16 px minimum sur iOS, faute de quoi Safari zoome a la mise au point
+     et l'utilisateur se retrouve avec une page agrandie. */
+  }
+@media (max-width:820px){ #msg-corps{font-size:16px} }
+#msg-corps:focus{outline:none;border-color:var(--sapin);
+  box-shadow:0 0 0 3px rgba(23,82,67,.10)}
+#msg-corps::placeholder{color:var(--brume)}
+
+.msg-form-pied{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.msg-astuce{font-size:11.5px;color:var(--brume)}
+/* Sur telephone, l'astuce clavier n'a pas d'objet. */
+@media (max-width:600px){ .msg-astuce{display:none} }
+.msg-form-pied .btn{margin-left:auto}
+
+/* Le compteur de l'onglet Messages, meme forme que celui des documents. */
+.onglets em{position:absolute;top:6px;left:calc(50% + 9px);
+  min-width:17px;height:17px;padding:0 4px;border-radius:99px;
+  background:var(--rouge);color:#fff;
+  font-size:10px;font-weight:700;font-style:normal;line-height:17px;text-align:center}
+.onglets em.hidden{display:none}

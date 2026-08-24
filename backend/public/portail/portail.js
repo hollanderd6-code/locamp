@@ -264,6 +264,7 @@ async function chargerEspace() {
 
   // messages
   renderMessages(msgs.messages || []);
+  majOngletMessages();
 
   // documents à signer
   chargerSignatures();
@@ -327,6 +328,66 @@ $('#form-doc').addEventListener('submit', async (e) => {
 });
 
 /* ---------- messages ---------- */
+
+/* Le champ grandit jusqu'a six lignes, puis defile : sans plafond, un long
+   message pousserait le fil de discussion hors de l'ecran. */
+(function () {
+  const t = $('#msg-corps');
+  if (!t) return;
+  const MAX = 6;
+  function ajuster() {
+    t.style.height = 'auto';
+    const ligne = parseFloat(getComputedStyle(t).lineHeight) || 22;
+    const bords = t.offsetHeight - t.clientHeight;
+    t.style.height = Math.min(t.scrollHeight, ligne * MAX + bords) + 'px';
+  }
+  t.addEventListener('input', ajuster);
+  /* Entree va a la ligne — c'est le sens attendu, et sur telephone la touche
+     du clavier virtuel ne doit pas envoyer un message a moitie ecrit.
+     Cmd+Entree envoie, pour qui travaille au clavier. */
+  t.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      $('#form-msg').requestSubmit ? $('#form-msg').requestSubmit() : $('#btn-msg').click();
+    }
+  });
+  window._msgAjuster = ajuster;
+})();
+
+/* Le compteur de l'onglet Messages.
+
+   Il lit la liste de notifications DEJA en place plutot que de compter les
+   messages lui-meme : deux comptages separes divergeraient au premier
+   decalage, et la cloche du portail dirait autre chose que l'onglet. */
+async function majOngletMessages() {
+  const pastille = document.getElementById('ong-messages');
+  if (!pastille || !RTOKEN) return;
+  try {
+    const { notifications } = await api('/api/portail/notifications');
+    const n = (notifications || []).filter((x) => !x.lu && x.type === 'nouveau_message').length;
+    pastille.textContent = n > 9 ? '9+' : n;
+    pastille.classList.toggle('hidden', !n);
+    window._msgNonLus = (notifications || []).filter((x) => !x.lu && x.type === 'nouveau_message');
+  } catch (e) { /* silencieux : un compteur absent vaut mieux qu'une erreur */ }
+}
+
+/* Ouvrir l'onglet vaut lecture : un non-lu disparait quand on le lit, pas
+   apres une action separee. On marque cote serveur, ce qui met aussi la
+   cloche a jour. */
+async function marquerMessagesLus() {
+  const liste = window._msgNonLus || [];
+  if (!liste.length) return;
+  window._msgNonLus = [];
+  document.getElementById('ong-messages')?.classList.add('hidden');
+  for (const n of liste) {
+    try { await api(`/api/portail/notifications/${n.id}/lu`, { method: 'POST' }); } catch (e) {}
+  }
+}
+
+document.getElementById('onglets')?.addEventListener('click', (e) => {
+  if (e.target.closest('[data-ong="messages"]')) setTimeout(marquerMessagesLus, 250);
+});
+
 $('#form-msg').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = $('#msg-corps');
@@ -336,6 +397,7 @@ $('#form-msg').addEventListener('submit', async (e) => {
   try {
     await api('/api/portail/messages', { method: 'POST', body: { corps } });
     input.value = '';
+    if (window._msgAjuster) window._msgAjuster();
     const { messages } = await api('/api/portail/messages');
     renderMessages(messages || []);
   } catch (err) { toast(err.message, true); }
