@@ -208,8 +208,28 @@ async function chargerEspace() {
   majPied();
 
   $('#hello').textContent = `Bonjour ${resident.prenom || resident.nom}`;
-  $('#sous-titre').textContent = [camping?.nom, emplacement ? `Emplacement ${emplacement.numero}` : null]
-    .filter(Boolean).join(' · ');
+  /* Deux lignes plutot qu'une ellipse : l'emplacement est la seule information
+     qui distingue un resident d'un autre, et c'est justement lui que le
+     troncage emportait. On construit deux lignes au lieu de joindre par « · » —
+     redecouper la chaine apres coup casserait sur un nom contenant un point
+     median. */
+  {
+    const bouts = [camping?.nom, emplacement ? `Emplacement ${emplacement.numero}` : null].filter(Boolean);
+    const el = $('#sous-titre');
+    el.innerHTML = '';
+    if (bouts.length) {
+      const l1 = document.createElement('span');
+      l1.className = 'ctx-camping';
+      l1.textContent = bouts[0];
+      el.appendChild(l1);
+    }
+    if (bouts.length > 1) {
+      const l2 = document.createElement('span');
+      l2.className = 'ctx-empl';
+      l2.textContent = bouts.slice(1).join(' · ');
+      el.appendChild(l2);
+    }
+  }
 
   // hero solde = somme des restes dus + retard le plus ancien
   const dues = factures.filter((f) => !['avoir', 'annulee'].includes(f.statut) && f.reste > 0.004);

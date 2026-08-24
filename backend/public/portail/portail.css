@@ -401,3 +401,32 @@ html,body{max-width:100%;overflow-x:hidden}
   .topbar .brand{gap:10px}
   .topbar .brand-mark{width:34px;height:34px}
 }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ HEADER SUR DEUX LIGNES ══
+   ────────────────────────────────────────────────────────────────
+   « Camping Le parc des grands clos · E… » : le troncage emportait
+   l'emplacement, la seule donnee propre au resident. Le point median
+   devient un retour a la ligne.
+   ──────────────────────────────────────────────────────────────── */
+
+.topbar .brand-sub{
+  display:flex;flex-direction:column;
+  white-space:normal;overflow:visible;text-overflow:clip;
+  line-height:1.3;gap:1px}
+
+/* Le nom du camping peut etre long : il garde son ellipse. */
+.ctx-camping{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:12.5px}
+/* L'emplacement est court par nature : il tient toujours en entier. */
+.ctx-empl{font-size:12px;opacity:.82;white-space:nowrap}
+
+/* Trois lignes au lieu de deux : le header prend la hauteur qu'il faut. */
+.topbar{min-height:74px;padding-top:11px;padding-bottom:11px;align-items:center}
+
+@media (max-width:560px){
+  .topbar{min-height:70px}
+  .ctx-camping{font-size:12px}
+  .ctx-empl{font-size:11.5px}
+}
