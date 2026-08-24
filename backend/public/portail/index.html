@@ -248,7 +248,13 @@
       <p class="note" id="doc-note"></p>
     </section>
   </main>
-  <footer class="footy">Espace sécurisé — vos documents et paiements sont chiffrés.</footer>
+  <!-- Le texte par defaut est celui SANS paiement : si le script ne
+       s'executait pas, la page dirait le moins, pas le plus. portail.js
+       l'ajuste au chargement selon ce que le camping a active. -->
+  <footer class="footy">
+    <span id="pied-securite">Espace sécurisé — vos documents et vos échanges sont chiffrés.</span>
+    <a href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a>
+  </footer>
 
   <!-- portail-onglets : quatre rubriques en bas d'ecran, a la maniere d'une
        application. Les sept sections empilees formaient un couloir dont on ne

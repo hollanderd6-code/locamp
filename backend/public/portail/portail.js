@@ -202,6 +202,11 @@ async function chargerEspace() {
   // Paiement en ligne : masqué dans l'app mobile (conformité Apple Guideline 3.1.1), gardé sur le web.
   window._payok = !!paiement_en_ligne && !window.LOCAMP_NATIVE;
 
+  /* Le pied ne parle de paiements que s'il y en a. Annoncer des paiements
+     chiffres sur un portail qui n'encaisse pas fait chercher un bouton
+     inexistant — et jette le doute sur le reste de la phrase. */
+  majPied();
+
   $('#hello').textContent = `Bonjour ${resident.prenom || resident.nom}`;
   $('#sous-titre').textContent = [camping?.nom, emplacement ? `Emplacement ${emplacement.numero}` : null]
     .filter(Boolean).join(' · ');
@@ -268,6 +273,18 @@ async function chargerEspace() {
 
   // documents à signer
   chargerSignatures();
+}
+
+/* « Echanges » plutot que « paiements » quand le camping n'a pas active le
+   paiement en ligne, ou dans l'application mobile ou il est masque. Les
+   messages passent bien par HTTPS : on ne retire pas l'assurance, on la porte
+   sur ce qui existe. */
+function majPied() {
+  const el = $('#pied-securite');
+  if (!el) return;
+  el.textContent = window._payok
+    ? 'Espace sécurisé — vos documents et vos paiements sont chiffrés.'
+    : 'Espace sécurisé — vos documents et vos échanges sont chiffrés.';
 }
 
 function renderMessages(list) {
