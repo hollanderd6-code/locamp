@@ -461,8 +461,51 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 $('#logout-btn').addEventListener('click', logout);
 // menu mobile
-document.getElementById('nav-burger')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
-document.querySelectorAll('.nav a').forEach((a) => a.addEventListener('click', () => document.body.classList.remove('nav-open')));
+/* Le tiroir : un bouton l'ouvre depuis la barre haute, trois choses le
+   ferment — la croix, le voile, et la touche Echap. Un panneau qui recouvre
+   la page doit pouvoir se fermer sans viser. */
+function fermerMenu() {
+  document.body.classList.remove('nav-open');
+  document.getElementById('topbar-burger')?.setAttribute('aria-expanded', 'false');
+}
+function ouvrirMenu() {
+  document.body.classList.add('nav-open');
+  document.getElementById('topbar-burger')?.setAttribute('aria-expanded', 'true');
+}
+document.getElementById('topbar-burger')?.addEventListener('click', () =>
+  document.body.classList.contains('nav-open') ? fermerMenu() : ouvrirMenu());
+document.getElementById('nav-burger')?.addEventListener('click', fermerMenu);
+document.getElementById('nav-veil')?.addEventListener('click', fermerMenu);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('nav-open')) fermerMenu();
+});
+document.querySelectorAll('.nav a').forEach((a) => a.addEventListener('click', fermerMenu));
+
+/* L'initiale, le role, et le camping actif dans la barre haute : sur mobile,
+   il faudrait sinon ouvrir le tiroir pour savoir ou l'on travaille. */
+function majEnveloppe() {
+  const nom = (document.getElementById('user-name')?.textContent || '').trim();
+  const ini = nom ? nom.split(/[\s.]+/).filter(Boolean).slice(0, 2)
+    .map((m) => m[0].toUpperCase()).join('') : '';
+  const poser = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  poser('user-ini', ini);
+  poser('topbar-ini', ini);
+  poser('user-role', window.MES_DROITS && MES_DROITS.admin ? 'Administrateur' : 'Gestionnaire');
+
+  const camping = document.getElementById('camping-select');
+  const exercice = document.getElementById('exercice-select');
+  const bouts = [];
+  if (camping && camping.selectedOptions[0]) bouts.push(camping.selectedOptions[0].textContent.trim());
+  if (exercice && exercice.selectedOptions[0]) bouts.push(exercice.selectedOptions[0].textContent.trim());
+  poser('topbar-ctx', bouts.join(' · '));
+}
+document.getElementById('camping-select')?.addEventListener('change', majEnveloppe);
+document.getElementById('exercice-select')?.addEventListener('change', majEnveloppe);
+/* Le nom d'utilisateur et les selecteurs sont remplis apres coup, a des
+   moments differents : on observe plutot que de deviner le bon instant. */
+new MutationObserver(majEnveloppe).observe(document.querySelector('.sidebar'),
+  { childList: true, subtree: true, characterData: true });
+setTimeout(majEnveloppe, 600);
 
 /* ---------- drawer ---------- */
 function openDrawer(html) { $('#drawer-content').innerHTML = html; $('#drawer').classList.remove('hidden'); }

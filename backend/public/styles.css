@@ -925,3 +925,173 @@ input:-webkit-autofill:active{
   .conf-legende-note{display:none}
   .conf-legende{gap:12px}
 }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ ENVELOPPE ══  la barre laterale, et le tiroir sur mobile
+   ════════════════════════════════════════════════════════════════
+   Ces regles arrivent en fin de feuille et l'emportent donc sur les
+   precedentes a specificite egale. Elles remplacent l'accordeon mobile
+   (display:contents + six ordres + flex-wrap) par un tiroir.
+   ──────────────────────────────────────────────────────────────── */
+
+/* ---------- Grand ecran ---------- */
+@media (min-width:881px){
+  .app{grid-template-columns:252px 1fr}
+}
+
+/* Un aplat et un filet, la ou trois effets se superposaient : degrade
+   radial dore, degrade lineaire, et une ombre portee de 24 px. */
+.sidebar{
+  background:linear-gradient(180deg,#10251F 0%,#0B1A15 100%);
+  border-right:1px solid rgba(185,138,60,.14);
+  box-shadow:none;
+  padding:26px 14px 16px;
+}
+.sidebar-head{gap:0}
+
+.brand-side{display:flex;align-items:center;gap:12px;padding:0 4px}
+.brand-side .brand-mark{width:38px;height:38px;border-radius:11px}
+.brand-side .brand-name{color:#EFE9DC;font-size:17px}
+
+/* Le filet qui separe l'enseigne du reste : il s'eteint vers la droite,
+   ce qui evite de couper la barre en deux parts egales. */
+.sidebar-head::after{content:"";display:block;height:1px;margin:20px 2px 18px;
+  background:linear-gradient(90deg,rgba(185,138,60,.34),rgba(185,138,60,.06))}
+
+.camping-switch select{background-color:#17332B;border-color:rgba(255,255,255,.10);
+  border-radius:9px;font-size:13px;padding:10px 34px 10px 12px}
+.camping-switch select:hover{background-color:#1C3B32;border-color:rgba(255,255,255,.18)}
+/* L'exercice n'est pas du meme ordre que le camping : il se lit, il ne
+   s'affiche pas. Sans aplat, il cesse de rivaliser avec lui. */
+#exercice-switch select{background-color:transparent;border-color:rgba(255,255,255,.07);
+  color:#93A69C;font-weight:500;font-size:12.5px;padding:8px 34px 8px 12px}
+
+.nav{gap:1px;margin-top:20px;padding:0 2px 0 0}
+.nav-grp{font-size:9.5px;letter-spacing:.17em;color:#5E7268;padding:20px 12px 9px}
+.nav-grp:first-child{padding-top:0}
+
+/* Le survol ne decale plus le texte de trois pixels : seule la surface
+   s'eclaire. Un mouvement a chaque passage de souris se remarque. */
+.nav a{gap:11px;padding:10px 12px;border-radius:9px;color:#9FB3A9;font-size:13.5px;
+  transition:background .15s, color .15s}
+.nav a:hover{background:rgba(255,255,255,.05);color:#EAF0EC;padding-left:12px}
+.nav a.active{background:rgba(185,138,60,.11);color:#fff}
+.nav a.active::before{background:var(--or-clair);width:2px;top:7px;bottom:7px}
+.nav-ic{width:17px;height:17px;opacity:.72}
+.nav a.active .nav-ic{color:var(--or-clair);opacity:1}
+
+/* Les deux compteurs existaient dans le HTML sans aucun style : ils
+   s'affichaient en texte nu contre le libelle. */
+#nav-msg-badge,#nav-imp-badge{margin-left:auto;flex:none;
+  font-size:10.5px;font-weight:700;line-height:1;border-radius:99px;
+  min-width:18px;height:18px;padding:0 5px;
+  display:inline-flex;align-items:center;justify-content:center}
+#nav-msg-badge{background:var(--or-clair);color:#0F231D}
+#nav-imp-badge{background:var(--rouge);color:#fff}
+#nav-msg-badge.hidden,#nav-imp-badge.hidden{display:none}
+.nav a>span:first-of-type{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* Le pied : l'initiale et le role, et « Se deconnecter » ramene a une
+   icone. En pleine largeur, cette action faite une fois par jour occupait
+   la place d'une entree de menu. */
+.sidebar-foot{flex-direction:row;align-items:center;gap:10px;
+  padding-top:14px;margin-top:14px;border-top:1px solid rgba(255,255,255,.08)}
+.sidebar-foot .user-ini{width:30px;height:30px;flex:none;border-radius:50%;
+  background:#1B3A31;border:1px solid rgba(185,138,60,.30);
+  display:flex;align-items:center;justify-content:center;
+  font-family:"Fraunces",serif;font-size:13px;font-weight:600;color:var(--or-clair)}
+.sidebar-foot .user-bloc{flex:1;min-width:0}
+.user-name{display:block;font-size:12.5px;font-weight:600;color:#D8E3DD;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:10.5px;color:#6F8378}
+.sidebar-foot .btn-ghost{flex:none;width:30px;height:30px;padding:0;
+  display:flex;align-items:center;justify-content:center;border-radius:8px;
+  border-color:rgba(255,255,255,.10)}
+.sidebar-foot .btn-ghost span{display:none}
+
+/* ---------- La barre haute : mobile seulement ---------- */
+.topbar{display:none}
+.nav-veil{display:none}
+
+@media (max-width:880px){
+
+  /* L'ancien montage : la barre laterale devenait un bandeau qui poussait
+     le contenu vers le bas a l'ouverture. On le defait entierement. */
+  .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .sidebar-head{display:flex}
+
+  .topbar{display:flex;align-items:center;gap:12px;
+    position:sticky;top:0;z-index:44;height:58px;flex:none;
+    padding:0 14px;padding-top:env(safe-area-inset-top);
+    box-sizing:content-box;
+    background:var(--nuit);border-bottom:1px solid rgba(185,138,60,.16)}
+  .topbar-burger{flex:none;width:38px;height:38px;border:none;border-radius:10px;
+    background:rgba(255,255,255,.06);color:#E4EDE8;
+    display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .topbar-burger:active{background:rgba(255,255,255,.12)}
+  .topbar-titre{flex:1;min-width:0}
+  .topbar-titre .brand-name{color:#EFE9DC;font-size:15px}
+  /* Le camping actif se lit ici : dans le tiroir, il faudrait l'ouvrir pour
+     savoir sur quel etablissement on travaille. */
+  .topbar-ctx{font-size:10px;color:#7C8F85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar-ini{flex:none;width:34px;height:34px;border-radius:50%;
+    background:#1B3A31;border:1px solid rgba(185,138,60,.30);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"Fraunces",serif;font-size:12px;font-weight:600;color:var(--or-clair)}
+
+  /* Le tiroir. position:fixed et non sticky : il doit couvrir la page, pas
+     s'inserer dedans. */
+  .sidebar{position:fixed;top:0;bottom:0;left:0;z-index:60;
+    width:min(292px,84vw);height:100dvh;
+    flex-direction:column;flex-wrap:nowrap;align-items:stretch;
+    padding:20px 14px calc(16px + env(safe-area-inset-bottom));
+    padding-top:max(20px, env(safe-area-inset-top));
+    overflow:hidden;
+    border-right:1px solid rgba(185,138,60,.18);
+    box-shadow:14px 0 40px rgba(0,0,0,.40);
+    transform:translateX(-101%);
+    transition:transform .26s var(--ease);
+    visibility:hidden}
+  .nav-open .sidebar{transform:translateX(0);visibility:visible}
+
+  .nav-veil{display:block;position:fixed;inset:0;z-index:55;
+    background:rgba(11,26,21,.50);backdrop-filter:blur(2px);
+    opacity:0;visibility:hidden;transition:opacity .22s;border:none;padding:0}
+  .nav-open .nav-veil{opacity:1;visibility:visible}
+  .nav-open{overflow:hidden}
+
+  /* Dans le tiroir, le bouton du haut ferme : celui qui ouvre vit dans la
+     barre haute, sinon il partirait hors ecran avec le tiroir. */
+  .sidebar .nav-burger{display:flex;align-items:center;justify-content:center;
+    position:absolute;top:max(22px, calc(env(safe-area-inset-top) + 2px));right:14px;
+    width:32px;height:32px;border:none;border-radius:9px;
+    background:rgba(255,255,255,.06);color:#A8BBB2;font-size:0;cursor:pointer;z-index:2}
+  .sidebar .nav-burger::before{content:"\00d7";font-size:20px;line-height:1}
+
+  .brand-side{order:0;flex:none;padding-right:44px}
+  .brand-side .brand-mark{width:36px;height:36px}
+  .brand-side .brand-name{font-size:16px}
+  .sidebar-head::after{margin:16px 0}
+
+  .camping-switch{order:0;flex:none;width:100%;max-width:none}
+  .camping-switch select{font-size:14px;padding:12px 34px 12px 13px;border-radius:10px}
+  #exercice-switch select{font-size:13.5px;padding:11px 34px 11px 13px}
+  #camping-switch{margin-bottom:7px}
+
+  /* Le menu est toujours la, il n'a plus a etre deplie. */
+  .nav{display:flex;order:0;width:auto;flex:1 1 auto;min-height:0;
+    max-height:none;overflow-y:auto;margin-top:18px;padding:0;border-top:none;gap:2px}
+  .nav a{padding:14px 13px;font-size:15px;border-radius:10px;min-height:48px}
+  .nav a.active::before{display:block}
+  .nav-ic{width:19px;height:19px}
+  .nav-grp{padding:18px 13px 8px}
+  .nav-grp:first-child{padding-top:0}
+
+  .sidebar-foot{display:flex;order:0;width:auto;flex:none;margin-top:12px}
+  #nav-msg-badge,#nav-imp-badge{min-width:20px;height:20px;font-size:11px;padding:0 6px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .sidebar,.nav-veil{transition:none}
+}
