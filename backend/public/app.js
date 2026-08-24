@@ -483,7 +483,16 @@ document.querySelectorAll('.nav a').forEach((a) => a.addEventListener('click', f
 
 /* L'initiale, le role, et le camping actif dans la barre haute : sur mobile,
    il faudrait sinon ouvrir le tiroir pour savoir ou l'on travaille. */
+let _majEnCours = false;
 function majEnveloppe() {
+  /* Garde de reentrance : la fonction ecrit dans le DOM, et c'est une
+     mutation du DOM qui la declenche. Sans ce verrou, elargir la portee de
+     l'observateur d'un cran suffit a figer la page — c'est arrive. */
+  if (_majEnCours) return;
+  _majEnCours = true;
+  try { _majEnveloppe(); } finally { _majEnCours = false; }
+}
+function _majEnveloppe() {
   const nom = (document.getElementById('user-name')?.textContent || '').trim();
   const ini = nom ? nom.split(/[\s.]+/).filter(Boolean).slice(0, 2)
     .map((m) => m[0].toUpperCase()).join('') : '';
@@ -503,8 +512,14 @@ document.getElementById('camping-select')?.addEventListener('change', majEnvelop
 document.getElementById('exercice-select')?.addEventListener('change', majEnveloppe);
 /* Le nom d'utilisateur et les selecteurs sont remplis apres coup, a des
    moments differents : on observe plutot que de deviner le bon instant. */
-new MutationObserver(majEnveloppe).observe(document.querySelector('.sidebar'),
-  { childList: true, subtree: true, characterData: true });
+/* On observe #user-name SEUL : c'est le seul element rempli par ailleurs que
+   majEnveloppe ne touche pas. Surveiller toute la barre laterale revenait a
+   s'ecouter soi-meme, puisque #user-ini et #user-role y vivent aussi. */
+const _cibleObs = document.getElementById('user-name');
+if (_cibleObs) {
+  new MutationObserver(majEnveloppe).observe(_cibleObs,
+    { childList: true, subtree: true, characterData: true });
+}
 setTimeout(majEnveloppe, 600);
 
 /* ---------- drawer ---------- */
