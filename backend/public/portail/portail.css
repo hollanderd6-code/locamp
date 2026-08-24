@@ -430,3 +430,15 @@ html,body{max-width:100%;overflow-x:hidden}
   .ctx-camping{font-size:12px}
   .ctx-empl{font-size:11.5px}
 }
+
+
+/* ---------------- Barre d'onglets : hors de l'espace, elle n'existe pas ----
+   La barre vit en fin de <body> et non dans #espace : c'est ce qui règle un
+   défaut iOS où « position: fixed » s'ancrait à un ancêtre transformé au lieu
+   du viewport. Mais elle a perdu du même coup ce qui la masquait — #espace et
+   sa classe « hidden » — et s'affichait sous le formulaire de connexion.
+
+   Le !important est assumé : .onglets porte son propre display ci-dessus, et
+   le recopier ici pour le neutraliser créerait deux valeurs à maintenir.
+   Il ne porte que sur le masquage, jamais sur l'apparence. */
+body:not(.espace-ouvert) #onglets{ display:none !important; }

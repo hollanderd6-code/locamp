@@ -315,6 +315,25 @@
      La deplacer en fin de <body> supprime la question : plus d'ancetre. */
   if (barre.parentNode !== document.body) document.body.appendChild(barre);
 
+  /* En sortant la barre de #espace, on l'a sortie de ce qui la masquait :
+     #espace porte « hidden » tant que le locataire n'est pas connecte, et la
+     barre disparaissait avec lui sans qu'aucun code ne s'en occupe. Quatre
+     onglets s'affichaient donc sous le formulaire de connexion.
+
+     Ce qui decidait de l'affichage etait la POSITION dans l'arbre ; on le
+     remplace par un etat explicite. On OBSERVE #espace plutot que d'attendre
+     un appel : portail.js retire « hidden » a plusieurs endroits — connexion,
+     lien magique, session retrouvee au chargement — et en brancher un
+     voudrait dire en oublier un autre. */
+  var espace = document.getElementById('espace');
+  if (espace) {
+    var majPresence = function () {
+      document.body.classList.toggle('espace-ouvert', !espace.classList.contains('hidden'));
+    };
+    new MutationObserver(majPresence).observe(espace, { attributes: true, attributeFilter: ['class'] });
+    majPresence();
+  }
+
   function aller(nom) {
     document.body.setAttribute('data-onglet', nom);
     barre.querySelectorAll('button').forEach(function (b) {
