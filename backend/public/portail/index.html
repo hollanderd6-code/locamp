@@ -138,7 +138,10 @@
       <button class="btn btn-ghost btn-sm btn-actualiser" id="btn-actualiser" title="Actualiser" aria-label="Actualiser">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.5v4.4h-4.4"/></svg>
       </button>
-      <button class="btn btn-ghost btn-sm" id="btn-logout">Se déconnecter</button>
+      <button class="btn btn-ghost btn-sm" id="btn-logout" title="Se déconnecter" aria-label="Se déconnecter">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        <span>Se déconnecter</span>
+      </button>
     </div>
   </header>
 
@@ -305,6 +308,12 @@
   var CLE = 'locamp_portail_onglet';
   var barre = document.getElementById('onglets');
   if (!barre) return;
+
+  /* « position:fixed » s'ancre au premier ancetre qui porte un filtre, une
+     transformation ou un backdrop-filter — pas au viewport. Sur iOS la barre
+     retombait donc en bas du document, visible seulement en fin de defilement.
+     La deplacer en fin de <body> supprime la question : plus d'ancetre. */
+  if (barre.parentNode !== document.body) document.body.appendChild(barre);
 
   function aller(nom) {
     document.body.setAttribute('data-onglet', nom);

@@ -349,3 +349,55 @@ body[data-onglet="documents"] #sec-rgpd{order:9}
 .repli-corps .note:first-child{margin-top:0}
 
 @media (prefers-reduced-motion:reduce){ .repli summary svg{transition:none} }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ MOBILE DU PORTAIL ══
+   ────────────────────────────────────────────────────────────────
+   Quatre defauts d'une meme famille : un titre trop grand faisait
+   deborder le header, le header faisait glisser la page, et la page
+   qui glissait masquait le reste.
+   ──────────────────────────────────────────────────────────────── */
+
+/* Une salutation n'est pas une enseigne. « .brand-name » est devenue une
+   enseigne pour la barre laterale de la gestion — capitales, interlettrage
+   large ; appliquee a « Bonjour Charles », elle donnait un titre demesure
+   sur deux lignes. Le portail reprend la main sur cette instance. */
+.topbar #hello{
+  font-family:"Fraunces",serif;
+  font-size:19px;font-weight:600;
+  letter-spacing:-.01em;text-transform:none;
+  line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Garde-fou : plus rien ne fait glisser la page lateralement, meme si un
+   contenu trop large reapparait un jour. */
+html,body{max-width:100%;overflow-x:hidden}
+
+.topbar{
+  display:flex;align-items:center;gap:12px;
+  /* min-width:0 sur le conteneur souple : sans lui, un texte long refuse de
+     se tronquer et pousse le reste hors de l'ecran. C'est l'origine du
+     debordement. */
+  }
+.topbar .brand{flex:1 1 auto;min-width:0}
+.topbar .brand > div:last-child{min-width:0}
+.topbar .brand-sub{
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:12.5px;line-height:1.35}
+.topbar .brand-mark{width:38px;height:38px;flex:none}
+.topbar-actions{flex:none;display:flex;align-items:center;gap:7px}
+
+#btn-logout{display:inline-flex;align-items:center;gap:7px}
+
+@media (max-width:560px){
+  /* Le mot « Se deconnecter » vaut trois boutons de large pour une action
+     faite une fois par session : l'icone suffit. */
+  #btn-logout span{display:none}
+  #btn-logout{width:36px;height:36px;padding:0;justify-content:center}
+  .btn-actualiser{width:36px;height:36px;padding:0;justify-content:center}
+  .topbar{gap:9px;padding-left:14px;padding-right:14px}
+  .topbar #hello{font-size:17px}
+  .topbar .brand{gap:10px}
+  .topbar .brand-mark{width:34px;height:34px}
+}
