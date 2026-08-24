@@ -1276,3 +1276,24 @@ body .sidebar .sidebar-foot .btn-ghost:not(#logout-btn) span:last-child{margin-l
   body.nav-open .sidebar-foot .btn-ghost:not(#logout-btn) *{font-size:13.5px}
   body.nav-open .sidebar-foot .btn-ghost:not(#logout-btn){min-height:44px}
 }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ BARRE : SANS DEFILEMENT ══
+   ────────────────────────────────────────────────────────────────
+   Trente pixels manquaient pour voir les treize entrees d'un coup. Un
+   menu qui defile cache toujours les memes : celles du bas, Parametres
+   et Administration.
+
+   Ils sont pris sur les marges, jamais sur les cibles : la hauteur utile
+   d'une entree reste de 33 px, confortable a la souris. Le telephone
+   garde ses 48 px — la c'est le doigt qui commande.
+   ──────────────────────────────────────────────────────────────── */
+@media (min-width:881px){
+  body .sidebar .nav a{padding:8px 12px}
+  body .sidebar .nav-grp{padding:13px 12px 7px}
+  body .sidebar .nav-grp:first-child{padding-top:4px}
+  body .sidebar .nav{margin-top:6px;gap:0}
+  body .sidebar .sidebar-head::after{margin:14px 2px 0}
+  body .sidebar .sidebar-foot{padding-top:12px;margin-top:12px}
+}
