@@ -1089,7 +1089,7 @@ function renderCarte() {
           <h3>Emplacements à placer <span class="map-count">${unplaced.length}</span></h3>
           <div class="map-chips">${unplaced.map((e) => `<button class="map-chip" data-act="placeEmplacement" data-a1="${e.id}">${esc(e.numero)}</button>`).join('')}</div>
         </div>` : ''}
-        <p class="map-aide">Glisse pour déplacer · poignée dorée pour redimensionner · <kbd>Suppr</kbd> pour retirer · <kbd>Échap</kbd> pour désélectionner. Aimantation automatique.</p>
+        <p class="map-aide">Glissez pour déplacer · poignée dorée pour redimensionner · <kbd>Suppr</kbd> pour retirer · <kbd>Échap</kbd> pour désélectionner. Aimantation automatique.</p>
       </aside>` : ''}
     </div>`;
 
@@ -2038,7 +2038,7 @@ function selectionPresta() {
 window.facturerSelection = async (residentId) => {
   const sel = selectionPresta();
   const facturables = sel.filter((s) => s.type !== 'caution');
-  if (!facturables.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
+  if (!facturables.length) { toast('Sélectionnez au moins une prestation facturable', true); return; }
   if (!await askConfirm(`Créer une facture avec ${facturables.length} prestation(s) ?`)) return;
   try {
     const r = await api('/api/prestations/facturer', {
@@ -2052,7 +2052,7 @@ window.facturerSelection = async (residentId) => {
 
 window.proformaSelection = async (residentId) => {
   const sel = selectionPresta().filter((s) => s.type !== 'caution');
-  if (!sel.length) { toast('Sélectionne au moins une prestation facturable', true); return; }
+  if (!sel.length) { toast('Sélectionnez au moins une prestation facturable', true); return; }
   try {
     const { url } = await api('/api/prestations/proforma', {
       method: 'POST',
@@ -3564,7 +3564,7 @@ window.formDocSignature = async () => {
           ${actifs.map((r) => `<option value="${r.id}">${esc(r.prenom || '')} ${esc(r.nom)} · ${esc(r.email)}</option>`).join('')}
         </select></label>
       <label class="full">Message d'accompagnement<textarea name="message" rows="2" style="width:100%"></textarea></label>
-      <div class="full muted" style="font-size:12.5px;margin-top:2px">Si c\u2019est un contrat (ou tout document à durée limitée), renseigne son terme : Locamp te préviendra avant l\u2019échéance et le marquera « à refaire ».</div>
+      <div class="full muted" style="font-size:12.5px;margin-top:2px">Si c\u2019est un contrat (ou tout document à durée limitée), renseignez son terme : Locamp vous préviendra avant l\u2019échéance et le marquera « à refaire ».</div>
       <label>Début de validité<input type="date" name="date_debut"></label>
       <label>Fin de validité (terme)<input type="date" name="date_fin"></label>
       <div class="full"><button class="btn btn-primary btn-block">Déposer le document</button></div>
@@ -4611,7 +4611,7 @@ async function chargerRemises() {
 
 window.creerRemise = async (code, libelle) => {
   const ids = [...document.querySelectorAll(`.chk-remise[data-moyen="${code}"]:checked`)].map((x) => x.value);
-  if (!ids.length) { toast('Sélectionne au moins un titre', true); return; }
+  if (!ids.length) { toast('Sélectionnez au moins un titre', true); return; }
   const banque = await askPrompt(`Banque pour ce bordereau ${libelle} (optionnel) :`) || undefined;
   try {
     const { remise } = await api('/api/remises', { method: 'POST', body: { reglement_ids: ids, banque } });
