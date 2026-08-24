@@ -1095,3 +1095,56 @@ input:-webkit-autofill:active{
 @media (prefers-reduced-motion:reduce){
   .sidebar,.nav-veil{transition:none}
 }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ TIROIR : FINITIONS ══
+   ────────────────────────────────────────────────────────────────
+   Meme lecon que precedemment : l'ancien montage mobile ecrit
+   « body.nav-open ... » — un element et deux classes. Une regle a deux
+   classes ne le bat pas, ou qu'elle se trouve dans la feuille. Ces
+   regles reprennent donc le selecteur a l'identique.
+   ──────────────────────────────────────────────────────────────── */
+@media (max-width:880px){
+
+  /* ---- Le haut : une seule separation ----
+     Le filet, la marge du menu et le retrait du premier intertitre
+     s'additionnaient : cent pixels de vide, soit deux entrees perdues. */
+  body.nav-open .sidebar-head::after{margin:15px 0 0}
+  body.nav-open .nav{margin-top:10px}
+  body.nav-open .nav-grp:first-child{padding-top:4px}
+  body.nav-open #camping-switch{margin-bottom:7px}
+  body.nav-open #exercice-switch{margin-bottom:0}
+
+  /* ---- Le menu : deux entrees de plus a l'ecran ----
+     La cible reste a 48 px de haut — c'est la seule contrainte reelle.
+     Ce sont les marges autour qui coutaient de la place. */
+  body.nav-open .nav a{padding:12px 13px;min-height:48px}
+  body.nav-open .nav-grp{padding:14px 13px 6px}
+
+  /* ---- Le pied : une ligne, pas une colonne ----
+     L'ancien montage le passait en colonne et centrait son contenu, ce
+     qui detachait le bloc du reste du tiroir. */
+  body.nav-open .sidebar-foot{
+    flex-direction:row;
+    align-items:center;
+    justify-content:flex-start;
+    gap:10px;
+    text-align:left;
+    flex-wrap:nowrap;
+    padding-top:14px;
+    margin-top:10px;
+  }
+  body.nav-open .sidebar-foot .user-ini{width:34px;height:34px;flex:0 0 auto;font-size:13px}
+  body.nav-open .sidebar-foot .user-bloc{flex:1 1 auto;min-width:0;text-align:left}
+  body.nav-open .sidebar-foot .user-name{font-size:13px}
+  body.nav-open .sidebar-foot .user-role{font-size:10.5px}
+
+  /* Le bouton de sortie : une icone, alignee a droite. Un « span » masque
+     laissait sinon une case vide a cote d'elle. */
+  body.nav-open .sidebar-foot #logout-btn{
+    flex:0 0 auto;width:34px;height:34px;min-width:0;padding:0;
+    display:flex;align-items:center;justify-content:center;border-radius:9px}
+  body.nav-open .sidebar-foot #logout-btn span{display:none}
+  body.nav-open .sidebar-foot #logout-btn svg{width:15px;height:15px}
+}
