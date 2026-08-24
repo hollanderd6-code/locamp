@@ -248,3 +248,32 @@ body.en-signature .footy{display:none}
    remonter au-dessus d'elle. */
 body[data-onglet] .content{padding-bottom:calc(78px + env(safe-area-inset-bottom))}
 body[data-onglet] .footy{margin-bottom:calc(70px + env(safe-area-inset-bottom))}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ SIGNATURE EN TETE ══
+   ────────────────────────────────────────────────────────────────
+   Un document a signer bloque le camping : sans lui, le contrat
+   n'existe pas. Tout le reste du portail informe sans rien attendre.
+
+   Le bloc sort donc de la logique d'onglets et s'affiche en premier,
+   quel que soit l'onglet ouvert — un resident arrive sur « Solde » et
+   ne verrait rien autrement. Vide, portail.js lui pose « hidden » et il
+   disparait : un bandeau qui annonce zero document a signer apprend a
+   ne plus etre regarde.
+   ──────────────────────────────────────────────────────────────── */
+
+body[data-onglet] .content{display:flex;flex-direction:column}
+
+/* Devant tout, dans tous les onglets. « :not(.hidden) » laisse
+   portail.js maitre de l'affichage quand la liste est vide. */
+body[data-onglet] #sec-signer:not(.hidden){display:block;order:-2}
+body[data-onglet="documents"] #sec-signer:not(.hidden){order:-2}
+
+/* Ambre, et non rouge : le resident n'est pas en retard, il n'a
+   peut-etre jamais ete prevenu. Le rouge reste aux impayes. */
+#sec-signer{border-color:#E5C98F;background:linear-gradient(180deg,#FDFAF2 0%,#FFFFFF 42%)}
+#sec-signer .eyebrow{color:#916018}
+#sec-signer::before{content:"";display:block;height:2px;margin:-1px -1px 0;
+  border-radius:2px 2px 0 0;
+  background:linear-gradient(90deg,#C9A24E,#E5C98F 60%,transparent)}
