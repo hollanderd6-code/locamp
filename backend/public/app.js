@@ -3754,6 +3754,102 @@ function renderEfactureCard(cx, plateformes) {
   $('#cfg-exp')?.addEventListener('input', majExpInfo);
   document.querySelector('[name="email_auto"]')?.addEventListener('change', majExpInfo);
   majExpInfo();
+
+  /* ---- Modifications non enregistrées ----------------------------
+     Six sections, six boutons : c'est volontaire — ce sont six domaines
+     indépendants, et un bouton unique renverrait tout à chaque fois.
+     Le défaut était ailleurs : une modification non enregistrée
+     disparaissait sans un mot.
+
+     Chaque formulaire retient l'état de ses champs au chargement ; dès
+     qu'un champ s'en écarte, son bouton le dit et quitter demande
+     confirmation. */
+  const surveillerModifs = () => {
+    const formulaires = [...document.querySelectorAll('#main form')];
+    if (!formulaires.length) return;
+
+    /* L'empreinte est relevée sur le DOM, pas sur les données du serveur :
+       un champ vide côté serveur et un champ vide à l'écran ne sont pas
+       toujours la même chaîne, ce qui produirait de fausses alertes. */
+    const empreinte = (f) => [...f.elements]
+      .filter((el) => el.name && el.type !== 'file' && el.type !== 'submit' && el.type !== 'button')
+      .map((el) => el.name + '=' + (el.type === 'checkbox' ? el.checked : el.value))
+      .join('\u0001');
+
+    formulaires.forEach((f) => {
+      f.dataset.etatInitial = empreinte(f);
+
+      const majRepere = () => {
+        const modifie = empreinte(f) !== f.dataset.etatInitial;
+        f.dataset.modifie = modifie ? '1' : '';
+        const btn = f.querySelector('button.btn-primary');
+        if (!btn) return;
+        if (!btn.dataset.libelle) btn.dataset.libelle = btn.textContent.trim();
+        btn.textContent = modifie ? '\u2022 ' + btn.dataset.libelle : btn.dataset.libelle;
+        btn.style.boxShadow = modifie ? '0 0 0 3px rgba(185,138,60,.30)' : '';
+        btn.title = modifie ? 'Modifications non enregistrées dans cette section.' : '';
+      };
+
+      f.addEventListener('input', majRepere);
+      f.addEventListener('change', majRepere);
+      /* Après un envoi réussi la vue est rechargée : l'empreinte repart de
+         zéro. On remet quand même le repère à plat tout de suite, pour que
+         le bouton ne reste pas marqué le temps de l'aller-retour réseau. */
+      f.addEventListener('submit', () => {
+        f.dataset.etatInitial = empreinte(f);
+        f.dataset.modifie = '';
+        majRepere();
+      });
+    });
+
+    const sectionsModifiees = () => [...document.querySelectorAll('#main form[data-modifie="1"]')]
+      .map((f) => (f.closest('.card')?.querySelector('h2')?.textContent || '').trim())
+      .filter(Boolean);
+
+    /* Fermeture d'onglet ou rechargement : le navigateur impose son propre
+       texte, on ne peut que demander l'arrêt. */
+    const avantFermeture = (e) => {
+      if (!sectionsModifiees().length) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avantFermeture);
+
+    /* Navigation interne : là on peut nommer les sections concernées.
+       En capture, pour intercepter le clic avant que le routeur ne parte. */
+    const avantNavigation = async (e) => {
+      const lien = e.target.closest?.('a[href^="#/"]');
+      if (!lien) return;
+      const noms = sectionsModifiees();
+      if (!noms.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const liste = noms.map((n) => '\u2022 ' + n).join('\n');
+      const ok = await askConfirm(
+        'Quitter sans enregistrer ?\n\n'
+        + 'Ces sections ont des modifications non enregistrées :\n' + liste
+        + '\n\nChaque section a son propre bouton « Enregistrer » : les '
+        + 'modifications seront perdues.',
+        { ok: 'Quitter sans enregistrer', danger: true }
+      );
+      if (!ok) return;
+      document.removeEventListener('click', avantNavigation, true);
+      window.removeEventListener('beforeunload', avantFermeture);
+      location.hash = lien.getAttribute('href');
+    };
+    document.addEventListener('click', avantNavigation, true);
+
+    /* La surveillance ne vaut que pour cet écran : en changeant de vue, on
+       la retire, sinon elle avertirait sur des formulaires disparus. */
+    const nettoyer = () => {
+      if (location.hash.startsWith('#/parametres')) return;
+      document.removeEventListener('click', avantNavigation, true);
+      window.removeEventListener('beforeunload', avantFermeture);
+      window.removeEventListener('hashchange', nettoyer);
+    };
+    window.addEventListener('hashchange', nettoyer);
+  };
+  surveillerModifs();
   const intro = `<p class="muted" style="margin-top:4px">Locamp pilote vos flux ; la transmission réglementaire passe par votre <strong>plateforme agréée</strong> (PA). Réforme : réception obligatoire au 1er sept. 2026, émission/e-reporting au 1er sept. 2027 pour les TPE/PME.</p>`;
   const connecte = cx && (cx.statut === 'connecte' || cx.statut === 'connectee');
   if (connecte) {
