@@ -175,3 +175,76 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px
 .topbar-actions{display:flex;align-items:center;gap:8px}
 .btn-actualiser{padding:8px 10px;display:flex;align-items:center}
 .btn-actualiser.tourne svg{animation:spin .7s linear infinite}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ ONGLETS DU PORTAIL ══
+   ────────────────────────────────────────────────────────────────
+   Chaque regle d'affichage porte « :not(.hidden) » : portail.js masque
+   les sections vides — sejours a venir, documents a signer — et changer
+   d'onglet ne doit pas les faire reapparaitre vides.
+   ──────────────────────────────────────────────────────────────── */
+
+body[data-onglet] .content > section{display:none}
+
+body[data-onglet="solde"] #hero-solde:not(.hidden),
+body[data-onglet="solde"] #sec-sejours:not(.hidden),
+body[data-onglet="factures"] #sec-factures:not(.hidden),
+body[data-onglet="messages"] #sec-messages:not(.hidden),
+body[data-onglet="documents"] #sec-docs:not(.hidden),
+body[data-onglet="documents"] #sec-signer:not(.hidden),
+body[data-onglet="documents"] #sec-rgpd:not(.hidden){display:block}
+
+/* Dans l'onglet Documents, ce qui attend une signature passe devant le
+   dossier : c'est la seule chose qui reclame une action. */
+body[data-onglet="documents"] #sec-signer{order:-1}
+body[data-onglet="documents"] .content{display:flex;flex-direction:column}
+
+/* La signature occupe seule l'ecran, quel que soit l'onglet. */
+body.en-signature .content > section{display:none}
+body.en-signature #sec-signature:not(.hidden){display:block}
+body.en-signature .onglets{display:none}
+body.en-signature .footy{display:none}
+
+.onglets{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
+  display:grid;grid-template-columns:repeat(4,1fr);
+  background:rgba(255,255,255,.94);
+  backdrop-filter:blur(12px);
+  border-top:1px solid var(--hairline);
+  padding-bottom:env(safe-area-inset-bottom);
+  /* Centre sur grand ecran : une barre de 1400 px de large pour quatre
+     rubriques serait absurde. */
+  margin:0 auto;max-width:none}
+@media (min-width:900px){
+  .onglets{max-width:620px;border:1px solid var(--hairline);
+    border-radius:16px 16px 0 0;box-shadow:var(--shadow-m)}
+}
+
+.onglets button{
+  position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:58px;padding:9px 4px calc(9px + env(safe-area-inset-bottom, 0px) * 0);
+  border:none;background:none;cursor:pointer;
+  font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.01em;
+  color:var(--brume);
+  -webkit-tap-highlight-color:transparent}
+.onglets button svg{opacity:.62;transition:opacity .15s}
+.onglets button.actif{color:var(--sapin)}
+.onglets button.actif svg{opacity:1}
+/* Un filet en haut de l'onglet actif : sur quatre rubriques, la couleur
+   seule ne suffit pas a distinguer laquelle est ouverte. */
+.onglets button.actif::before{content:"";position:absolute;top:0;left:22%;right:22%;
+  height:2px;border-radius:0 0 2px 2px;background:var(--sapin)}
+
+/* Le compteur de documents a signer. */
+.onglets em{position:absolute;top:6px;left:calc(50% + 9px);
+  min-width:17px;height:17px;padding:0 4px;border-radius:99px;
+  background:var(--rouge);color:#fff;
+  font-size:10px;font-weight:700;font-style:normal;line-height:17px;text-align:center}
+.onglets em.hidden{display:none}
+
+/* La barre recouvre le bas de la page : le dernier element doit pouvoir
+   remonter au-dessus d'elle. */
+body[data-onglet] .content{padding-bottom:calc(78px + env(safe-area-inset-bottom))}
+body[data-onglet] .footy{margin-bottom:calc(70px + env(safe-area-inset-bottom))}

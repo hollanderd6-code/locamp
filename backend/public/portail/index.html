@@ -154,13 +154,13 @@
     </section>
 
     <!-- Factures -->
-    <section class="card">
+    <section class="card" id="sec-factures">
       <div class="card-head"><div class="eyebrow">Mes paiements</div><h2>Factures</h2></div>
       <div id="liste-factures"></div>
     </section>
 
     <!-- Messages -->
-    <section class="card">
+    <section class="card" id="sec-messages">
       <div class="card-head"><div class="eyebrow">Échanger avec le camping</div><h2>Messages</h2></div>
       <div id="fil-messages" class="msg-fil"></div>
       <form id="form-msg" class="msg-form">
@@ -220,7 +220,7 @@
     </section>
 
     <!-- Mes données personnelles (RGPD) -->
-    <section class="card">
+    <section class="card" id="sec-rgpd">
       <div class="card-head"><div class="eyebrow">Vos droits</div><h2>Mes données personnelles</h2></div>
       <p class="note">Vous pouvez à tout moment obtenir une copie de l'ensemble des données que le camping détient sur vous (articles 15 et 20 du RGPD).</p>
       <button class="btn btn-ghost btn-sm" id="btn-mes-donnees" style="margin-top:10px">Télécharger mes données</button>
@@ -228,7 +228,7 @@
     </section>
 
     <!-- Documents -->
-    <section class="card">
+    <section class="card" id="sec-docs">
       <div class="card-head"><div class="eyebrow">Mon dossier</div><h2>Documents</h2></div>
       <div id="liste-docs"></div>
       <form id="form-doc" class="upload-row">
@@ -245,10 +245,96 @@
     </section>
   </main>
   <footer class="footy">Espace sécurisé — vos documents et paiements sont chiffrés.</footer>
+
+  <!-- portail-onglets : quatre rubriques en bas d'ecran, a la maniere d'une
+       application. Les sept sections empilees formaient un couloir dont on ne
+       voyait pas la fin. -->
+  <nav class="onglets" id="onglets" aria-label="Rubriques">
+    <button data-ong="solde" aria-current="page">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h18v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M3 7.5 6 4h12l3 3.5"/><path d="M15.5 13.5h2.5"/></svg>
+      <span>Solde</span>
+    </button>
+    <button data-ong="factures">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M9 12h7"/><path d="M9 16h7"/></svg>
+      <span>Factures</span>
+    </button>
+    <button data-ong="messages">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.8A8 8 0 1 1 21 12z"/></svg>
+      <span>Messages</span>
+    </button>
+    <button data-ong="documents">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5H9l2 2.5h7.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"/></svg>
+      <span>Documents</span>
+      <em id="ong-signer" class="hidden"></em>
+    </button>
+  </nav>
 </div>
 
 <div id="toast" class="toast hidden"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="/portail/portail.js"></script>
+
+<script>
+/* ---- Les onglets du portail ----
+   L'affichage passe par un attribut sur <body> et non par la classe
+   « hidden » : portail.js s'en sert deja pour masquer les sections vides, et
+   les deux mecaniques doivent pouvoir coexister sans se marcher dessus. */
+(function () {
+  var CLE = 'locamp_portail_onglet';
+  var barre = document.getElementById('onglets');
+  if (!barre) return;
+
+  function aller(nom) {
+    document.body.setAttribute('data-onglet', nom);
+    barre.querySelectorAll('button').forEach(function (b) {
+      var actif = b.dataset.ong === nom;
+      b.classList.toggle('actif', actif);
+      if (actif) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
+    try { localStorage.setItem(CLE, nom); } catch (e) {}
+    /* On revient en haut : changer de rubrique en gardant la position de
+       defilement de la precedente donne l'impression d'un ecran casse. */
+    window.scrollTo(0, 0);
+  }
+
+  barre.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-ong]');
+    if (b) aller(b.dataset.ong);
+  });
+
+  var depart = 'solde';
+  try { depart = localStorage.getItem(CLE) || 'solde'; } catch (e) {}
+  if (!barre.querySelector('[data-ong="' + depart + '"]')) depart = 'solde';
+  aller(depart);
+
+  /* Un document a signer est la seule chose ici qui bloque le camping. Il
+     etait enterre sous les messages : l'onglet le signale desormais.
+     On observe plutot que de deviner quand portail.js remplit la liste. */
+  function majSigner() {
+    var liste = document.getElementById('liste-signer');
+    var pastille = document.getElementById('ong-signer');
+    if (!liste || !pastille) return;
+    var n = liste.querySelectorAll('[data-doc-id], .doc-signer, li, .row').length;
+    if (!n && liste.children.length && !liste.querySelector('p.note')) n = liste.children.length;
+    pastille.textContent = n > 9 ? '9+' : n;
+    pastille.classList.toggle('hidden', !n);
+  }
+  var cible = document.getElementById('liste-signer');
+  if (cible) {
+    new MutationObserver(majSigner).observe(cible, { childList: true, subtree: true });
+    setTimeout(majSigner, 900);
+  }
+
+  /* L'ecran de signature est une tache, pas une rubrique : il occupe seul
+     l'ecran, et la barre s'efface pour qu'on n'en sorte pas par megarde. */
+  var sig = document.getElementById('sec-signature');
+  if (sig) {
+    new MutationObserver(function () {
+      document.body.classList.toggle('en-signature', !sig.classList.contains('hidden'));
+    }).observe(sig, { attributes: true, attributeFilter: ['class'] });
+  }
+})();
+</script>
 </body>
 </html>
