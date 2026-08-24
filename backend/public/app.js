@@ -4548,11 +4548,25 @@ async function vueCompta() {
   const dm = camping?.parametres?.exercice_debut_mois || 1;
   const ex = exerciceCourant(dm);
   const mois = new Date().toISOString().slice(0, 7);
+
+  /* La période d'export partait sur l'exercice ENTIER, donc sur une date de
+     fin future tant que l'exercice n'est pas clos. Le fichier produit
+     s'appelait alors FEC_2026-12-31.txt en contenant les écritures jusqu'à
+     aujourd'hui : un nom qui annonce une période plus large que son contenu.
+     Sur un fichier destiné à l'administration, c'est un écart qu'on ne veut
+     pas avoir à expliquer.
+
+     On s'arrête donc à aujourd'hui tant que l'exercice court, et à la clôture
+     une fois qu'il est terminé. Le champ reste modifiable. */
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const finExportDefaut = ex.fin > aujourdhui ? aujourdhui : ex.fin;
   $('#main').innerHTML = `
     <div class="page-head"><div><div class="eyebrow">Comptabilité</div><h1>Compta & TVA</h1></div>
       <div class="compta-exercice">Exercice en cours
         <strong>${dfr(ex.debut)} → ${dfr(ex.fin)}</strong>${dm !== 1 ? '' : '<span class="muted"> (année civile)</span>'}</div></div>
 
+    
+    <div class="compta-duo" style="align-items:start">
     <div class="card">
       <div class="card-actions"><h2>TVA sur les encaissements</h2>
         <div class="toolbar"><input id="tva-mois" type="month" value="${mois}">
@@ -4568,12 +4582,13 @@ async function vueCompta() {
           <input id="idx-ref" type="text" placeholder="référence (ex. IRL T1 2026)" style="width:230px" title="L’indice qui justifie la revalorisation. Il est conservé dans l’historique et opposable au résident.">
           <button class="btn btn-primary btn-sm" data-act="idxApercu">Aperçu</button>
         </div></div>
-      <p class="muted">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
+      <p class="muted" style="font-size:13px">Revalorise tous les loyers d\u2019un pourcentage (indice IRL, ILC\u2026). Aperçu avant/après, puis application en un clic : les fiches et les modèles partagés sont mis à jour, la facturation suivante applique le nouveau montant. Les contrats signés restent scellés — l\u2019avenant passe par le renouvellement en signature.</p>
       <div id="idx-zone" style="margin-top:10px"></div>
-      <h3 style="margin:16px 0 6px;font-size:14px">Campagnes passées</h3>
+      <h3 style="margin:16px 0 6px;font-size:14px" id="idx-histo-titre" hidden>Campagnes passées</h3>
       <div id="idx-histo" class="muted">Chargement&hellip;</div>
     </div>
 
+    </div>
     <div class="compta-duo">
     <div class="card">
       <div class="card-actions"><h2>Comptes clients (auxiliaires)</h2></div>
@@ -4589,15 +4604,36 @@ async function vueCompta() {
 
     <div class="card">
       <div class="card-actions"><h2>Exports comptables</h2></div>
-      <p class="muted">Période par défaut : l'exercice en cours. Modifiable ci-dessous.</p>
+      <p class="muted">Exercice en cours, arrêté à aujourd'hui${ex.fin > aujourdhui ? ` — la clôture est prévue le ${dfr(ex.fin)}` : ''}. Modifiable ci-dessous.</p>
       <div class="toolbar" style="margin-top:10px">
         <label style="margin:0">Du<input id="exp-debut" type="date" value="${ex.debut}"></label>
-        <label style="margin:0">Au<input id="exp-fin" type="date" value="${ex.fin}"></label>
+        <label style="margin:0">Au<input id="exp-fin" type="date" value="${finExportDefaut}"></label>
         <button class="btn btn-primary" data-act="exporterCompta" data-a1="fec">Export FEC</button>
         <button class="btn btn-ghost" data-act="exporterCompta" data-a1="csv">Écritures CSV</button>
       </div>
     </div>
     </div>`;
+  /* Une date de fin dans le futur produit un fichier dont le nom annonce
+     une période que son contenu ne couvre pas. On ne l'interdit pas — on
+     peut vouloir préparer un export — mais on le dit. */
+  const majAvertExport = () => {
+    const fin = $('#exp-fin')?.value;
+    let z = $('#exp-avert');
+    if (!z) {
+      z = document.createElement('p');
+      z.id = 'exp-avert';
+      z.className = 'muted';
+      z.style.cssText = 'margin:10px 0 0;font-size:13px';
+      $('#exp-fin')?.closest('.toolbar')?.insertAdjacentElement('afterend', z);
+    }
+    if (fin && fin > aujourdhui) {
+      z.innerHTML = '<span style="color:var(--laiton)">La date de fin est dans le futur : '
+        + 'le fichier portera ce nom, mais s\u2019arrêtera aux dernières écritures enregistrées.</span>';
+    } else { z.textContent = ''; }
+  };
+  $('#exp-fin')?.addEventListener('change', majAvertExport);
+  majAvertExport();
+
   majApercuCompte();
   $('#cc-racine').addEventListener('input', majApercuCompte);
   $('#cc-lng').addEventListener('input', majApercuCompte);
