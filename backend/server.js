@@ -147,23 +147,40 @@ app.get(['/confidentialite', '/politique-de-confidentialite'], (req, res) =>
    L'empreinte vient de l'environnement : elle identifie la cle de
    signature, et changera le jour ou la cle changera. */
 app.get('/.well-known/assetlinks.json', (req, res) => {
-  const empreinte = process.env.ANDROID_FINGERPRINT;
-  if (!empreinte) {
-    /* Le dire plutot que servir un fichier vide : un JSON incomplet
-       donnerait la meme barre d'adresse, sans en indiquer la raison. */
+  /* assetlinks.json est une LISTE : un site peut autoriser plusieurs
+     applications. Avec une seule declaration, la seconde application
+     garderait la barre d'adresse de Chrome — et rien ne le signalerait,
+     puisque la premiere continuerait de fonctionner. */
+  const empreinte1 = process.env.ANDROID_FINGERPRINT;
+  if (!empreinte1) {
     return res.status(503).type('application/json').send(JSON.stringify({
       erreur: 'ANDROID_FINGERPRINT absente de l\'environnement.',
       ou: 'Console Play, Integrite de l\'application, SHA-256 du certificat de signature.'
     }, null, 2));
   }
-  res.type('application/json').send(JSON.stringify([{
+
+  const apps = [
+    { id: process.env.ANDROID_APP_ID || 'com.locamp.gestion', emp: empreinte1 }
+  ];
+
+  /* Deux applications du meme compte Play partagent leur empreinte de
+     deploiement. On reutilise donc la premiere si la seconde n'est pas
+     posee — une supposition explicite plutot qu'un silence. */
+  if (process.env.ANDROID_APP_ID_2) {
+    apps.push({
+      id: process.env.ANDROID_APP_ID_2,
+      emp: process.env.ANDROID_FINGERPRINT_2 || empreinte1
+    });
+  }
+
+  res.type('application/json').send(JSON.stringify(apps.map((a) => ({
     relation: ['delegate_permission/common.handle_all_urls'],
     target: {
       namespace: 'android_app',
-      package_name: process.env.ANDROID_APP_ID || 'com.locamp.gestion',
-      sha256_cert_fingerprints: empreinte.split(',').map((f) => f.trim()).filter(Boolean)
+      package_name: a.id,
+      sha256_cert_fingerprints: a.emp.split(',').map((f) => f.trim()).filter(Boolean)
     }
-  }], null, 2));
+  })), null, 2));
 });
 
 app.use(express.static('public'));
