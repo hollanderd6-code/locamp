@@ -3716,16 +3716,51 @@ window.voirSignature = async (id) => {
     <a class="btn btn-primary btn-block" style="margin-top:18px" href="${url}" target="_blank" rel="noopener">Ouvrir le document signé</a>`);
 };
 
-/* ---------- Facturation electronique : connecteur Plateforme Agreee (OD) ---------- */
+/* ---------- Facturation électronique : connecteur Plateforme Agreee (OD) ---------- */
 function renderEfactureCard(cx, plateformes) {
   const platNom = (code) => (plateformes.find((x) => x.code === code) || {}).nom || code;
-  const intro = `<p class="muted" style="margin-top:4px">Locamp pilote vos flux ; la transmission reglementaire passe par votre <strong>plateforme agreee</strong> (PA). Reforme : reception obligatoire au 1er sept. 2026, emission/e-reporting au 1er sept. 2027 pour les TPE/PME.</p>`;
+
+  /* Le SIRET compte quatorze chiffres. Le champ en affichait neuf — un SIREN —
+     sans que rien ne le signale, alors que c'est une mention obligatoire des
+     factures et le déclencheur de Factur-X. On informe sans bloquer : un
+     camping en cours d'immatriculation doit pouvoir enregistrer le reste. */
+  const majSiretInfo = () => {
+    const ch = $('#cfg-siret'); const info = $('#cfg-siret-info');
+    if (!ch || !info) return;
+    const n = String(ch.value || '').replace(/\D/g, '').length;
+    if (!n) { info.textContent = ''; info.style.color = ''; return; }
+    if (n === 14) { info.textContent = '14 chiffres — format valide.'; info.style.color = 'var(--sapin)'; return; }
+    info.style.color = 'var(--laiton)';
+    info.textContent = n === 9
+      ? '9 chiffres : c\u2019est un SIREN. Le SIRET en compte 14 (SIREN + 5 chiffres d\u2019établissement). '
+        + 'Sans SIRET complet, la facturation électronique sera refusée.'
+      : n + ' chiffre' + (n > 1 ? 's' : '') + ' sur les 14 attendus.';
+  };
+  $('#cfg-siret')?.addEventListener('input', majSiretInfo);
+  majSiretInfo();
+
+  /* Envoi automatique actif sans expéditeur : les factures partent avec
+     l'adresse de repli du serveur, que le résident ne reconnaît pas. */
+  const majExpInfo = () => {
+    const ch = $('#cfg-exp'); const info = $('#cfg-exp-info');
+    if (!ch || !info) return;
+    const auto = document.querySelector('[name="email_auto"]')?.value !== 'false';
+    if (auto && !String(ch.value || '').trim()) {
+      info.style.color = 'var(--laiton)';
+      info.textContent = 'L\u2019envoi automatique est actif mais aucun expéditeur n\u2019est défini : '
+        + 'vos factures partiront depuis une adresse que vos résidents ne reconnaîtront pas.';
+    } else { info.textContent = ''; info.style.color = ''; }
+  };
+  $('#cfg-exp')?.addEventListener('input', majExpInfo);
+  document.querySelector('[name="email_auto"]')?.addEventListener('change', majExpInfo);
+  majExpInfo();
+  const intro = `<p class="muted" style="margin-top:4px">Locamp pilote vos flux ; la transmission réglementaire passe par votre <strong>plateforme agréée</strong> (PA). Réforme : réception obligatoire au 1er sept. 2026, émission/e-reporting au 1er sept. 2027 pour les TPE/PME.</p>`;
   const connecte = cx && (cx.statut === 'connecte' || cx.statut === 'connectee');
   if (connecte) {
     return `
     <div class="card" style="margin-top:16px">
-      <div class="card-actions"><h2 style="margin:0">Facturation electronique</h2>
-        <span class="badge reglee">Connectee &mdash; ${esc(platNom(cx.pa_code))}</span></div>
+      <div class="card-actions"><h2 style="margin:0">Facturation électronique</h2>
+        <span class="badge reglee">Connectée &mdash; ${esc(platNom(cx.pa_code))}</span></div>
       ${intro}
       <div class="stat" style="margin-top:10px"><span class="k">Adresse de routage</span><span class="v">${esc(cx.adresse_routage || '&mdash;')}</span></div>
       ${cx.message ? `<p class="muted">${esc(cx.message)}</p>` : ''}
@@ -3756,11 +3791,11 @@ function renderEfactureCard(cx, plateformes) {
   const opts = plateformes.map((x) => `<option value="${esc(x.code)}">${esc(x.nom)}</option>`).join('');
   return `
     <div class="card" style="margin-top:16px">
-      <div class="card-actions"><h2 style="margin:0">Facturation electronique</h2>
-        <span class="badge en_retard">Non connectee</span></div>
+      <div class="card-actions"><h2 style="margin:0">Facturation électronique</h2>
+        <span class="badge en_retard">Non connectée</span></div>
       ${intro}
       <div class="form-grid" style="margin-top:12px">
-        <label>Plateforme agreee
+        <label>Plateforme agréée
           <select id="ef-pa" data-act="efRenderChamps" data-evt="change">${opts || '<option value="">Aucune disponible</option>'}</select></label>
         <div id="ef-champs" class="full"></div>
         <div class="full"><button class="btn btn-primary btn-sm" data-act="connecterPA">Connecter</button></div>
@@ -3786,8 +3821,8 @@ window.connecterPA = async () => {
   } catch (e) { toast(e.message || 'Echec de la connexion', true); }
 };
 window.deconnecterPA = async () => {
-  if (!await askConfirm("Deconnecter la plateforme agreee ? Les flux ne seront plus transmis tant qu'une plateforme n'est pas reconnectee.", { ok: 'Deconnecter', danger: true })) return;
-  try { await api('/api/efacture/connexion', { method: 'DELETE' }); toast('Plateforme deconnectee'); route(); }
+  if (!await askConfirm("Déconnecter la plateforme agréée ? Les flux ne seront plus transmis tant qu'une plateforme n'est pas reconnectée.", { ok: 'Déconnecter', danger: true })) return;
+  try { await api('/api/efacture/connexion', { method: 'DELETE' }); toast('Plateforme déconnectée'); route(); }
   catch (e) { toast(e.message || 'Erreur', true); }
 };
 window.efApercu = async () => {
@@ -3873,7 +3908,11 @@ function dfrTaux(t) { const n = Number(t || 0); return Number.isInteger(n) ? Str
 async function vueParametres() {
   const { camping: c } = await api('/api/camping');
   const p = c.parametres || {};
-  const fp = p.facturation || {};
+  const fp = (p.facturation) || {};
+  /* Le formulaire du catalogue naissait avec « TVA : 0 » — même défaut que le
+     tiroir de facture. Sur une facture française, 0 % est un régime
+     particulier qui exige une mention légale, pas une absence de taux. */
+  const tvaDefaut = Number(fp.tva_taux_loyer || 0);
   const ts = p.taxe_sejour || {};
   const en = p.energie || {};
   const rl = p.relances || {};
@@ -3892,7 +3931,9 @@ async function vueParametres() {
       <form id="f-ident" class="form-grid" style="margin-top:12px">
         <label>Nom (interne)<input name="nom" value="${esc(c.nom || '')}"></label>
         <label>Raison sociale<input name="raison_sociale" value="${esc(c.raison_sociale || '')}"></label>
-        <label>SIRET<input name="siret" value="${esc(c.siret || '')}"></label>
+        <label>SIRET<input name="siret" id="cfg-siret" value="${esc(c.siret || '')}" inputmode="numeric"
+          placeholder="14 chiffres" title="Mention obligatoire sur vos factures (art. L441-9 du code de commerce). C'est aussi lui qui déclenche Factur-X.">
+          <span id="cfg-siret-info" class="muted" style="display:block;font-size:12px;margin-top:3px"></span></label>
         <label>N° TVA intracom.<input name="tva" value="${esc(c.tva || '')}"></label>
         <label class="full">Adresse<input name="adresse" value="${esc(c.adresse || '')}"></label>
         <label>E-mail<input name="email" type="email" value="${esc(c.email || '')}"></label>
@@ -3935,7 +3976,10 @@ async function vueParametres() {
         <label class="full">Mention TVA non applicable (si 0 %)<input name="mention_tva" value="${esc(fp.mention_tva || '')}"></label>
         <label class="full">Pénalités de retard<input name="penalites" value="${esc(fp.penalites || '')}"></label>
         <label class="full">Message e-mail (paragraphe ajouté au corps)<input name="message_email" value="${esc(fp.message_email || '')}"></label>
-        <label>Expéditeur e-mail<input name="email_exp" type="email" value="${esc(fp.email || '')}"></label>
+        <label>Expéditeur e-mail<input name="email_exp" id="cfg-exp" type="email" value="${esc(fp.email || '')}"
+          placeholder="contact@votre-camping.fr"
+          title="L'adresse qui apparaît comme expéditeur des factures. Sans elle, le serveur utilise une adresse de repli que vos résidents ne reconnaissent pas.">
+          <span id="cfg-exp-info" class="muted" style="display:block;font-size:12px;margin-top:3px"></span></label>
         <label>Envoi auto de la facture<select name="email_auto"><option value="true"${fp.email_auto === false ? '' : ' selected'}>Activé</option><option value="false"${fp.email_auto === false ? ' selected' : ''}>Désactivé</option></select></label>
         <div class="full"><button class="btn btn-primary">Enregistrer la facturation</button></div>
       </form>
@@ -3981,7 +4025,8 @@ async function vueParametres() {
         <label>Désignation *<input name="designation" required placeholder="Jeton de lavage"></label>
         <label>Unité<input name="unite" placeholder="unité, jeton, bouteille…"></label>
         <label>Prix TTC (€)<input name="prix_ttc" type="number" step="0.01" value="0"></label>
-        <label>TVA (%)<input name="taux_tva" type="number" step="0.1" value="0"></label>
+        <label>TVA (%)<input name="taux_tva" type="number" step="0.1" value="${tvaDefaut}"
+          title="Taux repris de Facturation ci-dessus. Modifiable pour cet article."></label>
         <div class="full"><button class="btn btn-primary">Ajouter l'article</button></div>
       </form>
     </div>`;
