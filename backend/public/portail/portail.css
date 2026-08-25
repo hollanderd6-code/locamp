@@ -546,3 +546,37 @@ body{touch-action:pan-y}
 
 /* Sauf la ou le glissement lateral sert vraiment. */
 .table-wrap,pre,.defile-x{touch-action:auto}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ BARRE BASSE ══
+   ──────────────────────────────────────────────────────────────── */
+
+/* La barre de defilement de WebKit trahit le webview : aucune
+   application native n'en affiche. Le contenu continue de defiler. */
+::-webkit-scrollbar{width:0;height:0}
+html{scrollbar-width:none}
+body{-ms-overflow-style:none}
+
+/* La barre d'onglets se coupait en defilant : sa hauteur dependait de
+   « env(safe-area-inset-bottom) », dont iOS fait varier la valeur quand
+   il escamote l'indicateur d'accueil. Une hauteur minimale fixe, a
+   laquelle la zone sure s'ajoute : la barre peut descendre plus bas,
+   jamais remonter au point de couper son texte. */
+body .onglets{
+  min-height:56px;
+  box-sizing:content-box;
+  padding-top:6px;
+  padding-bottom:max(6px, env(safe-area-inset-bottom));
+  align-items:flex-start;
+}
+body .onglets a,
+body .onglets button{
+  min-height:44px;   /* la cible reste franche, quoi qu'il arrive au-dessous */
+}
+
+/* Le pied s'ecartait a peine de la barre : le lien se touchait mal. */
+body .footy{
+  margin-bottom:18px;
+  padding-bottom:0;
+}
