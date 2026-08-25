@@ -798,7 +798,17 @@ $('#sig-signer').addEventListener('click', async () => {
 /* Mode diagnostic : les étapes s'affichent à l'écran (toast) pour identifier
    où ça bloque sans console. À alléger une fois le push fonctionnel. */
 (function () {
-  const dbg = (m, err) => { try { toast('PUSH · ' + m, !!err); } catch { /* ignore */ } console.log('[push] ' + m); };
+  const dbg = (m, err) => {
+    // Ces etapes s'affichaient a l'ecran pour diagnostiquer sans console,
+    // sur un appareil reel. Le push fonctionne : elles n'ont plus rien a
+    // dire a un utilisateur, et « PUSH · OK » au lancement fait douter de
+    // l'application. La trace reste dans la console, et le toast se
+    // rallume par localStorage.setItem('locamp_debug_push', '1').
+    try {
+      if (localStorage.getItem('locamp_debug_push') === '1') toast('PUSH · ' + m, !!err);
+    } catch { /* ignore */ }
+    console.log('[push] ' + m);
+  };
 
   const CAP = window.Capacitor;
   if (!CAP) return;                       // navigateur : aucun push natif, on sort en silence
