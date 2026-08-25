@@ -442,3 +442,54 @@ html,body{max-width:100%;overflow-x:hidden}
    le recopier ici pour le neutraliser créerait deux valeurs à maintenir.
    Il ne porte que sur le masquage, jamais sur l'apparence. */
 body:not(.espace-ouvert) #onglets{ display:none !important; }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ PLEIN ECRAN NATIF ══
+   ────────────────────────────────────────────────────────────────
+   Dans les applications iOS et Android, la page occupe tout l'ecran :
+   pas de barre de navigateur pour reserver la place de l'heure, de
+   l'encoche ou de l'indicateur d'accueil. C'est a la page de le faire.
+
+   Sur le web ordinaire, env(safe-area-inset-*) vaut zero : ces regles
+   n'ont donc aucun effet dans un navigateur de bureau.
+   ──────────────────────────────────────────────────────────────── */
+
+/* La barre haute descend sous la barre d'etat. Le padding s'ajoute a
+   celui deja pose, au lieu de le remplacer : sur un ecran sans encoche,
+   l'espacement d'origine est conserve. */
+.topbar{
+  padding-top:calc(14px + env(safe-area-inset-top));
+  padding-left:calc(16px + env(safe-area-inset-left));
+  padding-right:calc(16px + env(safe-area-inset-right));
+}
+
+/* Un fond opaque derriere l'encoche : sans lui, le contenu defile
+   visiblement sous l'heure. */
+.topbar{background:var(--creme,#FDFBF7)}
+
+/* La barre d'onglets remonte au-dessus de l'indicateur d'accueil. */
+.onglets{
+  padding-bottom:calc(6px + env(safe-area-inset-bottom));
+}
+/* Et le contenu cesse de finir dessous. */
+#espace{
+  padding-bottom:calc(76px + env(safe-area-inset-bottom));
+}
+
+/* Le rebond lateral de WebKit : « overflow-x:hidden » empeche un
+   contenu de depasser, pas le document de se laisser tirer. C'est ce
+   caoutchouc qu'on prenait pour une page mal fixee. */
+html,body{
+  overscroll-behavior-x:none;
+  /* Le rebond vertical reste : il signale la fin de liste, et son
+     absence donne une impression de page bloquee. */
+}
+
+/* Une selection de texte au glissement, dans une application, ressemble
+   a une erreur de manipulation. On la garde la ou elle sert : les
+   montants, les numeros de facture, les messages. */
+.topbar,.onglets{
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;
+}
