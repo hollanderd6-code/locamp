@@ -183,7 +183,27 @@ app.get('/.well-known/assetlinks.json', (req, res) => {
   })), null, 2));
 });
 
-app.use(express.static('public'));
+/* Sans « Cache-Control », chaque client decide seul — et WKWebView garde
+   une feuille de style des heures sans interroger le serveur. Dans une
+   application, aucun geste utilisateur ne force le rafraichissement : une
+   correction deployee restait donc invisible.
+
+   « no-cache » ne veut pas dire « ne garde rien » : le client garde, mais
+   demande si ca a change. L'ETag rend la question presque gratuite — le
+   serveur repond « 304 » en quelques octets.
+
+   Les images et les polices gardent un cache long : elles ne changent pas
+   sans changer de nom. */
+app.use(express.static('public', {
+  etag: true,
+  setHeaders(res, chemin) {
+    if (/\.(html|css|js|json|svg)$/i.test(chemin)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (/\.(png|jpg|jpeg|webp|ico|woff2?|ttf)$/i.test(chemin)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+    }
+  },
+}));
 
 /* ---------- Tâches planifiées ----------
    Elles ne tournent plus dans ce process. Deux boucles setInterval
