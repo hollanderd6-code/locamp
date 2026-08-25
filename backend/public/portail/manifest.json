@@ -10,8 +10,17 @@
   "orientation": "portrait",
   "background_color": "#F6F3EC",
   "theme_color": "#0F231D",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
+    {
+      "src": "/icons/portail-icone-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icons/portail-icone-192.png",
       "sizes": "192x192",
@@ -25,7 +34,7 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/icone-512-maskable.png",
+      "src": "/icons/portail-icone-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
