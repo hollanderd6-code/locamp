@@ -469,9 +469,7 @@ body:not(.espace-ouvert) #onglets{ display:none !important; }
 .topbar{background:var(--creme,#FDFBF7)}
 
 /* La barre d'onglets remonte au-dessus de l'indicateur d'accueil. */
-.onglets{
-  padding-bottom:calc(6px + env(safe-area-inset-bottom));
-}
+/* remplace plus bas — voir HAUTEUR DE LA BARRE */
 /* Et le contenu cesse de finir dessous. */
 #espace{
   padding-bottom:calc(76px + env(safe-area-inset-bottom));
@@ -563,13 +561,7 @@ body{-ms-overflow-style:none}
    il escamote l'indicateur d'accueil. Une hauteur minimale fixe, a
    laquelle la zone sure s'ajoute : la barre peut descendre plus bas,
    jamais remonter au point de couper son texte. */
-body .onglets{
-  min-height:56px;
-  box-sizing:content-box;
-  padding-top:6px;
-  padding-bottom:max(6px, env(safe-area-inset-bottom));
-  align-items:flex-start;
-}
+/* remplace plus bas — voir HAUTEUR DE LA BARRE */
 body .onglets a,
 body .onglets button{
   min-height:44px;   /* la cible reste franche, quoi qu'il arrive au-dessous */
@@ -579,4 +571,44 @@ body .onglets button{
 body .footy{
   margin-bottom:18px;
   padding-bottom:0;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ HAUTEUR DE LA BARRE ══
+   ────────────────────────────────────────────────────────────────
+   La barre est une GRILLE en position fixe, dont la hauteur valait
+   « contenu + env(safe-area-inset-bottom) ». Or iOS fait varier cet
+   inset pendant le defilement, quand il escamote l'indicateur
+   d'accueil : la barre suivait, et ses libelles se coupaient.
+
+   Une hauteur TOTALE explicite regle cela. La zone sure entre dans la
+   hauteur declaree au lieu de s'y ajouter : quand l'inset varie, c'est
+   la reserve du bas qui change, jamais la place des libelles.
+   ──────────────────────────────────────────────────────────────── */
+
+body .onglets{
+  height:calc(58px + env(safe-area-inset-bottom));
+  box-sizing:border-box;
+  padding-top:5px;
+  padding-bottom:env(safe-area-inset-bottom);
+  /* Grille a une seule ligne : « align-content », pas « align-items ». */
+  align-content:start;
+  overflow:hidden;
+}
+
+body .onglets button{
+  height:53px;
+  padding:0;
+  gap:3px;
+  min-width:0;   /* un libelle long se tronque au lieu d'elargir la grille */
+}
+body .onglets button span{
+  max-width:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* Le contenu s'arrete au-dessus de la barre, hauteur reelle comprise. */
+body #espace{
+  padding-bottom:calc(70px + env(safe-area-inset-bottom));
 }
