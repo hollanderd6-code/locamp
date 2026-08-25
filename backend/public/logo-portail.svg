@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Locamp">
+  
+  <rect width="64" height="64" rx="15" fill="#F4EFE4"></rect>
+  <rect x="8" y="8" width="48" height="48" rx="10" fill="none" stroke="#C0A268" stroke-width=".9"></rect>
+  <text x="32" y="45.5" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="36" font-weight="500" fill="#0F231D">L</text>
+</svg>
