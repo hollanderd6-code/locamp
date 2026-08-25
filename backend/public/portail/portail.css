@@ -493,3 +493,56 @@ html,body{
   -webkit-user-select:none;user-select:none;
   -webkit-touch-callout:none;
 }
+
+
+/* ════════════════════════════════════════════════════════════════
+   ══ LARGEUR VERROUILLEE ══
+   ────────────────────────────────────────────────────────────────
+   Le header depassait la largeur de l'ecran : le bouton de deconnexion
+   etait coupe, et toute la page glissait avec lui.
+
+   Une chaine flex ne cede que si CHAQUE maillon accepte de rétrécir.
+   Un seul parent reste a min-width:auto — sa valeur par defaut — et le
+   nom du camping pousse le reste dehors. On les traite tous, plutot que
+   de chercher lequel manquait.
+   ──────────────────────────────────────────────────────────────── */
+
+body .topbar,
+body .topbar > *,
+body .topbar .brand,
+body .topbar .brand > *{
+  min-width:0;
+}
+body .topbar{
+  max-width:100%;
+  box-sizing:border-box;
+  overflow:hidden;   /* dernier recours : rien ne sort de la barre */
+}
+
+/* Le bloc de titre cede, les actions non : c'est le texte qui doit se
+   tronquer, pas les boutons qui doivent disparaitre. */
+body .topbar .brand{flex:1 1 auto}
+body .topbar .brand-mark,
+body .topbar .topbar-actions,
+body .topbar .btn{flex:0 0 auto}
+
+body .topbar .brand-name,
+body .topbar .brand-sub{
+  max-width:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* Les conteneurs de premier niveau : une largeur stricte, pour qu'un
+   contenu trop large soit tronque au lieu d'elargir la page. */
+html,body,#espace,.stage,.onglets{
+  max-width:100%;
+  box-sizing:border-box;
+}
+
+/* Le doigt ne fait plus defiler que verticalement. C'est ce qui rend la
+   page fixe au toucher — « overscroll-behavior-x » n'existe sur Safari
+   que depuis iOS 16, et ne fait rien contre un debordement reel. */
+body{touch-action:pan-y}
+
+/* Sauf la ou le glissement lateral sert vraiment. */
+.table-wrap,pre,.defile-x{touch-action:auto}
