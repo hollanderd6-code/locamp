@@ -1564,68 +1564,187 @@ window.ficheEmplacement = async (id) => {
 };
 
 /* ---------- Résidents ---------- */
-async function vueResidents() {
-  const [{ residents }, { emplacements }] = await Promise.all([api('/api/residents'), api('/api/emplacements')]);
-  const empNum = {}; emplacements.forEach((e) => { empNum[e.id] = e.numero + (e.secteur ? ' · ' + e.secteur : ''); });
-  $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Locataires</div><h1>Résidents</h1></div>
-      <div class="toolbar">
-        <input class="search" id="res-search" placeholder="Rechercher nom, e-mail, emplacement…">
-        <button class="btn btn-primary" data-act="formResident">Nouveau résident</button>
-      </div></div>
-    <div class="card"><table><thead><tr><th>Nom</th><th>Contact</th><th>Emplacement</th>
-      <th>Conformité<span class="conf-cle">A assurance · C contrat</span></th>
-      <th class="right">Solde</th></tr></thead>
-    <tbody id="res-body"></tbody></table>
-    <div class="conf-legende">
-      <span><i style="background:var(--vert,#3f7d4e)"></i>à jour</span>
-      <span><i style="background:var(--orange,#c07a1f)"></i>expire bientôt</span>
-      <span><i style="background:var(--rouge,#b03a2e)"></i>manquante ou expirée</span>
-      <span class="conf-legende-note">Survolez une pastille pour la date.</span>
-    </div></div>`;
-  const J = 86400000;
-  const pastille = (lettre, etat, titre) => {
-    const c = etat === 'ok' ? 'var(--vert,#3f7d4e)' : etat === 'bientot' ? 'var(--orange,#c07a1f)' : 'var(--rouge,#b03a2e)';
-    return `<span title="${esc(titre)}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${c};color:#fff;font-size:10.5px;font-weight:700;margin-right:5px">${lettre}</span>`;
-  };
-  const conf = (r) => {
-    if (!r.actif) return '<span class="muted">—</span>';
-    let a;
-    if (!r.assurance_expire_le) a = pastille('A', 'ko', 'Assurance : aucune attestation enregistrée');
-    else {
-      const jr = Math.floor((new Date(r.assurance_expire_le) - new Date()) / J);
-      a = jr < 0 ? pastille('A', 'ko', `Assurance expirée le ${dfr(r.assurance_expire_le)}`)
-        : jr <= 60 ? pastille('A', 'bientot', `Assurance : expire dans ${jr} j (${dfr(r.assurance_expire_le)})`)
-        : pastille('A', 'ok', `Assurance valable jusqu\u2019au ${dfr(r.assurance_expire_le)}`);
-    }
-    let c;
-    const ct = r.contrat;
-    if (!ct) c = pastille('C', 'ko', 'Contrat : aucun contrat enregistré');
-    else if (!ct.date_fin) c = ct.signe ? pastille('C', 'ok', 'Contrat sans date de fin — signé') : pastille('C', 'bientot', 'Contrat sans date de fin — non signé');
-    else {
-      const jr = Math.floor((new Date(ct.date_fin) - new Date()) / J);
-      c = jr < 0 ? pastille('C', 'ko', `Contrat expiré le ${dfr(ct.date_fin)}`)
-        : !ct.signe ? pastille('C', 'bientot', `Contrat non signé — jusqu\u2019au ${dfr(ct.date_fin)}`)
-        : jr <= 60 ? pastille('C', 'bientot', `Contrat : expire dans ${jr} j (${dfr(ct.date_fin)})`)
-        : pastille('C', 'ok', `Contrat signé — jusqu\u2019au ${dfr(ct.date_fin)}`);
-    }
-    return a + c;
-  };
-  const render = (list) => {
-    $('#res-body').innerHTML = list.map((r) => `
-      <tr class="row-click" data-act="allerA" data-a1="#/residents/${r.id}">
-        <td><strong>${esc(r.prenom || '')} ${esc(r.nom)}</strong>${r.actif ? '' : ' <span class="badge indisponible">inactif</span>'}</td>
-        <td class="muted" data-l="Contact">${esc(r.email || '')}${r.telephone ? ' · ' + esc(r.telephone) : ''}</td>
-        <td data-l="Emplacement">${r.emplacement_id && empNum[r.emplacement_id] ? `<strong>${esc(empNum[r.emplacement_id])}</strong>` : '<span class="muted">—</span>'}</td>
-        <td data-l="Conformité">${conf(r)}</td>
-        <td class="right" data-l="Solde">${eur(r.solde)}</td>
-      </tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun résident. Créer le premier avec « Nouveau résident ».</td></tr>';
-  };
-  render(residents);
-  $('#res-search').addEventListener('input', (e) => {
-    const s = e.target.value.toLowerCase();
-    render(residents.filter((r) => `${r.nom} ${r.prenom} ${r.email} ${r.telephone} ${r.compte_comptable || ''} ${r.emplacement_id ? empNum[r.emplacement_id] || '' : ''}`.toLowerCase().includes(s)));
+/* ---------- Residents : liste dense, etats en mots ----------
+   L'etat de l'ecran (filtre, recherche) vit ici : on revient sur le
+   meme filtre apres un aller-retour vers une fiche. */
+let RES_FILTRE = 'tous';
+let RES_Q = '';
+let RES_CACHE = { residents: [], empNum: {} };
+
+const RES_J = 86400000;
+const resJours = (d) => (d ? Math.floor((new Date(d) - new Date()) / RES_J) : null);
+
+/* L'ambre des avertissements : c'est la couleur de texte deja utilisee
+   par l'avis « prix non configure » des compteurs. Le laiton de marque
+   reste un accent, il ne dit jamais un etat. */
+const RES_AMBRE = '#7A5A22';
+
+function resAssurance(r) {
+  if (!r.assurance_expire_le) return { txt: 'Manquante', col: 'var(--rouge)', ko: true };
+  const j = resJours(r.assurance_expire_le);
+  if (j < 0) return { txt: 'Expirée le ' + dfr(r.assurance_expire_le), col: 'var(--rouge)', ko: true };
+  if (j <= 60) return { txt: `Expire dans ${j} j`, col: RES_AMBRE, ko: true };
+  return { txt: 'À jour', col: 'var(--brume)', ko: false };
+}
+
+function resContrat(r) {
+  const c = r.contrat;
+  if (!c) return { txt: 'Aucun contrat', col: 'var(--rouge)', ko: true };
+  if (!c.date_fin) {
+    return c.signe
+      ? { txt: 'Sans échéance', col: 'var(--brume)', ko: false }
+      : { txt: 'Non signé', col: RES_AMBRE, ko: true };
+  }
+  const j = resJours(c.date_fin);
+  if (j < 0) return { txt: 'Expiré le ' + dfr(c.date_fin), col: 'var(--rouge)', ko: true };
+  if (!c.signe) return { txt: 'Non signé · fin ' + dfr(c.date_fin), col: RES_AMBRE, ko: true };
+  if (j <= 30) return { txt: `Fin dans ${j} j`, col: RES_AMBRE, ko: true };
+  return { txt: 'Jusqu\u2019au ' + dfr(c.date_fin), col: 'var(--brume)', ko: false };
+}
+
+const resDu = (r) => Number(r.solde || 0) > 0.005;
+
+const RES_FILTRES = [
+  ['tous', 'Tous', () => true],
+  ['renouveler', 'À renouveler', (r) => r.actif !== false && resContrat(r).ko],
+  ['impayes', 'Impayés', (r) => resDu(r)],
+  ['pieces', 'Pièces manquantes', (r) => r.actif !== false && resAssurance(r).ko],
+  ['inactifs', 'Inactifs', (r) => r.actif === false],
+];
+
+function resVisibles() {
+  const f = (RES_FILTRES.find((x) => x[0] === RES_FILTRE) || RES_FILTRES[0])[2];
+  const q = RES_Q.trim().toLowerCase();
+  return RES_CACHE.residents.filter((r) => {
+    if (!f(r)) return false;
+    if (!q) return true;
+    const emp = r.emplacement_id ? (RES_CACHE.empNum[r.emplacement_id] || '') : '';
+    return `${r.nom || ''} ${r.prenom || ''} ${r.email || ''} ${r.telephone || ''} ${r.compte_comptable || ''} ${emp}`
+      .toLowerCase().includes(q);
   });
+}
+
+function resLigne(r) {
+  const ct = resContrat(r);
+  const as = resAssurance(r);
+  const emp = r.emplacement_id ? RES_CACHE.empNum[r.emplacement_id] : null;
+  const du = resDu(r);
+  return `
+    <tr class="row-click" data-act="allerA" data-a1="#/residents/${r.id}">
+      <td style="padding:9px 12px">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px">
+          ${esc(r.prenom || '')} ${esc(r.nom)}${r.actif === false ? ' <span class="badge indisponible">inactif</span>' : ''}</div>
+        <div class="muted" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px">
+          ${esc(r.email || r.telephone || '—')}</div>
+      </td>
+      <td data-l="Empl." style="padding:9px 12px">${emp ? `<strong>${esc(emp)}</strong>` : '<span class="muted">—</span>'}</td>
+      <td data-l="Contrat" style="padding:9px 12px;font-size:13px;color:${ct.col}">${ct.txt}</td>
+      <td data-l="Assurance" style="padding:9px 12px;font-size:13px;color:${as.col}">${as.txt}</td>
+      <td class="right" data-l="Solde" style="padding:9px 12px;font-variant-numeric:tabular-nums;
+          ${du ? 'color:var(--rouge);font-weight:600' : ''}">${du || Number(r.solde || 0) < -0.005 ? eur(r.solde) : '—'}</td>
+    </tr>`;
+}
+
+function majListeResidents() {
+  const body = $('#res-body');
+  if (!body) return;
+  const v = resVisibles();
+  body.innerHTML = v.length ? v.map(resLigne).join('')
+    : `<tr><td colspan="5" class="muted" style="padding:18px">Aucun résident ne correspond${RES_FILTRE === 'tous' && !RES_Q ? '. Créer le premier avec « Nouveau résident ».' : '.'}</td></tr>`;
+  const c = $('#res-compte');
+  if (c) c.textContent = v.length + (v.length > 1 ? ' résidents affichés' : ' résident affiché');
+}
+
+window.filtrerResidents = (k) => {
+  RES_FILTRE = k;
+  const box = $('#res-puces');
+  if (box) {
+    box.querySelectorAll('[data-a1]').forEach((b) => {
+      const on = b.getAttribute('data-a1') === k;
+      b.style.background = on ? 'var(--nuit)' : 'transparent';
+      b.style.color = on ? 'var(--ivoire)' : '#5D6E66';
+      b.style.borderColor = on ? 'var(--nuit)' : 'var(--hairline)';
+      b.style.fontWeight = on ? '600' : '400';
+    });
+  }
+  majListeResidents();
+};
+window.chercherResidents = (v) => { RES_Q = v; majListeResidents(); };
+
+async function vueResidents() {
+  const [{ residents }, { emplacements }] = await Promise.all([
+    api('/api/residents'), api('/api/emplacements'),
+  ]);
+  const empNum = {};
+  (emplacements || []).forEach((e) => { empNum[e.id] = e.numero + (e.secteur ? ' · ' + e.secteur : ''); });
+  RES_CACHE = { residents: residents || [], empNum };
+
+  const actifs = RES_CACHE.residents.filter((r) => r.actif !== false);
+  const compte = (k) => RES_CACHE.residents.filter((RES_FILTRES.find((x) => x[0] === k) || RES_FILTRES[0])[2]).length;
+  const duTotal = RES_CACHE.residents.reduce((s, r) => s + (resDu(r) ? Number(r.solde) : 0), 0);
+
+  const chiffres = [
+    { k: 'Résidents actifs', v: String(actifs.length), n: RES_CACHE.residents.length - actifs.length
+      ? `${RES_CACHE.residents.length - actifs.length} inactif${RES_CACHE.residents.length - actifs.length > 1 ? 's' : ''}` : 'aucun inactif', col: '' },
+    { k: 'Dû total', v: duTotal > 0.005 ? eur(duTotal) : '—',
+      n: `${compte('impayes')} résident${compte('impayes') > 1 ? 's' : ''} débiteur${compte('impayes') > 1 ? 's' : ''}`,
+      col: duTotal > 0.005 ? 'var(--rouge)' : '' },
+    { k: 'À renouveler', v: String(compte('renouveler')), n: 'contrat échu, non signé ou sous 30 j', col: compte('renouveler') ? RES_AMBRE : '' },
+    { k: 'Pièces manquantes', v: String(compte('pieces')), n: 'assurance absente ou expirée', col: compte('pieces') ? RES_AMBRE : '' },
+  ];
+
+  const puces = RES_FILTRES.map(([k, l]) => {
+    const on = k === RES_FILTRE;
+    return `<button data-act="filtrerResidents" data-a1="${k}"
+      style="padding:5px 12px;border-radius:20px;font-size:13px;cursor:pointer;font-family:inherit;
+             border:1px solid ${on ? 'var(--nuit)' : 'var(--hairline)'};
+             background:${on ? 'var(--nuit)' : 'transparent'};color:${on ? 'var(--ivoire)' : '#5D6E66'};
+             font-weight:${on ? '600' : '400'}">${l} ${compte(k)}</button>`;
+  }).join('');
+
+  /* Largeur bornee : au-dela, l'oeil ne relie plus un nom a son solde. */
+  $('#main').innerHTML = `
+    <div style="max-width:1180px">
+      <div class="page-head"><div><h1>Résidents</h1>
+        <div class="muted" style="font-size:13.5px;margin-top:4px">
+          ${actifs.length} résident${actifs.length > 1 ? 's' : ''} actif${actifs.length > 1 ? 's' : ''}${compte('renouveler') ? ' · ' + compte('renouveler') + ' contrat' + (compte('renouveler') > 1 ? 's' : '') + ' à renouveler' : ''}${compte('impayes') ? ' · ' + compte('impayes') + ' impayé' + (compte('impayes') > 1 ? 's' : '') : ''}
+        </div></div>
+        <div class="toolbar">
+          <input class="search" id="res-search" data-act="chercherResidents" data-evt="input" data-a1="@value"
+                 placeholder="Rechercher un nom, un e-mail, un emplacement" value="${esc(RES_Q)}" style="min-width:280px">
+          <button class="btn btn-primary" data-act="formResident">Nouveau résident</button>
+        </div></div>
+
+      <div class="card" style="display:flex;padding:0;margin-bottom:14px">
+        ${chiffres.map((c, i) => `
+          <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
+            <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
+            <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col : ''}">${c.v}</div>
+            <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
+          </div>`).join('')}
+      </div>
+
+      <div id="res-puces" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        ${puces}
+        <span id="res-compte" class="muted" style="margin-left:auto;font-size:12.5px"></span>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <table>
+          <thead><tr>
+            <th style="padding:10px 12px">Résident</th>
+            <th style="padding:10px 12px">Empl.</th>
+            <th style="padding:10px 12px">Contrat</th>
+            <th style="padding:10px 12px">Assurance</th>
+            <th class="right" style="padding:10px 12px">Solde</th>
+          </tr></thead>
+          <tbody id="res-body"></tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin:10px 0 0;font-size:12.5px">Un solde positif est une somme due. Cliquez une ligne pour ouvrir la fiche.</p>
+    </div>`;
+
+  majListeResidents();
 }
 
 /* ---------- Fiche client (pleine page) ---------- */
