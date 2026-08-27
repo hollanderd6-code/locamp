@@ -1546,7 +1546,7 @@ window.ficheEmplacement = async (id) => {
       ${dues.length ? `<ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${lib(f.statut)}</span></span><span>${eur(f.total_ttc - f.montant_regle)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture en attente.</p>'}`;
   }
   openDrawer(`
-    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-right:44px">
       <h2>Emplacement ${esc(e.numero)}</h2>
       <button class="btn btn-ghost btn-sm" data-act="modifierEmplacement" data-a1="${e.id}">Modifier</button>
     </div>
