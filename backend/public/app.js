@@ -1546,7 +1546,10 @@ window.ficheEmplacement = async (id) => {
       ${dues.length ? `<ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${lib(f.statut)}</span></span><span>${eur(f.total_ttc - f.montant_regle)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture en attente.</p>'}`;
   }
   openDrawer(`
-    <h2>Emplacement ${esc(e.numero)}</h2>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+      <h2>Emplacement ${esc(e.numero)}</h2>
+      <button class="btn btn-ghost btn-sm" data-act="modifierEmplacement" data-a1="${e.id}">Modifier</button>
+    </div>
     <p class="muted">${esc(e.secteur || '')} ${e.type ? '· ' + esc(e.type) : ''} · <span class="badge ${e.statut}">${lib(e.statut)}</span></p>
     <ul class="list-tight">
       <li><span>Loyer de base</span><span>${eur(e.loyer_base)}</span></li>
@@ -2495,13 +2498,17 @@ async function vueEmplacements() {
       </tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun emplacement.</td></tr>'}</tbody></table></div>`;
 }
 
-window.formEmplacement = () => {
+window.formEmplacement = async () => {
+  const types = await typesEmplacement();
   openDrawer(`
     <h2>Nouvel emplacement</h2>
     <form id="f-emp" class="form-grid" style="margin-top:14px">
       <label>Numéro *<input name="numero" required></label>
       <label>Secteur<input name="secteur"></label>
-      <label>Type<select name="type"><option value="">—</option><option>mobil-home</option><option>chalet</option><option>caravane</option><option>parcelle nue</option></select></label>
+      <label class="full">Type
+        <input name="type" list="liste-types-emp" autocomplete="off" placeholder="MH 2 chambres, chalet, parcelle nue…">
+      </label>
+      ${datalistTypesEmp(types)}
       <label>Loyer de base TTC (€)<input name="loyer_base" type="number" step="0.01"></label>
       <label>Coord. X (carte)<input name="coord_x" type="number" step="1"></label>
       <label>Coord. Y (carte)<input name="coord_y" type="number" step="1"></label>
@@ -5161,3 +5168,94 @@ boot();
   window.addEventListener('hashchange', enregistrer);
   [1500, 4000].forEach((t) => setTimeout(enregistrer, t));
 })();
+
+/* ============================================================
+   Emplacements : modification d'un emplacement existant
+   (ajoute par outils/emplacement-modifiable.js)
+   ============================================================ */
+/* ---------- Types d'emplacement : une liste ouverte ----------
+   emplacements.type est du texte libre en base. Les quatre valeurs
+   du formulaire de creation etaient figees dans le code — on propose
+   desormais ce qui existe deja dans le camping, sans interdire
+   d'ecrire autre chose. */
+const TYPES_EMP_BASE = ['mobil-home', 'chalet', 'caravane', 'parcelle nue'];
+
+async function typesEmplacement() {
+  try {
+    const { emplacements } = await api('/api/emplacements');
+    const vus = (emplacements || []).map((e) => String(e.type || '').trim()).filter(Boolean);
+    return [...new Set([...vus, ...TYPES_EMP_BASE])]
+      .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' }));
+  } catch (_) {
+    /* La liste n'est qu'une aide a la saisie : sans elle, le champ
+       reste utilisable. */
+    return TYPES_EMP_BASE;
+  }
+}
+
+function datalistTypesEmp(types) {
+  return `<datalist id="liste-types-emp">${types
+    .map((t) => `<option value="${esc(t)}"></option>`).join('')}</datalist>`;
+}
+
+/* ---------- Modifier un emplacement existant ---------- */
+window.modifierEmplacement = async (id) => {
+  let e; let types;
+  try {
+    [{ emplacement: e }, types] = await Promise.all([
+      api('/api/emplacements/' + id), typesEmplacement(),
+    ]);
+  } catch (err) { toast(err.message, true); return; }
+
+  const STATUTS = [['libre', 'libre'], ['occupe', 'occupé'],
+    ['reserve', 'réservé'], ['indisponible', 'indisponible (travaux…)']];
+  const val = (v) => (v == null ? '' : String(v));
+
+  openDrawer(`
+    <h2>Modifier l'emplacement ${esc(e.numero)}</h2>
+    <p class="muted" style="margin-top:4px">Le résident rattaché et ses contrats ne sont pas touchés.</p>
+    <form id="f-emp-edit" class="form-grid" style="margin-top:14px">
+      <label>Numéro *<input name="numero" required value="${esc(e.numero)}"></label>
+      <label>Secteur<input name="secteur" value="${esc(val(e.secteur))}"></label>
+      <label class="full">Type
+        <input name="type" list="liste-types-emp" autocomplete="off"
+               value="${esc(val(e.type))}" placeholder="MH 2 chambres, chalet, parcelle nue…">
+      </label>
+      ${datalistTypesEmp(types)}
+      <label>Statut
+        <select name="statut">${STATUTS.map(([k, lbl]) =>
+          `<option value="${k}"${e.statut === k ? ' selected' : ''}>${lbl}</option>`).join('')}</select>
+      </label>
+      <label>Loyer de base TTC (€)<input name="loyer_base" type="number" step="0.01" value="${val(e.loyer_base)}"></label>
+      <label>Coord. X (carte)<input name="coord_x" type="number" step="1" value="${val(e.coord_x)}"></label>
+      <label>Coord. Y (carte)<input name="coord_y" type="number" step="1" value="${val(e.coord_y)}"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Enregistrer</button></div>
+    </form>
+    <p class="muted" style="margin-top:12px;font-size:12.5px">Un emplacement où habite un résident reste affiché « occupé » sur le plan, quel que soit le statut choisi ici.</p>`);
+
+  $('#f-emp-edit').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    /* Un champ vide efface la valeur (null) au lieu d'envoyer une
+       chaine vide : c'est la seule facon de retirer un secteur ou un
+       type saisi par erreur. */
+    const body = {};
+    for (const k of ['numero', 'secteur', 'type', 'statut']) {
+      const v = String(f.get(k) ?? '').trim();
+      body[k] = v === '' ? null : v;
+    }
+    if (!body.numero) { toast('Le numéro est obligatoire', true); return; }
+    if (!body.statut) delete body.statut;
+    for (const k of ['loyer_base', 'coord_x', 'coord_y']) {
+      const v = String(f.get(k) ?? '').trim();
+      body[k] = v === '' ? null : Number(v);
+    }
+    try {
+      await api('/api/emplacements/' + id, { method: 'PUT', body });
+      closeDrawer();
+      toast(`Emplacement ${body.numero} enregistré`);
+      if (typeof carteState !== 'undefined' && carteState) carteState = null;
+      route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
