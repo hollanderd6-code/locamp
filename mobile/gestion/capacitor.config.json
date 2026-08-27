@@ -1,0 +1,6 @@
+{
+  "appId": "fr.locamp.gestion",
+  "appName": "Locamp Gestion",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}

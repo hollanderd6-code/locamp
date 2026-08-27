@@ -1,0 +1,9 @@
+{
+  "appId": "fr.locamp.portail",
+  "appName": "Mon espace locataire",
+  "webDir": "www",
+  "server": {
+    "url": "https://locamp.onrender.com/portail/",
+    "cleartext": false
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "locamp-portail-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:www": "bash build-www.sh",
+    "sync": "npm run build:www && npx cap sync"
+  },
+  "dependencies": {
+    "@capacitor-firebase/messaging": "^6.3.1",
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/ios": "^6.1.0",
+    "firebase": "^11.10.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.0"
+  }
+}

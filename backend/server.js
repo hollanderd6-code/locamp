@@ -194,6 +194,9 @@ app.get('/.well-known/assetlinks.json', (req, res) => {
 
    Les images et les polices gardent un cache long : elles ne changent pas
    sans changer de nom. */
+// Ping cron — reponse vide, 204
+app.get("/healthz", (req, res) => res.status(204).end());
+
 app.use(express.static('public', {
   etag: true,
   setHeaders(res, chemin) {
