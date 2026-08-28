@@ -592,97 +592,219 @@ window.addEventListener('hashchange', route);
 
 /* ================= VUES ================= */
 
+/* ---------- Tableau de bord : ce qui demande une decision ---------- */
+const DSH_AMBRE = '#7A5A22';
+const dshEur = (n) => (Math.abs(Number(n || 0)) < 0.005 ? '—' : eur(n));
+
 async function vueDashboard() {
-  const [d, imp, presRes, msgRes, { residents }, echRes] = await Promise.all([
+  const [d, imp, presRes, msgRes, { residents }, echRes, empRes] = await Promise.all([
     api('/api/dashboard' + exQS()),
     api('/api/relances/impayes' + exQS()).catch(() => null),
     api('/api/prestations?statut=en_cours').catch(() => ({ prestations: [] })),
     api('/api/messages/non-lus').catch(() => ({ total: 0 })),
     api('/api/residents').catch(() => ({ residents: [] })),
     api('/api/echeances?horizon=60').catch(() => ({ echeances: [] })),
+    api('/api/emplacements').catch(() => ({ emplacements: [] })),
   ]);
-  const echeances = (echRes.echeances || []);
-  const st = d.factures_mois.par_statut || {};
+  const echeances = echRes.echeances || [];
   const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
   const aFacturer = (presRes.prestations || []).filter((p) => p.type !== 'caution')
     .reduce((s, p) => s + Number(p.montant_ttc), 0);
+  const nbAFacturer = (presRes.prestations || []).filter((p) => p.type !== 'caution').length;
   const enRetard = imp ? imp.impayes.filter((f) => f.en_retard) : [];
+  const montantRetard = enRetard.reduce((s, f) => s + Number(f.reste || 0), 0);
+  const pireRetard = enRetard.reduce((m, f) => Math.max(m, f.jours_retard || 0), 0);
+  const debiteurs = new Set(enRetard.map((f) => f.resident_id)).size;
+
+  /* Encaisse ce mois : la somme des encaissements par mode. Le compare
+     au facture donne le reste a encaisser — ce qu'un « CA facture »
+     seul ne disait pas. */
+  const encaisse = Object.values(d.encaissements_mois || {})
+    .reduce((s, v) => s + Number(v || 0), 0);
+  const facture = Number(d.ca_mois || 0);
+  const pc = facture > 0.005 ? Math.min(100, Math.round((encaisse / facture) * 100)) : 0;
+
+  /* ---- A traiter : une seule liste, classee par urgence ----
+     Chaque entree porte l'action qui existait deja dans les anciens
+     tableaux. Rien d'invente : ce qui n'a pas d'action ouvre l'ecran
+     qui en a une. */
+  const aTraiter = [];
+
+  if (enRetard.length) {
+    aTraiter.push({
+      pt: 'var(--rouge)',
+      titre: `${enRetard.length} facture${enRetard.length > 1 ? 's' : ''} en retard · ${eur(montantRetard)}`,
+      sous: `${debiteurs} débiteur${debiteurs > 1 ? 's' : ''}${pireRetard ? ' · la plus ancienne de ' + pireRetard + ' j' : ''}`,
+      act: `<button class="btn btn-primary btn-sm" data-act="relancerImpayes">Relancer</button>
+            <button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/impayes">Détail</button>`,
+    });
+  }
+
+  const urgence = (x) => (x.statut === 'manquante' ? 0 : x.statut === 'expiree' ? 1
+    : (x.jours_restants != null && x.jours_restants <= 7) ? 2 : 3);
+  const ech = echeances.slice().sort((a, b) => urgence(a) - urgence(b)
+    || Number(a.jours_restants || 0) - Number(b.jours_restants || 0));
+
+  for (const x of ech.slice(0, 6)) {
+    const quoi = x.type === 'assurance' ? 'Attestation d\u2019assurance'
+      : x.type === 'document' ? `Document « ${esc((x.titre || '').slice(0, 34))} »`
+        : `Contrat ${esc(x.contrat_numero || '')}`;
+    const etat = x.statut === 'manquante' ? 'aucune attestation'
+      : x.statut === 'expiree' ? 'expirée le ' + dfr(x.echeance)
+        : `échéance dans ${x.jours_restants} j${x.echeance ? ' · ' + dfr(x.echeance) : ''}`;
+    const act = x.type === 'contrat'
+      ? `<button class="btn btn-ghost btn-sm" data-act="renouvelerContrat" data-a1="${x.contrat_id}" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
+      : x.type === 'document'
+        ? '<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/signatures" title="Déposer la nouvelle version à signer">Voir / refaire</button>'
+        : (x.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="ouvrirConversation" data-a1="${x.resident_id}">Écrire</button>` : '');
+    aTraiter.push({
+      pt: urgence(x) <= 1 ? 'var(--rouge)' : DSH_AMBRE,
+      titre: `${quoi} — ${esc(x.resident_nom || rmap[x.resident_id] || 'résident')}`,
+      sous: etat,
+      act,
+    });
+  }
+
+  if (msgRes.total) {
+    aTraiter.push({
+      pt: DSH_AMBRE,
+      titre: `${msgRes.total} message${msgRes.total > 1 ? 's' : ''} non lu${msgRes.total > 1 ? 's' : ''}`,
+      sous: 'des résidents attendent une réponse',
+      act: '<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/messagerie">Lire</button>',
+    });
+  }
+
+  if (aFacturer > 0.005) {
+    aTraiter.push({
+      pt: 'var(--sapin)',
+      titre: `${eur(aFacturer)} de prestations à facturer`,
+      sous: `${nbAFacturer} ligne${nbAFacturer > 1 ? 's' : ''} en cours — relevés, ventes, charges`,
+      act: '<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/factures">Facturer</button>',
+    });
+  }
+
+  if (d.alertes.documents_expirant) {
+    aTraiter.push({
+      pt: DSH_AMBRE,
+      titre: `${d.alertes.documents_expirant} document${d.alertes.documents_expirant > 1 ? 's' : ''} à renouveler sous 30 jours`,
+      sous: 'attestations et pièces des résidents',
+      act: '<button class="btn btn-ghost btn-sm" data-act="echRappels" title="Notifie le staff et écrit aux résidents concernés (paliers 60/30/7/0 j, jamais deux fois le même rappel)">Envoyer les rappels</button>',
+    });
+  }
+
+  /* ---- Occupation par secteur : lue sur les emplacements reels ---- */
+  const secteurs = new Map();
+  for (const e of (empRes.emplacements || [])) {
+    const k = e.secteur || 'Sans secteur';
+    const s = secteurs.get(k) || { nom: k, total: 0, occ: 0 };
+    s.total += 1;
+    if (typeof statutReel === 'function' ? statutReel(e) === 'occupe' : !!e.resident) s.occ += 1;
+    secteurs.set(k, s);
+  }
+  const parSecteur = [...secteurs.values()].sort((a, b) => b.total - a.total).slice(0, 6);
+
+  const chiffres = [
+    { k: 'Occupation', v: `${d.occupation.occupes} / ${d.occupation.total}`,
+      n: `${d.occupation.taux} %${d.occupation.total - d.occupation.occupes ? ' · ' + (d.occupation.total - d.occupation.occupes) + ' libre' + (d.occupation.total - d.occupation.occupes > 1 ? 's' : '') : ' · complet'}`, col: '' },
+    { k: 'Facturé ce mois', v: dshEur(facture), n: `${d.factures_mois.total} facture${d.factures_mois.total > 1 ? 's' : ''} émise${d.factures_mois.total > 1 ? 's' : ''}`, col: '' },
+    { k: 'Impayés', v: dshEur(d.impayes.total_du),
+      n: d.impayes.nombre ? `${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}${montantRetard > 0.005 ? ' · dont ' + eur(montantRetard) + ' en retard' : ''}` : 'rien à recouvrer',
+      col: Number(d.impayes.total_du || 0) > 0.005 ? 'var(--rouge)' : '' },
+    { k: 'À facturer', v: dshEur(aFacturer),
+      n: nbAFacturer ? `${nbAFacturer} prestation${nbAFacturer > 1 ? 's' : ''} en cours` : 'rien en attente',
+      col: aFacturer > 0.005 ? DSH_AMBRE : '' },
+  ];
+
+  const dateStr = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   $('#main').innerHTML = `
     <div class="page-head">
-      <div><div class="eyebrow">Vue d'ensemble</div><h1>Tableau de bord</h1></div>
+      <div><h1>${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</h1>
+        <div class="muted" style="font-size:13.5px;margin-top:4px">
+          ${aTraiter.length ? `${aTraiter.length} point${aTraiter.length > 1 ? 's' : ''} à traiter` : 'rien à traiter aujourd\u2019hui'}
+        </div></div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" data-act="messageRapide">Message à un résident</button>
         <button class="btn btn-ghost btn-sm" data-act="messageGroupe">Message à tous</button>
-        ${enRetard.length ? `<button class="btn btn-primary btn-sm" data-act="relancerImpayes">Relancer ${enRetard.length} retard${enRetard.length > 1 ? 's' : ''}</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-act="messageRapide">Message à un résident</button>
       </div>
     </div>
 
-    <div class="kpis">
-      <div class="kpi"><div class="v">${d.occupation.occupes}<span class="u">/${d.occupation.total}</span></div>
-        <div class="l">Emplacements occupés · ${d.occupation.taux} %</div></div>
-      <div class="kpi"><div class="v">${eur(d.ca_mois)}</div><div class="l">CA facturé ce mois</div></div>
-      <div class="kpi ${d.impayes.total_du > 0 ? 'bad' : ''}"><div class="v">${eur(d.impayes.total_du)}</div>
-        <div class="l">Impayés · ${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}</div></div>
-      <div class="kpi ${aFacturer > 0 ? 'warn' : ''}"><div class="v">${eur(aFacturer)}</div>
-        <div class="l">Prestations à facturer</div></div>
+    <div class="card" style="display:flex;padding:0;margin-bottom:16px">
+      ${chiffres.map((c, i) => `
+        <div style="flex:1;padding:14px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
+          <div style="font-size:24px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col + ';font-weight:600' : ''}">${c.v}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
+        </div>`).join('')}
     </div>
 
-    <div class="alertes">
-      ${msgRes.total ? `<a href="#/messagerie" class="alerte warn"><strong>${msgRes.total}</strong> message${msgRes.total > 1 ? 's' : ''} non lu${msgRes.total > 1 ? 's' : ''}</a>` : ''}
-      ${d.alertes.documents_expirant ? `<span class="alerte warn"><strong>${d.alertes.documents_expirant}</strong> document${d.alertes.documents_expirant > 1 ? 's' : ''} à renouveler sous 30 jours</span>` : ''}
-      ${d.alertes.contrats_a_renouveler.length ? `<span class="alerte"><strong>${d.alertes.contrats_a_renouveler.length}</strong> contrat${d.alertes.contrats_a_renouveler.length > 1 ? 's' : ''} arrivant à échéance</span>` : ''}
-      ${!msgRes.total && !d.alertes.documents_expirant && !d.alertes.contrats_a_renouveler.length ? '<span class="alerte ok">Rien à signaler aujourd\u2019hui</span>' : ''}
-    </div>
-
-    ${imp && enRetard.length ? `
-    <div class="card">
-      <h2>Factures en retard</h2>
-      <table style="margin-top:8px"><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th><th></th></tr></thead>
-      <tbody>${enRetard.slice(0, 8).map((f) => `
-        <tr>
-          <td><strong>${esc(f.numero)}</strong></td>
-          <td data-l="Résident">${f.resident_id ? `<a href="#/residents/${f.resident_id}" style="color:inherit">${esc(rmap[f.resident_id] || '—')}</a>` : '—'}</td>
-          <td class="right" data-l="Reste dû">${eur(f.reste)}</td>
-          <td class="right" data-l="Retard"><span class="badge en_retard">${f.jours_retard} j</span></td>
-          <td class="right">${f.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="ouvrirConversation" data-a1="${f.resident_id}">Écrire</button>` : ''}</td>
-        </tr>`).join('')}</tbody></table>
-      ${enRetard.length > 8 ? `<p class="muted" style="margin-top:8px"><a href="#/impayes">Voir les ${enRetard.length} impayés →</a></p>` : ''}
-    </div>` : ''}
-
-    ${echeances.length ? `
-    <div class="card">
-      <div class="card-actions"><h2>Échéances — assurances &amp; contrats</h2>
-        <button class="btn btn-ghost btn-sm" data-act="echRappels" title="Notifie le staff et écrit aux résidents concernés (paliers 60/30/7/0 j, jamais deux fois le même rappel)">Envoyer les rappels</button></div>
-      <table style="margin-top:8px"><thead><tr><th>Type</th><th>Résident</th><th>Échéance</th><th>Statut</th><th></th></tr></thead>
-      <tbody>${echeances.slice(0, 10).map((x) => `
-        <tr>
-          <td>${x.type === 'assurance' ? 'Assurance' : x.type === 'document' ? `Doc. ${esc((x.titre || '').slice(0, 28))}${!x.signe ? ' <span class="muted">(non signé)</span>' : ''}` : `Contrat ${esc(x.contrat_numero || '')}`}</td>
-          <td data-l="Résident">${x.resident_id ? `<a href="#/residents/${x.resident_id}" style="color:inherit">${esc(x.resident_nom)}</a>` : esc(x.resident_nom)}</td>
-          <td data-l="Échéance">${x.echeance ? dfr(x.echeance) : '—'}</td>
-          <td data-l="Statut">${x.statut === 'manquante' ? '<span class="badge en_retard">aucune attestation</span>'
-            : x.statut === 'expiree' ? '<span class="badge en_retard">expirée</span>'
-            : `<span class="badge ${x.jours_restants <= 7 ? 'partielle' : 'emise'}">dans ${x.jours_restants} j</span>`}</td>
-          <td class="right">${x.type === 'contrat'
-            ? `<button class="btn btn-ghost btn-sm" data-act="renouvelerContrat" data-a1="${x.contrat_id}" title="Duplique le contrat pour la période suivante puis l\u2019envoie en signature">Renouveler</button>`
-            : x.type === 'document'
-            ? `<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/signatures" title="Déposer la nouvelle version à signer">Voir / refaire</button>`
-            : (x.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="ouvrirConversation" data-a1="${x.resident_id}">Écrire</button>` : '')}</td>
-        </tr>`).join('')}</tbody></table>
-      ${echeances.length > 10 ? `<p class="muted" style="margin-top:8px">${echeances.length - 10} autre(s) échéance(s) — affinez depuis les fiches résidents.</p>` : ''}
-    </div>` : ''}
-
-    <div class="card">
-      <h2>Ce mois-ci</h2>
-      <div class="stats">
-        <div class="stat"><span class="k">Factures émises</span><span class="v">${d.factures_mois.total}</span></div>
-        ${Object.entries(st).map(([k, v]) => `<div class="stat"><span class="k">${esc(lib(k))}</span><span class="v">${v}</span></div>`).join('')}
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+      <div class="card" style="flex:1.35;min-width:420px;padding:0;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--hairline);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <h2 style="margin:0;font-size:16px">À traiter</h2>
+          ${echeances.length > 6 ? `<span class="muted" style="font-size:12.5px">${echeances.length - 6} autre${echeances.length - 6 > 1 ? 's' : ''} échéance${echeances.length - 6 > 1 ? 's' : ''} sous 60 j</span>` : ''}
+        </div>
+        ${aTraiter.length ? aTraiter.map((t) => `
+          <div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:66px;
+                      border-bottom:1px solid var(--hairline)">
+            <span style="width:7px;height:7px;border-radius:50%;flex:none;background:${t.pt}"></span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.titre}</div>
+              <div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.sous}</div>
+            </div>
+            <div style="flex:none;display:flex;gap:6px">${t.act}</div>
+          </div>`).join('')
+  : `<p class="muted" style="padding:22px 18px;margin:0">Rien à traiter : les loyers sont encaissés, les contrats à jour, les messages lus.</p>`}
       </div>
-      ${Object.keys(d.encaissements_mois).length ? `
-        <h2 style="margin-top:20px">Encaissements</h2>
-        <div class="stats">
-          ${Object.entries(d.encaissements_mois).map(([k, v]) => `<div class="stat"><span class="k">${esc(lib(k))}</span><span class="v">${eur(v)}</span></div>`).join('')}
+
+      <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:16px">
+        <div class="card">
+          <h2 style="margin:0;font-size:16px">Encaissements du mois</h2>
+          <div style="display:flex;align-items:baseline;gap:9px;margin-top:9px">
+            <div style="font-size:26px;font-variant-numeric:tabular-nums">${dshEur(encaisse)}</div>
+            <div class="muted" style="font-size:12.5px">${facture > 0.005 ? 'sur ' + eur(facture) + ' facturés' : 'rien facturé ce mois'}</div>
+          </div>
+          ${facture > 0.005 ? `
+            <div style="height:7px;border-radius:5px;background:var(--hairline);margin-top:11px;overflow:hidden;display:flex">
+              <div style="width:${pc}%;background:var(--sapin)"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:7px">
+              <span class="muted">${pc} % encaissé</span>
+              ${facture - encaisse > 0.005 ? `<span style="color:var(--rouge);font-weight:600">${eur(facture - encaisse)} restant</span>` : '<span style="color:var(--sapin);font-weight:600">tout est encaissé</span>'}
+            </div>` : ''}
+          ${Object.keys(d.encaissements_mois || {}).length ? `
+            <div style="margin-top:14px;display:flex;flex-direction:column;gap:7px">
+              ${Object.entries(d.encaissements_mois).map(([k, v]) => `
+                <div style="display:flex;justify-content:space-between;font-size:13px">
+                  <span class="muted">${esc(lib(k))}</span>
+                  <span style="font-variant-numeric:tabular-nums">${eur(v)}</span>
+                </div>`).join('')}
+            </div>` : ''}
+        </div>
+
+        ${parSecteur.length ? `
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--hairline)">
+            <h2 style="margin:0;font-size:16px">Occupation par secteur</h2>
+          </div>
+          <div style="padding:14px 18px;display:flex;flex-direction:column;gap:13px">
+            ${parSecteur.map((s) => {
+  const p = s.total ? Math.round((s.occ / s.total) * 100) : 0;
+  return `
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:13px">
+                  <span>${esc(s.nom)}</span>
+                  <span class="muted" style="font-variant-numeric:tabular-nums">${s.occ} / ${s.total}</span>
+                </div>
+                <div style="height:6px;border-radius:4px;background:var(--hairline);margin-top:6px;overflow:hidden;display:flex">
+                  <div style="width:${p}%;background:${p === 100 ? 'var(--sapin)' : DSH_AMBRE}"></div>
+                </div>
+              </div>`;
+}).join('')}
+          </div>
         </div>` : ''}
+      </div>
     </div>`;
 }
 
