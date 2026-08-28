@@ -6671,7 +6671,7 @@ boot();
     btn.className = 'btn btn-ghost btn-sm';
     btn.title = 'Notifications';
     btn.style.cssText = 'position:relative;padding:6px 9px;line-height:1;margin-right:8px';
-    btn.innerHTML = '<span style="font-size:18px"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg><span>Notifications</span></span>'
+    btn.innerHTML = '<span style="font-size:18px;display:inline-flex;align-items:center;gap:8px"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg><span>Notifications</span></span>'
       + '<span id="notif-badge" class="hidden" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;'
       + 'padding:0 4px;border-radius:9px;background:#E5484D;color:#fff;font-size:10px;font-weight:700;'
       + 'display:flex;align-items:center;justify-content:center">0</span>';
