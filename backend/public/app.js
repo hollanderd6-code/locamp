@@ -304,6 +304,25 @@ function logout() {
   $('#app').classList.add('hidden'); $('#login-screen').classList.remove('hidden');
 }
 
+/* Se deconnecter est irreversible pour la saisie en cours : on demande.
+   window.logout est enveloppee plus loin par le module push (pour
+   desinscrire le jeton) — on appelle donc toujours la version courante,
+   jamais une reference capturee. */
+window.demanderDeconnexion = async () => {
+  const carteSale = typeof carteState !== 'undefined' && carteState
+    && carteState.mode === 'edit'
+    && (carteState.dirty.size + carteState.dirtyElems.size) > 0;
+
+  const ok = await askConfirm(
+    carteSale
+      ? 'Le plan comporte des modifications non enregistrées : elles seront perdues.\n\nSe déconnecter quand même ?'
+      : 'Se déconnecter de Locamp ?',
+    { titre: 'Déconnexion', ok: 'Se déconnecter', danger: !!carteSale }
+  );
+  if (!ok) return;
+  (window.logout || logout)();
+};
+
 async function boot() {
   if (!TOKEN) { $('#login-screen').classList.remove('hidden'); return; }
   try {
@@ -459,7 +478,7 @@ $('#login-form').addEventListener('submit', async (e) => {
     const el = $('#login-error'); el.textContent = err.message; el.classList.remove('hidden');
   } finally { btn.disabled = false; }
 });
-$('#logout-btn').addEventListener('click', logout);
+$('#logout-btn').addEventListener('click', demanderDeconnexion);
 // menu mobile
 /* Le tiroir : un bouton l'ouvre depuis la barre haute, trois choses le
    ferment — la croix, le voile, et la touche Echap. Un panneau qui recouvre
@@ -6868,7 +6887,7 @@ boot();
     return _logout.apply(this, arguments);
   };
   const btn = document.getElementById('logout-btn');
-  if (btn) { btn.replaceWith(btn.cloneNode(true)); document.getElementById('logout-btn').addEventListener('click', window.logout); }
+  if (btn) { btn.replaceWith(btn.cloneNode(true)); document.getElementById('logout-btn').addEventListener('click', window.demanderDeconnexion); }
 
   window.addEventListener('hashchange', enregistrer);
   [1500, 4000].forEach((t) => setTimeout(enregistrer, t));
