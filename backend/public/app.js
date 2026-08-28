@@ -544,7 +544,7 @@ function chargerPdfJs() {
   });
 }
 
-const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, signatures: vueSignatures, parametres: vueParametres, administration: vueAdministration };
+const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, contrats: vueContrats, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, signatures: vueSignatures, parametres: vueParametres, administration: vueAdministration };
 let _hashPrec = location.hash;
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
@@ -2861,6 +2861,240 @@ window.formEmplacement = async () => {
     catch (err) { toast(err.message, true); }
   });
 };
+
+/* ---------- Contrats (ecran dedie) ----------
+   Les contrats vivaient au fond de la fiche resident. Ici, la seule
+   question qui compte : lesquels reclament une action. */
+let CTR_SEL = null;
+let CTR_FILTRE = 'tous';
+let CTR_Q = '';
+let CTR_CACHE = { contrats: [], res: {}, emp: {} };
+
+const CTR_AMBRE = '#7A5A22';
+const CTR_J = 86400000;
+const ctrJours = (d) => (d ? Math.floor((new Date(d) - new Date()) / CTR_J) : null);
+
+/* Un contrat « en attente » est emis mais pas signe : c'est le seul
+   etat ou l'action attend quelqu'un d'autre que nous. */
+const ctrEnAttente = (c) => !['signe', 'brouillon', 'annule'].includes(c.statut);
+
+function ctrEtat(c) {
+  if (c.statut === 'brouillon') return { txt: 'Brouillon', col: CTR_AMBRE, rang: 3 };
+  if (c.statut === 'annule') return { txt: 'Annulé', col: 'var(--brume)', rang: 5 };
+  const j = ctrJours(c.date_fin);
+  if (c.date_fin && j < 0) return { txt: 'Échu le ' + dfr(c.date_fin), col: 'var(--rouge)', rang: 0 };
+  if (ctrEnAttente(c)) return { txt: 'En attente de signature', col: CTR_AMBRE, rang: 1 };
+  if (c.date_fin && j <= 60) return { txt: `Fin dans ${j} j`, col: CTR_AMBRE, rang: 2 };
+  return { txt: 'Signé', col: 'var(--sapin)', rang: 4 };
+}
+
+const ctrEur = (n) => (Math.abs(Number(n || 0)) < 0.005 ? '—' : eur(n));
+const ctrNom = (c) => CTR_CACHE.res[c.resident_id] || 'Résident supprimé';
+
+const CTR_FILTRES = [
+  ['tous', 'Tous', (c) => c.statut !== 'annule'],
+  ['renouveler', 'À renouveler', (c) => {
+    if (['brouillon', 'annule'].includes(c.statut) || !c.date_fin) return false;
+    return ctrJours(c.date_fin) <= 60;
+  }],
+  ['attente', 'En attente', (c) => ctrEnAttente(c)],
+  ['signes', 'Signés', (c) => c.statut === 'signe'],
+  ['brouillons', 'Brouillons', (c) => c.statut === 'brouillon'],
+];
+
+function ctrVisibles() {
+  const f = (CTR_FILTRES.find((x) => x[0] === CTR_FILTRE) || CTR_FILTRES[0])[2];
+  const q = CTR_Q.trim().toLowerCase();
+  return CTR_CACHE.contrats.filter((c) => {
+    if (!f(c)) return false;
+    if (!q) return true;
+    return `${c.numero || ''} ${ctrNom(c)}`.toLowerCase().includes(q);
+  });
+}
+
+function ctrLigneListe(c) {
+  const e = ctrEtat(c);
+  const sel = c.id === CTR_SEL;
+  return `
+    <div data-act="ouvrirContrat" data-a1="${c.id}"
+         style="display:flex;align-items:center;gap:12px;padding:0 18px;height:62px;cursor:pointer;
+                border-bottom:1px solid var(--hairline);
+                background:${sel ? 'var(--sapin-pale)' : 'transparent'};
+                box-shadow:${sel ? 'inset 3px 0 0 var(--sapin)' : 'none'}">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${esc(ctrNom(c))}</div>
+        <div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${esc(c.numero || 'sans numéro')}${c.date_fin ? ' · fin ' + dfr(c.date_fin) : ''}</div>
+      </div>
+      <div style="text-align:right;flex:none">
+        <div style="font-size:13.5px;font-variant-numeric:tabular-nums">${ctrEur(c.montant_mensuel)}</div>
+        <div style="font-size:11.5px;font-weight:600;margin-top:2px;color:${e.col}">${e.txt}</div>
+      </div>
+    </div>`;
+}
+
+function majListeContrats() {
+  const box = $('#ctr-liste');
+  if (!box) return;
+  const v = ctrVisibles();
+  box.innerHTML = v.length ? v.map(ctrLigneListe).join('')
+    : '<p class="muted" style="padding:18px">Aucun contrat ne correspond.</p>';
+  const n = $('#ctr-compte');
+  if (n) n.textContent = v.length + (v.length > 1 ? ' contrats' : ' contrat');
+}
+
+window.ouvrirContrat = (id) => { CTR_SEL = id; vueContrats(); };
+window.filtrerContrats = (k) => { CTR_FILTRE = k; CTR_SEL = null; vueContrats(); };
+window.chercherContrats = (v) => { CTR_Q = v; majListeContrats(); };
+
+function ctrFiche(c) {
+  const e = ctrEtat(c);
+  const nom = ctrNom(c);
+  const emp = CTR_CACHE.emp[c.resident_id];
+  const brouillon = c.statut === 'brouillon';
+  const signe = c.statut === 'signe';
+
+  const boutons = [];
+  if (brouillon) {
+    boutons.push(`<button class="btn btn-ghost btn-sm" data-act="supprimerContrat" data-a1="${c.id}" data-a2="${esc(c.numero || '')}">Supprimer</button>`);
+    boutons.push(`<button class="btn btn-primary btn-sm" data-act="regenererContrat" data-a1="${c.id}">Réessayer le PDF</button>`);
+  } else {
+    boutons.push(`<button class="btn btn-ghost btn-sm" data-act="telechargerContrat" data-a1="${c.id}">PDF</button>`);
+    if (!signe) {
+      boutons.push(`<button class="btn btn-ghost btn-sm" data-act="signerContratPapier" data-a1="${c.id}">Signé (papier)</button>`);
+      boutons.push(`<button class="btn btn-primary btn-sm" data-act="contratVersSignature" data-a1="${c.id}">Envoyer en signature</button>`);
+    } else if (c.date_fin && ctrJours(c.date_fin) <= 60) {
+      boutons.push(`<button class="btn btn-primary btn-sm" data-act="renouvelerContrat" data-a1="${c.id}">Renouveler</button>`);
+    }
+  }
+
+  const infos = [
+    ['Période', `${c.date_debut ? dfr(c.date_debut) : '—'} → ${c.date_fin ? dfr(c.date_fin) : 'illimité'}`],
+    ['Loyer mensuel', ctrEur(c.montant_mensuel)],
+    ['Emplacement', emp ? esc(emp) : '<span class="muted">non rattaché</span>'],
+    ['Statut', `<span class="badge ${signe ? 'reglee' : brouillon ? 'brouillon' : 'emise'}">${lib(c.statut)}</span>`],
+    ['Signature', signe
+      ? 'signé' + (c.date_signature ? ' le ' + dfr(c.date_signature) : '')
+      : brouillon
+        ? '<span style="color:' + CTR_AMBRE + '">PDF non généré</span>'
+        : '<span style="color:' + CTR_AMBRE + '">en attente du résident</span>'],
+  ];
+
+  return `
+    <div style="background:var(--carte);border-bottom:1px solid var(--hairline);padding:22px 26px 18px;
+                display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <h1 style="margin:0;font-size:24px;line-height:1.15">${esc(c.numero || 'Brouillon')}</h1>
+        <div class="muted" style="font-size:13.5px;margin-top:4px">
+          ${esc(nom)}${emp ? ' · emplacement ' + esc(emp) : ''}
+        </div>
+        <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap">
+          <span style="font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:var(--r-s);
+                       background:${e.col === 'var(--rouge)' ? 'var(--rouge-pale)' : e.col === 'var(--sapin)' ? 'var(--sapin-pale)' : 'var(--laiton-pale)'};
+                       color:${e.col}">${e.txt}</span>
+        </div>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${boutons.join('')}</div>
+        ${brouillon
+  ? '<div class="muted" style="font-size:12px">Un brouillon est un contrat dont le PDF n\'a pas abouti.</div>'
+  : signe ? '' : '<div class="muted" style="font-size:12px">La signature papier accepte un scan, facultatif.</div>'}
+      </div>
+    </div>
+
+    <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:0;overflow:hidden">
+        ${infos.map(([k, v]) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;
+                      padding:0 18px;height:46px;border-bottom:1px solid var(--hairline)">
+            <span class="muted" style="font-size:13px">${k}</span>
+            <span style="font-size:13.5px;text-align:right">${v}</span>
+          </div>`).join('')}
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:13px 18px;border-bottom:1px solid var(--hairline);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <div style="font-size:14px;font-weight:600">Résident</div>
+          ${c.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/residents/${c.resident_id}">Ouvrir la fiche</button>` : ''}
+        </div>
+        <div style="padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div style="font-size:15px;font-weight:600">${esc(nom)}</div>
+          ${c.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="nouveauContrat" data-a1="${c.resident_id}">Nouveau contrat</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function vueContrats() {
+  const [ctrD, resD, empD] = await Promise.all([
+    api('/api/contrats'),
+    api('/api/residents').catch(() => ({ residents: [] })),
+    api('/api/emplacements').catch(() => ({ emplacements: [] })),
+  ]);
+  const res = {}; const emp = {};
+  const numEmp = {};
+  (empD.emplacements || []).forEach((x) => { numEmp[x.id] = x.numero; });
+  (resD.residents || []).forEach((r) => {
+    res[r.id] = `${r.prenom ? r.prenom + ' ' : ''}${r.nom || ''}`.trim() || '—';
+    if (r.emplacement_id && numEmp[r.emplacement_id]) emp[r.id] = numEmp[r.emplacement_id];
+  });
+
+  /* Tri par urgence : ce qui reclame une action remonte. A rang egal,
+     la fin la plus proche d'abord. */
+  const liste = (ctrD.contrats || []).slice().sort((a, b) => {
+    const ra = ctrEtat(a).rang; const rb = ctrEtat(b).rang;
+    if (ra !== rb) return ra - rb;
+    const ja = a.date_fin ? new Date(a.date_fin).getTime() : Infinity;
+    const jb = b.date_fin ? new Date(b.date_fin).getTime() : Infinity;
+    return ja - jb;
+  });
+  CTR_CACHE = { contrats: liste, res, emp };
+
+  const visibles = ctrVisibles();
+  if (CTR_SEL && !liste.some((c) => c.id === CTR_SEL)) CTR_SEL = null;
+  if (!CTR_SEL && visibles.length) CTR_SEL = visibles[0].id;
+
+  const compte = (k) => liste.filter((CTR_FILTRES.find((x) => x[0] === k) || CTR_FILTRES[0])[2]).length;
+  const puces = CTR_FILTRES.map(([k, l]) => {
+    const on = k === CTR_FILTRE;
+    return `<button data-act="filtrerContrats" data-a1="${k}"
+      style="padding:4px 11px;border-radius:20px;font-size:12.5px;cursor:pointer;font-family:inherit;
+             border:1px solid ${on ? 'var(--nuit)' : 'var(--hairline)'};
+             background:${on ? 'var(--nuit)' : 'transparent'};color:${on ? 'var(--ivoire)' : '#5D6E66'};
+             font-weight:${on ? '600' : '400'}">${l} ${compte(k)}</button>`;
+  }).join('');
+
+  const urgents = compte('renouveler');
+  $('#main').innerHTML = `
+    <div class="page-head"><div><h1>Contrats</h1>
+      <div class="muted" style="font-size:13.5px;margin-top:4px">
+        ${compte('tous')} contrat${compte('tous') > 1 ? 's' : ''} en cours${urgents ? ' · ' + urgents + ' à renouveler' : ''}${compte('attente') ? ' · ' + compte('attente') + ' en attente de signature' : ''}
+      </div></div>
+      <button class="btn btn-ghost" data-act="allerA" data-a1="#/residents"
+              title="Un contrat se crée depuis la fiche du résident">Créer depuis un résident</button></div>
+
+    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
+      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+        <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
+          <input id="ctr-q" data-act="chercherContrats" data-evt="input" data-a1="@value"
+                 placeholder="Numéro, résident" value="${esc(CTR_Q)}" style="width:100%">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${puces}</div>
+          <div id="ctr-compte" class="muted" style="font-size:12px"></div>
+        </div>
+        <div id="ctr-liste" style="flex:1;overflow:auto"></div>
+      </div>
+      <div id="ctr-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+    </div>`;
+
+  majListeContrats();
+  const fiche = $('#ctr-fiche');
+  const c = liste.find((x) => x.id === CTR_SEL);
+  fiche.innerHTML = c ? ctrFiche(c)
+    : `<p class="muted" style="padding:26px">${liste.length
+      ? 'Aucun contrat dans ce filtre.'
+      : 'Aucun contrat. Ouvrez la fiche d\'un résident et utilisez « Nouveau contrat ».'}</p>`;
+}
 
 /* ---------- Factures ---------- */
 /* ---------- Factures : liste + fiche ----------
