@@ -2407,7 +2407,8 @@ window.encaisserClient = async (id) => {
       }</select></label>
       <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
       <label class="full">Référence<input name="reference" placeholder="n° chèque, libellé virement…"></label>
-      <div class="full"><button class="btn btn-primary btn-block">Encaisser (lettrage automatique)</button></div>
+      <div class="full"><button class="btn btn-primary btn-block">Encaisser</button>
+        <p class="muted" style="margin:8px 0 0;font-size:12px">Le lettrage se fait tout seul, de la facture la plus ancienne a la plus recente.</p></div>
     </form>`);
   $('#f-enc').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -5713,65 +5714,187 @@ const REF_PAR_TYPE = {
 const REF_DEFAUT = { requis: false, aide: 'Référence', exemple: 'facultatif' };
 function regleRef(type) { return REF_PAR_TYPE[String(type || '')] || REF_DEFAUT; }
 
-async function vueReglements() {
-  const [{ reglements }, { residents }, moyRes] = await Promise.all([
-    api('/api/reglements' + exQS()), api('/api/residents'),
-    api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
-  ]);
-  const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
-  const moyens = moyRes.moyens || [];
-  const mlib = {}; moyens.forEach((m) => { mlib[m.code] = m.libelle; });
+/* ---------- Reglements : liste + fiche ----------
+   Le formulaire vit dans le tiroir ; l'ecran sert a retrouver un
+   encaissement et a voir ce qu'il a paye. */
+let REG_SEL = null;
+let REG_FILTRE = 'tous';
+let REG_Q = '';
+let REG_CACHE = { reglements: [], rmap: {}, mlib: {}, typeParCode: {}, facNum: {} };
 
-  $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Encaissements</div><h1>Règlements</h1></div></div>
-    <div class="card">
-      <h2>Enregistrer un paiement</h2>
-      <form id="f-reg" class="form-grid" style="margin-top:10px">
-        ${/* Sans option vide, un <select required> est considéré rempli par le
-             navigateur : valider sans y toucher enregistrait le paiement au nom
-             du PREMIER résident de la liste, avec lettrage automatique sur ses
-             factures. Le tiroir « Nouvelle facture » ouvre bien sur « choisir ». */''}
-        <label>Résident *<select name="resident_id" required>
-          <option value="">— choisir —</option>
-          ${residents.map((r) => `<option value="${r.id}">${esc(rmap[r.id])}</option>`).join('')}</select></label>
-        <label>Moyen de paiement *<select name="mode" required>
-          ${moyens.length
-            ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
-            : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'}
-        </select></label>
-        <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
-        ${/* L'ancien texte d'aide énumérait les trois cas — « n° chèque, n° titre
-             ANCV, libellé virement… » — et laissait trier mentalement lequel
-             s'applique. Le libellé suit maintenant le moyen choisi. */''}
-        <label><span id="reg-ref-label">Référence</span><input name="reference" id="reg-ref"></label>
-        <div class="full"><button class="btn btn-primary">Encaisser (lettrage automatique)</button></div>
-      </form>
-      ${moyens.length ? '' : '<p class="muted" style="margin-top:8px">Moyens de paiement par défaut — configurez-les dans Administration.</p>'}
+const REG_AMBRE = '#7A5A22';
+const regAffecte = (g) => (g.affectations || [])
+  .reduce((s, a) => s + Number((a && a.montant) || 0), 0);
+const regReste = (g) => Math.round((Number(g.montant || 0) - regAffecte(g)) * 100) / 100;
+
+const REG_FILTRES = [
+  ['tous', 'Tous', () => true],
+  ['avances', 'Avances', (g) => regReste(g) > 0.005],
+  ['mois', 'Ce mois', (g) => String(g.date_reglement || '').slice(0, 7) === new Date().toISOString().slice(0, 7)],
+];
+
+function regVisibles() {
+  const f = (REG_FILTRES.find((x) => x[0] === REG_FILTRE) || REG_FILTRES[0])[2];
+  const q = REG_Q.trim().toLowerCase();
+  return REG_CACHE.reglements.filter((g) => {
+    if (!f(g)) return false;
+    if (!q) return true;
+    return `${REG_CACHE.rmap[g.resident_id] || ''} ${g.reference || ''} ${REG_CACHE.mlib[g.mode] || g.mode || ''}`
+      .toLowerCase().includes(q);
+  });
+}
+
+function regLigneListe(g) {
+  const sel = g.id === REG_SEL;
+  const reste = regReste(g);
+  return `
+    <div data-act="ouvrirReglement" data-a1="${g.id}"
+         style="display:flex;align-items:center;gap:12px;padding:0 18px;height:62px;cursor:pointer;
+                border-bottom:1px solid var(--hairline);
+                background:${sel ? 'var(--sapin-pale)' : 'transparent'};
+                box-shadow:${sel ? 'inset 3px 0 0 var(--sapin)' : 'none'}">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${esc(REG_CACHE.rmap[g.resident_id] || 'Résident supprimé')}</div>
+        <div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${dfr(g.date_reglement)} · ${esc(REG_CACHE.mlib[g.mode] || g.mode || '—')}${g.reference ? ' · ' + esc(g.reference) : ''}</div>
+      </div>
+      <div style="text-align:right;flex:none">
+        <div style="font-size:14px;font-weight:600;font-variant-numeric:tabular-nums">${eur(g.montant)}</div>
+        ${reste > 0.005
+  ? `<div style="font-size:11.5px;font-weight:600;margin-top:2px;color:${REG_AMBRE}">avance de ${eur(reste)}</div>`
+  : '<div class="muted" style="font-size:11.5px;margin-top:2px">lettré</div>'}
+      </div>
+    </div>`;
+}
+
+function majListeReglements() {
+  const box = $('#reg-liste');
+  if (!box) return;
+  const v = regVisibles();
+  box.innerHTML = v.length ? v.map(regLigneListe).join('')
+    : '<p class="muted" style="padding:18px">Aucun règlement ne correspond.</p>';
+  const n = $('#reg-compte');
+  if (n) {
+    const somme = v.reduce((s, g) => s + Number(g.montant || 0), 0);
+    n.textContent = v.length ? `${v.length} règlement${v.length > 1 ? 's' : ''} · ${eur(somme)}` : '';
+  }
+}
+
+window.ouvrirReglement = (id) => { REG_SEL = id; majListeReglements(); majFicheReglement(); };
+window.filtrerReglements = (k) => { REG_FILTRE = k; REG_SEL = null; vueReglements(); };
+window.chercherReglements = (v) => { REG_Q = v; majListeReglements(); };
+
+function regFiche(g) {
+  const reste = regReste(g);
+  const aff = (g.affectations || []).filter((a) => a && a.facture_id);
+  const infos = [
+    ['Date du règlement', dfr(g.date_reglement)],
+    ['Moyen', esc(REG_CACHE.mlib[g.mode] || g.mode || '—')],
+    ['Référence', g.reference ? esc(g.reference) : '<span class="muted">aucune</span>'],
+    ['Saisi le', g.created_at
+      ? new Date(g.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '<span class="muted">—</span>'],
+  ];
+
+  return `
+    <div style="background:var(--carte);border-bottom:1px solid var(--hairline);padding:22px 26px 18px;
+                display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <h1 style="margin:0;font-size:24px;line-height:1.15">${eur(g.montant)}</h1>
+        <div class="muted" style="font-size:13.5px;margin-top:4px">
+          ${esc(REG_CACHE.rmap[g.resident_id] || 'Résident supprimé')} · ${dfr(g.date_reglement)}
+        </div>
+        <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap">
+          ${reste > 0.005
+  ? `<span style="font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:var(--r-s);
+                   background:var(--laiton-pale);color:${REG_AMBRE}">Avance de ${eur(reste)} — non affectée</span>`
+  : '<span style="font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:var(--r-s);background:var(--sapin-pale);color:var(--sapin)">Entièrement lettré</span>'}
+        </div>
+      </div>
+      ${g.resident_id ? `<div style="flex:none">
+        <button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/residents/${g.resident_id}">Ouvrir la fiche</button>
+      </div>` : ''}
     </div>
-    <div class="card"><table><thead><tr><th>Date</th><th>Résident</th><th>Moyen</th><th>Référence</th><th class="right">Montant</th></tr></thead>
-    <tbody>${reglements.map((g) => `
-      ${/* L'heure de saisie en infobulle : deux paiements de même date, même
-           résident, même montant et sans référence étaient indistinguables —
-           impossible de dire si c'était une double saisie. */''}
-      <tr><td class="muted"${g.created_at ? ` title="Saisi le ${new Date(g.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}"` : ''}>${dfr(g.date_reglement)}</td><td>${esc(rmap[g.resident_id] || '—')}</td>
-      <td class="muted">${esc(mlib[g.mode] || g.mode)}</td><td class="muted">${esc(g.reference || '—')}</td>
-      <td class="right"><strong>${eur(g.montant)}</strong></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucun règlement enregistré.</td></tr>'}</tbody>
-    ${reglements.length ? `<tfoot><tr><td colspan="4" class="right muted">Total encaissé — ${reglements.length} règlement${reglements.length > 1 ? 's' : ''}</td>
-      <td class="right"><strong>${eur(reglements.reduce((s, g) => s + Number(g.montant || 0), 0))}</strong></td></tr></tfoot>` : ''}</table></div>`;
 
-  /* Le type du moyen, par code : c'est lui qui décide si la référence est
-     obligatoire. moyens vient de /api/moyens-paiement ; sans configuration,
-     les deux options de repli portent leur type dans leur valeur. */
-  const typeParCode = {};
-  moyens.forEach((m) => { typeParCode[m.code] = m.type; });
-  if (!moyens.length) { typeParCode.espece = 'espece'; typeParCode.cheque = 'cheque'; }
+    <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="padding:0;overflow:hidden">
+        ${infos.map(([k, v]) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;
+                      padding:0 18px;height:46px;border-bottom:1px solid var(--hairline)">
+            <span class="muted" style="font-size:13px">${k}</span>
+            <span style="font-size:13.5px;text-align:right">${v}</span>
+          </div>`).join('')}
+      </div>
 
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:13px 18px;border-bottom:1px solid var(--hairline);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <div style="font-size:14px;font-weight:600">Factures payées par ce règlement</div>
+          <div class="muted" style="font-size:12.5px">lettrage automatique</div>
+        </div>
+        ${aff.length ? aff.map((a) => `
+          <div data-act="ouvrirFacture" data-a1="${a.facture_id}"
+               style="display:grid;grid-template-columns:1fr 110px;gap:12px;align-items:center;
+                      padding:0 18px;height:46px;cursor:pointer;border-bottom:1px solid var(--hairline)">
+            <div style="font-size:13.5px">${esc(REG_CACHE.facNum[a.facture_id] || 'facture')}</div>
+            <div style="text-align:right;font-size:13.5px;font-variant-numeric:tabular-nums">${eur(a.montant)}</div>
+          </div>`).join('')
+  : '<p class="muted" style="padding:16px 18px;margin:0">Aucune affectation : ce versement est une avance, il éteindra les prochaines factures du résident.</p>'}
+        ${aff.length ? `
+          <div style="padding:12px 18px;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            <div style="display:flex;gap:26px;font-size:13px;color:var(--brume)"><span>Affecté</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${eur(regAffecte(g))}</span></div>
+            ${reste > 0.005 ? `<div style="display:flex;gap:26px;font-size:13px;font-weight:600;color:${REG_AMBRE}"><span>Reste en avance</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${eur(reste)}</span></div>` : ''}
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function majFicheReglement() {
+  const box = $('#reg-fiche');
+  if (!box) return;
+  const g = REG_CACHE.reglements.find((x) => x.id === REG_SEL);
+  box.innerHTML = g ? regFiche(g)
+    : `<p class="muted" style="padding:26px">${REG_CACHE.reglements.length
+      ? 'Choisissez un règlement.'
+      : 'Aucun règlement enregistré. « Encaisser un paiement » enregistre le premier.'}</p>`;
+}
+
+/* ---- Saisie : au tiroir, avec les memes garde-fous qu'avant ---- */
+window.formReglement = () => {
+  const { rmap, mlib, typeParCode, reglements } = REG_CACHE;
+  const residents = Object.entries(rmap)
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'fr'));
+  const codes = Object.keys(typeParCode);
+
+  openDrawer(`
+    <h2>Encaisser un paiement</h2>
+    <p class="muted" style="margin-top:4px">Le règlement est lettré automatiquement sur les factures dues du résident, de la plus ancienne à la plus récente.</p>
+    <form id="f-reg" class="form-grid" style="margin-top:12px">
+      ${/* Sans option vide, un <select required> est considere rempli par le
+           navigateur : valider sans y toucher enregistrait le paiement au nom
+           du PREMIER resident de la liste, avec lettrage automatique. */''}
+      <label class="full">Résident *<select name="resident_id" required>
+        <option value="">— choisir —</option>
+        ${residents.map(([id, nom]) => `<option value="${id}">${esc(nom)}</option>`).join('')}</select></label>
+      <label>Moyen de paiement *<select name="mode" required>
+        ${codes.length
+  ? codes.map((c) => `<option value="${esc(c)}">${esc(mlib[c] || c)}</option>`).join('')
+  : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'}
+      </select></label>
+      <label>Montant (€) *<input name="montant" type="number" step="0.01" required autofocus></label>
+      <label class="full"><span id="reg-ref-label">Référence</span><input name="reference" id="reg-ref"></label>
+      <div class="full"><button class="btn btn-primary btn-block">Encaisser</button></div>
+    </form>
+    ${codes.length ? '' : '<p class="muted" style="font-size:12px">Moyens de paiement par défaut — configurez-les dans Administration.</p>'}`);
+
+  /* Le libelle de la reference suit le TYPE du moyen choisi. */
   const majChampRef = () => {
     const champ = $('#reg-ref');
     const lab = $('#reg-ref-label');
-    if (!champ || !lab) return;
-    const code = $('#f-reg').mode?.value;
-    const r = regleRef(typeParCode[code]);
+    const form = $('#f-reg');
+    if (!champ || !lab || !form) return;
+    const r = regleRef(typeParCode[form.mode?.value]);
     lab.innerHTML = esc(r.aide) + (r.requis ? ' *' : '');
     champ.placeholder = r.exemple;
     champ.required = r.requis;
@@ -5786,9 +5909,9 @@ async function vueReglements() {
     if (!body.resident_id) { toast('Choisissez le résident.', true); return; }
     if (!(body.montant > 0)) { toast('Le montant doit être supérieur à zéro.', true); return; }
 
-    /* Refait ici et pas seulement par l'attribut required : changer le moyen
-       après avoir saisi la référence, ou l'inverse, ne doit pas passer entre
-       les mailles. Sans référence, un chèque ou un virement est introuvable
+    /* Refait ici et pas seulement par l'attribut required : changer le
+       moyen apres avoir saisi la reference ne doit pas passer entre les
+       mailles. Sans reference, un cheque ou un virement est introuvable
        au rapprochement bancaire. */
     const regle = regleRef(typeParCode[body.mode]);
     if (regle.requis && !String(body.reference || '').trim()) {
@@ -5799,13 +5922,12 @@ async function vueReglements() {
       return;
     }
 
-    /* Un même montant, le même jour, pour le même résident : c'est peut-être
-       deux versements réels, c'est peut-être une double saisie. On ne bloque
-       pas — on force le regard, parce qu'après lettrage la correction demande
-       d'annuler un règlement déjà imputé sur des factures. */
+    /* Meme montant, meme jour, meme resident, meme moyen : peut-etre deux
+       versements reels, peut-etre une double saisie. On ne bloque pas — on
+       force le regard, parce qu'apres lettrage la correction demande
+       d'annuler un reglement deja impute sur des factures. */
     const aujourdhui = new Date().toISOString().slice(0, 10);
-    const doublonProbable = (reglements || []).some((g) =>
-      g.resident_id === body.resident_id
+    const doublonProbable = (reglements || []).some((g) => g.resident_id === body.resident_id
       && String(g.date_reglement).slice(0, 10) === aujourdhui
       && Math.abs(Number(g.montant) - body.montant) < 0.005
       && String(g.mode) === String(body.mode));
@@ -5818,11 +5940,76 @@ async function vueReglements() {
       if (!ok) return;
     }
 
-    try { await api('/api/reglements', { method: 'POST', body }); toast('Paiement enregistré et lettré'); route(); }
-    catch (err) { toast(err.message, true); }
+    try {
+      const { reglement } = await api('/api/reglements', { method: 'POST', body });
+      closeDrawer();
+      toast('Paiement enregistré et lettré');
+      if (reglement && reglement.id) REG_SEL = reglement.id;
+      route();
+    } catch (err) { toast(err.message, true); }
   });
+};
 
-  $('#main').insertAdjacentHTML('beforeend', '<div id="remises-zone"></div>');
+async function vueReglements() {
+  const [{ reglements }, { residents }, moyRes, facRes] = await Promise.all([
+    api('/api/reglements' + exQS()), api('/api/residents'),
+    api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
+    api('/api/factures' + exQS()).catch(() => ({ factures: [] })),
+  ]);
+  const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
+  const moyens = moyRes.moyens || [];
+  const mlib = {}; moyens.forEach((m) => { mlib[m.code] = m.libelle; });
+  const typeParCode = {};
+  moyens.forEach((m) => { typeParCode[m.code] = m.type; });
+  /* Sans configuration, les deux options de repli portent leur type dans
+     leur valeur. */
+  if (!moyens.length) { typeParCode.espece = 'espece'; typeParCode.cheque = 'cheque'; }
+  const facNum = {}; (facRes.factures || []).forEach((f) => { facNum[f.id] = f.numero; });
+
+  const liste = (reglements || []).slice()
+    .sort((a, b) => String(b.date_reglement).localeCompare(String(a.date_reglement)));
+  REG_CACHE = { reglements: liste, rmap, mlib, typeParCode, facNum };
+
+  const visibles = regVisibles();
+  if (REG_SEL && !liste.some((g) => g.id === REG_SEL)) REG_SEL = null;
+  if (!REG_SEL && visibles.length) REG_SEL = visibles[0].id;
+
+  const compte = (k) => liste.filter((REG_FILTRES.find((x) => x[0] === k) || REG_FILTRES[0])[2]).length;
+  const puces = REG_FILTRES.map(([k, l]) => {
+    const on = k === REG_FILTRE;
+    return `<button data-act="filtrerReglements" data-a1="${k}"
+      style="padding:4px 11px;border-radius:20px;font-size:12.5px;cursor:pointer;font-family:inherit;
+             border:1px solid ${on ? 'var(--nuit)' : 'var(--hairline)'};
+             background:${on ? 'var(--nuit)' : 'transparent'};color:${on ? 'var(--ivoire)' : '#5D6E66'};
+             font-weight:${on ? '600' : '400'}">${l} ${compte(k)}</button>`;
+  }).join('');
+
+  const total = liste.reduce((s, g) => s + Number(g.montant || 0), 0);
+  const avances = liste.reduce((s, g) => s + Math.max(0, regReste(g)), 0);
+
+  $('#main').innerHTML = `
+    <div class="page-head"><div><h1>Règlements</h1>
+      <div class="muted" style="font-size:13.5px;margin-top:4px">
+        ${liste.length} encaissement${liste.length > 1 ? 's' : ''} · ${eur(total)}${avances > 0.005 ? ' · dont ' + eur(avances) + ' en avance non affectée' : ''}
+      </div></div>
+      <button class="btn btn-primary" data-act="formReglement">Encaisser un paiement</button></div>
+
+    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:520px">
+      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+        <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
+          <input id="reg-q" data-act="chercherReglements" data-evt="input" data-a1="@value"
+                 placeholder="Résident, référence, moyen" value="${esc(REG_Q)}" style="width:100%">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${puces}</div>
+          <div id="reg-compte" class="muted" style="font-size:12px"></div>
+        </div>
+        <div id="reg-liste" style="flex:1;overflow:auto"></div>
+      </div>
+      <div id="reg-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+    </div>
+    <div id="remises-zone"></div>`;
+
+  majListeReglements();
+  majFicheReglement();
   chargerRemises();
 }
 
