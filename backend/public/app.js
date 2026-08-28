@@ -748,7 +748,7 @@ async function vueDashboard() {
       </div>
     </div>
 
-    <div class="card" style="display:flex;padding:0;margin-bottom:16px">
+    <div class="card bandeau" style="display:flex;padding:0;margin-bottom:16px">
       ${chiffres.map((c, i) => `
         <div style="flex:1;padding:14px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
           <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
@@ -758,14 +758,14 @@ async function vueDashboard() {
     </div>
 
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <div class="card" style="flex:1.35;min-width:420px;padding:0;overflow:hidden">
+      <div class="card duo-col" style="flex:1.35;min-width:420px;padding:0;overflow:hidden">
         <div style="padding:14px 18px;border-bottom:1px solid var(--hairline);display:flex;
                     align-items:center;justify-content:space-between;gap:12px">
           <h2 style="margin:0;font-size:16px">À traiter</h2>
           ${echeances.length > 6 ? `<span class="muted" style="font-size:12.5px">${echeances.length - 6} autre${echeances.length - 6 > 1 ? 's' : ''} échéance${echeances.length - 6 > 1 ? 's' : ''} sous 60 j</span>` : ''}
         </div>
         ${aTraiter.length ? aTraiter.map((t) => `
-          <div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:66px;
+          <div class="ligne-act" style="display:flex;align-items:center;gap:12px;padding:0 18px;height:66px;
                       border-bottom:1px solid var(--hairline)">
             <span style="width:7px;height:7px;border-radius:50%;flex:none;background:${t.pt}"></span>
             <div style="flex:1;min-width:0">
@@ -777,7 +777,7 @@ async function vueDashboard() {
   : `<p class="muted" style="padding:22px 18px;margin:0">Rien à traiter : les loyers sont encaissés, les contrats à jour, les messages lus.</p>`}
       </div>
 
-      <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:16px">
+      <div class="duo-col" style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:16px">
         <div class="card">
           <h2 style="margin:0;font-size:16px">Encaissements du mois</h2>
           <div style="display:flex;align-items:baseline;gap:9px;margin-top:9px">
@@ -1856,7 +1856,7 @@ async function vueResidents() {
           <button class="btn btn-primary" data-act="formResident">Nouveau résident</button>
         </div></div>
 
-      <div class="card" style="display:flex;padding:0;margin-bottom:14px">
+      <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
         ${chiffres.map((c, i) => `
           <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
             <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
@@ -2974,8 +2974,8 @@ async function vueEmplacements() {
       </div></div>
       <button class="btn btn-primary" data-act="formEmplacement">Nouvel emplacement</button></div>
 
-    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
-      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+    <div class="card duo" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
+      <div class="duo-liste" style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
         <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
           <input id="emp-q" data-act="chercherEmplacements" data-evt="input" data-a1="@value"
                  placeholder="Numéro, type, secteur, résident" value="${esc(EMP_Q)}" style="width:100%">
@@ -2984,7 +2984,7 @@ async function vueEmplacements() {
         </div>
         <div id="emp-liste" style="flex:1;overflow:auto"></div>
       </div>
-      <div id="emp-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+      <div id="emp-fiche" class="duo-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
     </div>`;
 
   majListeEmplacements();
@@ -3238,8 +3238,8 @@ async function vueContrats() {
       <button class="btn btn-ghost" data-act="allerA" data-a1="#/residents"
               title="Un contrat se crée depuis la fiche du résident">Créer depuis un résident</button></div>
 
-    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
-      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+    <div class="card duo" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
+      <div class="duo-liste" style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
         <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
           <input id="ctr-q" data-act="chercherContrats" data-evt="input" data-a1="@value"
                  placeholder="Numéro, résident" value="${esc(CTR_Q)}" style="width:100%">
@@ -3248,7 +3248,7 @@ async function vueContrats() {
         </div>
         <div id="ctr-liste" style="flex:1;overflow:auto"></div>
       </div>
-      <div id="ctr-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+      <div id="ctr-fiche" class="duo-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
     </div>`;
 
   majListeContrats();
@@ -3489,8 +3489,8 @@ async function vueFactures() {
         <button class="btn btn-primary" data-act="runFacturation">Générer la facturation du mois</button>
       </div></div>
 
-    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
-      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+    <div class="card duo" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:560px">
+      <div class="duo-liste" style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
         <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
           <input id="fac-q" data-act="chercherFactures" data-evt="input" data-a1="@value"
                  placeholder="Numéro, résident, période" value="${esc(FAC_Q)}" style="width:100%">
@@ -3499,7 +3499,7 @@ async function vueFactures() {
         </div>
         <div id="fac-liste" style="flex:1;overflow:auto"></div>
       </div>
-      <div id="fac-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+      <div id="fac-fiche" class="duo-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
     </div>`;
 
   majListeFactures();
@@ -3728,8 +3728,8 @@ async function vueMessagerie() {
         <button class="btn btn-primary" data-act="messageRapide">Message à un résident</button>
       </div></div>
 
-    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;height:620px">
-      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+    <div class="card duo" style="padding:0;overflow:hidden;display:flex;align-items:stretch;height:620px">
+      <div class="duo-liste" style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
         <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
           <input id="msg-q" data-act="chercherMessagerie" data-evt="input" data-a1="@value"
                  placeholder="Résident, contenu du message" value="${esc(MSG_Q)}" style="width:100%">
@@ -3737,7 +3737,7 @@ async function vueMessagerie() {
         </div>
         <div id="msg-liste" style="flex:1;overflow:auto"></div>
       </div>
-      <div id="msg-fiche" style="flex:1;min-width:0;background:var(--ivoire);display:flex;flex-direction:column;min-height:0"></div>
+      <div id="msg-fiche" class="duo-fiche" style="flex:1;min-width:0;background:var(--ivoire);display:flex;flex-direction:column;min-height:0"></div>
     </div>`;
 
   majListeConversations();
@@ -3914,7 +3914,7 @@ async function vueCompteurs() {
         — Prix du ${U} non configuré. Les relevés sont bien enregistrés, mais aucune charge n\u2019est créée sur les fiches résidents.
         <a href="#/parametres" style="color:inherit;font-weight:600">Renseigner le prix dans Paramètres → Énergie &amp; eau</a>.</p>`}
 
-    <div class="card" style="display:flex;padding:0;margin-bottom:14px">
+    <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
       <div style="flex:1;padding:13px 18px">
         <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Tournée</div>
         <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${faits} / ${total}</div>
@@ -6035,8 +6035,8 @@ async function vueReglements() {
       </div></div>
       <button class="btn btn-primary" data-act="formReglement">Encaisser un paiement</button></div>
 
-    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:520px">
-      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+    <div class="card duo" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:520px">
+      <div class="duo-liste" style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
         <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
           <input id="reg-q" data-act="chercherReglements" data-evt="input" data-a1="@value"
                  placeholder="Résident, référence, moyen" value="${esc(REG_Q)}" style="width:100%">
@@ -6045,7 +6045,7 @@ async function vueReglements() {
         </div>
         <div id="reg-liste" style="flex:1;overflow:auto"></div>
       </div>
-      <div id="reg-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+      <div id="reg-fiche" class="duo-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
     </div>
     <div id="remises-zone"></div>`;
 
@@ -6274,7 +6274,7 @@ function impFiche(d) {
     </div>
 
     <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
-      <div class="card" style="display:flex;padding:0">
+      <div class="card bandeau" style="display:flex;padding:0">
         <div style="flex:1;padding:13px 18px">
           <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Total dû</div>
           <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${eur(d.total)}</div>
@@ -6382,7 +6382,7 @@ async function vueImpayes() {
       </div></div>
       <button class="btn btn-primary" data-act="runRelancesBtn">Envoyer les relances</button></div>
 
-    <div class="card" style="display:flex;padding:0;margin-bottom:14px">
+    <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
       ${chiffres.map((c, i) => `
         <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
           <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
@@ -6391,8 +6391,8 @@ async function vueImpayes() {
         </div>`).join('')}
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:520px">
-      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+    <div class="card duo" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:520px">
+      <div class="duo-liste" style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
         <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
           <input id="imp-q" data-act="chercherImpayes" data-evt="input" data-a1="@value"
                  placeholder="Résident, numéro de facture" value="${esc(IMP_Q)}" style="width:100%">
@@ -6401,7 +6401,7 @@ async function vueImpayes() {
         </div>
         <div id="imp-liste" style="flex:1;overflow:auto"></div>
       </div>
-      <div id="imp-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+      <div id="imp-fiche" class="duo-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
     </div>
     <p class="muted" style="margin:10px 0 0;font-size:12.5px">« Envoyer les relances » agit sur toutes les factures échues du camping — il n'existe pas d'envoi par débiteur.</p>`;
 

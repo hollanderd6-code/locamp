@@ -1297,3 +1297,51 @@ body .sidebar .sidebar-foot .btn-ghost:not(#logout-btn) span:last-child{margin-l
   body .sidebar .sidebar-head::after{margin:14px 2px 0}
   body .sidebar .sidebar-foot{padding-top:12px;margin-top:12px}
 }
+
+/* ==== Ecrans liste + fiche sur telephone =====================================
+   Ces ecrans sont ecrits avec des styles en ligne, calibres pour le
+   bureau. Les regles ci-dessous les reorganisent sous 880 px et
+   portent donc !important : c'est ce qui permet de ne pas dupliquer
+   huit mises en page.
+   ============================================================ */
+@media (max-width:880px){
+  /* Bandeaux de chiffres : quatre colonnes ne tiennent pas. Grille 2 x 2,
+     et on refait les separateurs — les bordures gauche viennent du style
+     en ligne et n'ont plus de sens ici. */
+  .bandeau{display:grid !important;grid-template-columns:1fr 1fr !important}
+  .bandeau>div{border-left:0 !important;border-top:1px solid var(--hairline) !important;
+    padding:12px 14px !important;min-width:0 !important}
+  .bandeau>div:nth-child(1),.bandeau>div:nth-child(2){border-top:0 !important}
+  .bandeau>div:nth-child(even){border-left:1px solid var(--hairline) !important}
+
+  /* Liste + fiche : empilees. La liste garde une hauteur bornee, sinon
+     il faudrait defiler 58 lignes avant d'atteindre la fiche. */
+  .duo{flex-direction:column !important;min-height:0 !important;height:auto !important}
+  .duo-liste{width:auto !important;flex:none !important;border-right:0 !important;
+    border-bottom:1px solid var(--hairline) !important}
+  .duo-liste>div:last-child{max-height:46vh !important;overflow:auto !important}
+  /* Les lignes des tableaux internes ont une hauteur fixe, calibree pour
+     du texte sur une seule ligne. En colonne etroite le libelle passe a
+     la ligne et se faisait couper : la hauteur devient un minimum. */
+  .duo-fiche div[style*="display:grid"]{height:auto !important;min-height:46px !important;
+    padding-top:10px !important;padding-bottom:10px !important}
+  /* Les tableaux a trois colonnes et plus (postes d'une facture, factures
+     d'un debiteur) ne rentrent pas dans une colonne de telephone. Plutot
+     que d'ecraser la derniere colonne — le montant, justement celle qu'on
+     vient lire — on laisse la carte glisser lateralement. Les tableaux a
+     deux colonnes, eux, tiennent : ils ne sont pas concernes. */
+  .duo-fiche{overflow-x:auto !important}
+  .duo-fiche .card{overflow-x:auto !important}
+  .duo-fiche div[style*="grid-template-columns:1fr 68px"],
+  .duo-fiche div[style*="grid-template-columns:1fr 130px"],
+  .duo-fiche div[style*="grid-template-columns:1fr 110px 96px"]{min-width:420px !important}
+
+  /* Colonnes du tableau de bord : pleine largeur, l'une sous l'autre. */
+  .duo-col{min-width:0 !important;flex:1 1 100% !important}
+
+  /* Une ligne dont l'action ne tient plus a droite la passe dessous,
+     alignee sous le texte. Une action hors ecran est une action perdue. */
+  .ligne-act{height:auto !important;flex-wrap:wrap !important;
+    padding-top:12px !important;padding-bottom:12px !important}
+  .ligne-act>div:last-child{flex-basis:100% !important;padding-left:19px !important}
+}
