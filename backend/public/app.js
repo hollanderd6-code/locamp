@@ -5455,38 +5455,256 @@ window.annulerRemise = async (id, numero, etaitEncaissee) => {
 };
 
 /* ---------- Impayés ---------- */
+/* ---------- Impayes : un debiteur par ligne ----------
+   L'unite du recouvrement est la personne, pas la facture. */
+let IMP_SEL = null;
+let IMP_FILTRE = 'retard';
+let IMP_Q = '';
+let IMP_CACHE = { debiteurs: [], delai: 30 };
+
+const IMP_AMBRE = '#7A5A22';
+
+const IMP_FILTRES = [
+  ['retard', 'En retard', (d) => d.montantRetard > 0.005],
+  ['tous', 'Tous', () => true],
+  ['grave', 'Retard 60 j et +', (d) => d.pireRetard > 60],
+  ['echoir', 'À échoir seulement', (d) => d.montantRetard <= 0.005],
+];
+
+function impVisibles() {
+  const f = (IMP_FILTRES.find((x) => x[0] === IMP_FILTRE) || IMP_FILTRES[0])[2];
+  const q = IMP_Q.trim().toLowerCase();
+  return IMP_CACHE.debiteurs.filter((d) => {
+    if (!f(d)) return false;
+    if (!q) return true;
+    return (d.nom + ' ' + d.factures.map((x) => x.numero || '').join(' ')).toLowerCase().includes(q);
+  });
+}
+
+function impRetardTexte(j) {
+  if (j <= 0) return { txt: 'À échoir', col: 'var(--sapin)' };
+  if (j <= 30) return { txt: j + ' j de retard', col: IMP_AMBRE };
+  return { txt: j + ' j de retard', col: 'var(--rouge)' };
+}
+
+function impLigneListe(d) {
+  const sel = d.id === IMP_SEL;
+  const r = impRetardTexte(d.pireRetard);
+  return `
+    <div data-act="ouvrirDebiteur" data-a1="${d.id}"
+         style="display:flex;align-items:center;gap:12px;padding:0 18px;height:62px;cursor:pointer;
+                border-bottom:1px solid var(--hairline);
+                background:${sel ? 'var(--sapin-pale)' : 'transparent'};
+                box-shadow:${sel ? 'inset 3px 0 0 var(--sapin)' : 'none'}">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${esc(d.nom)}</div>
+        <div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${d.factures.length} facture${d.factures.length > 1 ? 's' : ''}${d.relances ? ' · ' + d.relances + ' relance' + (d.relances > 1 ? 's' : '') : ''}</div>
+      </div>
+      <div style="text-align:right;flex:none">
+        <div style="font-size:14px;font-variant-numeric:tabular-nums;font-weight:600">${eur(d.total)}</div>
+        <div style="font-size:11.5px;font-weight:600;margin-top:2px;color:${r.col}">${r.txt}</div>
+      </div>
+    </div>`;
+}
+
+function majListeImpayes() {
+  const box = $('#imp-liste');
+  if (!box) return;
+  const v = impVisibles();
+  box.innerHTML = v.length ? v.map(impLigneListe).join('')
+    : '<p class="muted" style="padding:18px">Aucun débiteur ne correspond.</p>';
+  const n = $('#imp-compte');
+  if (n) {
+    const somme = v.reduce((s, d) => s + d.total, 0);
+    n.textContent = v.length
+      ? `${v.length} débiteur${v.length > 1 ? 's' : ''} · ${eur(somme)}`
+      : '';
+  }
+}
+
+window.ouvrirDebiteur = (id) => { IMP_SEL = id; majFicheDebiteur(); majListeImpayes(); };
+window.filtrerImpayes = (k) => { IMP_FILTRE = k; IMP_SEL = null; vueImpayes(); };
+window.chercherImpayes = (v) => { IMP_Q = v; majListeImpayes(); };
+
+function impFiche(d) {
+  const r = impRetardTexte(d.pireRetard);
+  const lignes = d.factures.slice()
+    .sort((a, b) => b.jours_retard - a.jours_retard)
+    .map((f) => {
+      const fr = impRetardTexte(f.jours_retard);
+      return `
+      <div style="display:grid;grid-template-columns:1fr 130px 100px 104px;gap:12px;align-items:center;
+                  padding:0 18px;height:52px;border-bottom:1px solid var(--hairline)">
+        <div style="font-size:13.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.numero || '—')}</div>
+        <div style="font-size:12.5px;color:${fr.col};font-weight:600">${fr.txt}</div>
+        <div style="text-align:right;font-size:14px;font-variant-numeric:tabular-nums">${eur(f.reste)}</div>
+        <div style="text-align:right">
+          <button class="btn btn-ghost btn-sm" data-act="encaisserFacture"
+                  data-a1="${f.id}" data-a2="${d.id}" data-a3="${f.reste}" data-num="3">Encaisser</button>
+        </div>
+      </div>`;
+    }).join('');
+
+  return `
+    <div style="background:var(--carte);border-bottom:1px solid var(--hairline);padding:22px 26px 18px;
+                display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <h1 style="margin:0;font-size:24px;line-height:1.15">${esc(d.nom)}</h1>
+        <div class="muted" style="font-size:13.5px;margin-top:4px">
+          ${d.factures.length} facture${d.factures.length > 1 ? 's' : ''} impayée${d.factures.length > 1 ? 's' : ''}
+          ${d.email ? ' · ' + esc(d.email) : ''}${d.telephone ? ' · ' + esc(d.telephone) : ''}
+        </div>
+        <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap">
+          <span style="font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:var(--r-s);
+                       background:${d.pireRetard > 30 ? 'var(--rouge-pale)' : d.pireRetard > 0 ? 'var(--laiton-pale)' : 'var(--sapin-pale)'};
+                       color:${r.col}">${r.txt}</span>
+          ${d.relances ? `<span style="font-size:12.5px;padding:3px 9px;border-radius:var(--r-s);background:var(--ivoire);border:1px solid var(--hairline);color:#5D6E66">${d.relances} relance${d.relances > 1 ? 's' : ''} envoyée${d.relances > 1 ? 's' : ''}</span>` : ''}
+        </div>
+      </div>
+      <div style="flex:none;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        ${d.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(d.email)}">Écrire</a>` : ''}
+        <button class="btn btn-primary btn-sm" data-act="allerA" data-a1="#/residents/${d.id}">Ouvrir la fiche</button>
+      </div>
+    </div>
+
+    <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="display:flex;padding:0">
+        <div style="flex:1;padding:13px 18px">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Total dû</div>
+          <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${eur(d.total)}</div>
+        </div>
+        <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Dont en retard</div>
+          <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${d.montantRetard > 0.005 ? 'color:var(--rouge);font-weight:600' : ''}">${d.montantRetard > 0.005 ? eur(d.montantRetard) : '—'}</div>
+        </div>
+        <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Plus ancienne</div>
+          <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${d.pireRetard > 0 ? d.pireRetard + ' j' : '—'}</div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:13px 18px;border-bottom:1px solid var(--hairline);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <div style="font-size:14px;font-weight:600">Factures impayées</div>
+          <div class="muted" style="font-size:12.5px">délai de paiement : ${IMP_CACHE.delai} j</div>
+        </div>
+        ${lignes}
+      </div>
+    </div>`;
+}
+
+function majFicheDebiteur() {
+  const box = $('#imp-fiche');
+  if (!box) return;
+  const d = IMP_CACHE.debiteurs.find((x) => x.id === IMP_SEL);
+  box.innerHTML = d ? impFiche(d)
+    : `<p class="muted" style="padding:26px">${IMP_CACHE.debiteurs.length
+      ? 'Aucun débiteur dans ce filtre.'
+      : 'Aucun impayé : toutes les factures de l\'exercice sont réglées.'}</p>`;
+}
+
 async function vueImpayes() {
-  const [imp, { residents }] = await Promise.all([api('/api/relances/impayes' + exQS()), api('/api/residents')]);
-  const rmap = {}; residents.forEach((r) => { rmap[r.id] = `${r.prenom || ''} ${r.nom}`.trim(); });
-  const a = imp.aging;
+  const [imp, resD, relD] = await Promise.all([
+    api('/api/relances/impayes' + exQS()),
+    api('/api/residents').catch(() => ({ residents: [] })),
+    api('/api/relances').catch(() => ({ relances: [] })),
+  ]);
+  const info = {};
+  (resD.residents || []).forEach((r) => {
+    info[r.id] = {
+      nom: `${r.prenom || ''} ${r.nom || ''}`.trim() || '—',
+      email: r.email || null, telephone: r.telephone || null,
+    };
+  });
+  const nbRelances = {};
+  for (const x of (relD.relances || [])) {
+    if (x.resident_id) nbRelances[x.resident_id] = (nbRelances[x.resident_id] || 0) + 1;
+  }
 
-  /* Ce qui est EN RETARD, distingué de ce qui est simplement dû. Le total
-     additionnait les deux : un gestionnaire lisant « Total dû 12 400 € »
-     croyait voir son retard de paiement. */
-  const enRetard = imp.impayes.filter((f) => f.en_retard);
-  const nbEnRetard = enRetard.length;
+  /* Regroupement par debiteur : c'est la personne qu'on appelle. */
+  const par = new Map();
+  for (const f of (imp.impayes || [])) {
+    let d = par.get(f.resident_id);
+    if (!d) {
+      const i = info[f.resident_id] || { nom: 'Résident supprimé', email: null, telephone: null };
+      d = { id: f.resident_id, nom: i.nom, email: i.email, telephone: i.telephone,
+        factures: [], total: 0, montantRetard: 0, pireRetard: 0, relances: nbRelances[f.resident_id] || 0 };
+      par.set(f.resident_id, d);
+    }
+    d.factures.push(f);
+    d.total += Number(f.reste || 0);
+    if (f.en_retard) d.montantRetard += Number(f.reste || 0);
+    if (f.jours_retard > d.pireRetard) d.pireRetard = f.jours_retard;
+  }
+  /* Le retard le plus ancien d'abord : c'est l'ordre des appels. */
+  const debiteurs = [...par.values()].sort((a, b) => (b.pireRetard - a.pireRetard) || (b.total - a.total));
+  IMP_CACHE = { debiteurs, delai: imp.delai };
+
+  const enRetard = (imp.impayes || []).filter((f) => f.en_retard);
   const montantRetard = enRetard.reduce((s, f) => s + Number(f.reste || 0), 0);
-  const nbTotal = imp.impayes.length;
+  /* Le bouton de relance n'agit que sur les factures echues : le nombre
+     annonce avant l'envoi doit etre celui-la. */
+  window._impayesEnRetard = enRetard.length;
 
-  /* Le bouton de relance n'agit que sur les factures échues : le nombre
-     annoncé avant l'envoi doit être celui-là, pas le total. */
-  window._impayesEnRetard = nbEnRetard;
+  const visibles = impVisibles();
+  if (IMP_SEL && !debiteurs.some((d) => d.id === IMP_SEL)) IMP_SEL = null;
+  if (!IMP_SEL && visibles.length) IMP_SEL = visibles[0].id;
+
+  const compte = (k) => debiteurs.filter((IMP_FILTRES.find((x) => x[0] === k) || IMP_FILTRES[0])[2]).length;
+  const puces = IMP_FILTRES.map(([k, l]) => {
+    const on = k === IMP_FILTRE;
+    return `<button data-act="filtrerImpayes" data-a1="${k}"
+      style="padding:4px 11px;border-radius:20px;font-size:12.5px;cursor:pointer;font-family:inherit;
+             border:1px solid ${on ? 'var(--nuit)' : 'var(--hairline)'};
+             background:${on ? 'var(--nuit)' : 'transparent'};color:${on ? 'var(--ivoire)' : '#5D6E66'};
+             font-weight:${on ? '600' : '400'}">${l} ${compte(k)}</button>`;
+  }).join('');
+
+  const a = imp.aging;
+  const chiffres = [
+    { k: 'Créance totale', v: eur(imp.total_du), n: `${(imp.impayes || []).length} facture${(imp.impayes || []).length > 1 ? 's' : ''}`, col: '' },
+    { k: 'En retard', v: montantRetard > 0.005 ? eur(montantRetard) : '—', n: `${enRetard.length} facture${enRetard.length > 1 ? 's' : ''} échue${enRetard.length > 1 ? 's' : ''}`, col: montantRetard > 0.005 ? 'var(--rouge)' : '' },
+    { k: 'Pas encore échu', v: a.a_echoir > 0.005 ? eur(a.a_echoir) : '—', n: `délai ${imp.delai} j`, col: '' },
+    { k: 'Retard 61 j et +', v: (a.j61_90 + a.j90_plus) > 0.005 ? eur(a.j61_90 + a.j90_plus) : '—', n: 'le plus difficile à récupérer', col: (a.j61_90 + a.j90_plus) > 0.005 ? 'var(--rouge)' : '' },
+  ];
 
   $('#main').innerHTML = `
-    <div class="page-head"><div><div class="eyebrow">Recouvrement</div><h1>Impayés</h1></div>
+    <div class="page-head"><div><h1>Impayés</h1>
+      <div class="muted" style="font-size:13.5px;margin-top:4px">
+        ${debiteurs.length} débiteur${debiteurs.length > 1 ? 's' : ''}${enRetard.length ? ' · ' + enRetard.length + ' facture' + (enRetard.length > 1 ? 's' : '') + ' en retard' : ' · rien en retard'}
+      </div></div>
       <button class="btn btn-primary" data-act="runRelancesBtn">Envoyer les relances</button></div>
-    <div class="kpis">
-      <div class="kpi"><div class="v">${eur(imp.total_du)}</div><div class="l">Créance totale · ${nbTotal} facture${nbTotal > 1 ? 's' : ''}<br><span class="muted" style="font-size:12px">dont ${eur(montantRetard)} en retard</span></div></div>
-      <div class="kpi"><div class="v">${eur(a.a_echoir)}</div><div class="l">Pas encore échu (délai ${imp.delai} j)</div></div>
-      <div class="kpi warn"><div class="v">${eur(a.j0_30 + a.j31_60)}</div><div class="l">Retard 1 à 60 j</div></div>
-      <div class="kpi bad"><div class="v">${eur(a.j61_90 + a.j90_plus)}</div><div class="l">Retard 61 j et +</div></div>
+
+    <div class="card" style="display:flex;padding:0;margin-bottom:14px">
+      ${chiffres.map((c, i) => `
+        <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
+          <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col + ';font-weight:600' : ''}">${c.v}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
+        </div>`).join('')}
     </div>
-    <div class="card"><table><thead><tr><th>Facture</th><th>Résident</th><th class="right">Reste dû</th><th class="right">Retard</th></tr></thead>
-    <tbody>${imp.impayes.map((f) => `
-      <tr><td><strong>${esc(f.numero)}</strong></td><td>${esc(rmap[f.resident_id] || '—')}</td>
-      <td class="right">${eur(f.reste)}</td>
-      <td class="right">${f.en_retard ? `<span class="badge en_retard">${f.jours_retard} j</span>` : '<span class="badge reglee">à échoir</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun impayé : toutes les factures de l\u2019exercice sont réglées.</td></tr>'}</tbody></table></div>`;
+
+    <div class="card" style="padding:0;overflow:hidden;display:flex;align-items:stretch;min-height:520px">
+      <div style="width:380px;flex:none;border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-width:0">
+        <div style="padding:16px 18px 13px;border-bottom:1px solid var(--hairline);display:flex;flex-direction:column;gap:11px">
+          <input id="imp-q" data-act="chercherImpayes" data-evt="input" data-a1="@value"
+                 placeholder="Résident, numéro de facture" value="${esc(IMP_Q)}" style="width:100%">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${puces}</div>
+          <div id="imp-compte" class="muted" style="font-size:12px"></div>
+        </div>
+        <div id="imp-liste" style="flex:1;overflow:auto"></div>
+      </div>
+      <div id="imp-fiche" style="flex:1;min-width:0;background:var(--ivoire)"></div>
+    </div>
+    <p class="muted" style="margin:10px 0 0;font-size:12.5px">« Envoyer les relances » agit sur toutes les factures échues du camping — il n'existe pas d'envoi par débiteur.</p>`;
+
+  majListeImpayes();
+  majFicheDebiteur();
 }
+
 window.runRelancesBtn = async () => {
   /* Chaque relance est un e-mail réel, enregistré avec son niveau : la
      prochaine sera une relance de niveau 2, puis 3. Rien ne se rattrape,
