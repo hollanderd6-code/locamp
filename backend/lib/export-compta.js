@@ -1,4 +1,6 @@
 const { supabase } = require('./supabase');
+// Ventilation partagee avec le FEC : une seule table de correspondance.
+const { chargerPlan: chargerPlanVent, ventilerLigne, compteTva } = require('./ventilation');
 
 /* ============================================================
    Export comptable — format à colonnes fixes (142 car.), ISO-8859-1, CRLF.
@@ -83,11 +85,9 @@ const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
 // Ventilation d'une ligne de facture -> { compte, libelle }
 function ventiler(designation, plan) {
-  const d = sansAccents(designation);
-  for (const r of (plan.regles || [])) {
-    if (d.includes(sansAccents(r.contient))) return { compte: r.compte, libelle: r.libelle };
-  }
-  return { compte: plan.compte_produit_defaut, libelle: plan.libelle_produit_defaut };
+  // Delegue au module partage. La signature est conservee : ventiler() est
+  // exportee et utilisee ailleurs.
+  return ventilerLigne(designation, plan.ventilation || plan);
 }
 
 /**
@@ -112,6 +112,9 @@ async function exportCompta(campingId, debut, fin) {
     ]);
 
   const plan = { ...PLAN_DEFAUT, ...((camping?.parametres || {}).compta || {}) };
+  // Le plan de ventilation vient du module partage (parametres.ventilation,
+  // a defaut parametres.compta) : le FEC et cet export ne peuvent plus diverger.
+  plan.ventilation = await chargerPlanVent(campingId);
   plan.comptes_tva = { ...PLAN_DEFAUT.comptes_tva, ...((camping?.parametres?.compta || {}).comptes_tva || {}) };
   if (!plan.regles?.length) plan.regles = PLAN_DEFAUT.regles;
 
@@ -180,7 +183,7 @@ async function exportCompta(campingId, debut, fin) {
     for (const taux of Object.keys(tva).sort((a, b) => a - b)) {
       const mt = tva[taux];
       if (Math.abs(mt) < 0.005) continue;
-      const compte = plan.comptes_tva[taux] || plan.comptes_tva[Number(taux)] || '445710';
+      const compte = compteTva(taux, plan.ventilation);
       out.push(ligne({ piece, journal: plan.journal_ventes, date, compte,
         libelle: libVentes, montant: mt, sens: mt >= 0 ? 'C' : 'D',
         nom: `TVA à ${taux}` }));

@@ -5,6 +5,7 @@ const { buildEcritures, toFEC, toCSV } = require('../lib/comptabilite');
 const { auth, campingScope, requireRole } = require('../middleware/auth');
 
 const { exportCompta } = require('../lib/export-compta');
+const { chargerPlan, fusionner, ventilerLigne, ligneHt, DEFAUT: VENT_DEFAUT } = require('../lib/ventilation');
 
 const router = express.Router();
 router.use(auth, campingScope);
@@ -129,6 +130,113 @@ router.get('/export-logiciel', requireRole('admin', 'comptabilite'), async (req,
     res.setHeader('Content-Disposition', `attachment; filename="Ximport_${mois}.txt"`);
     res.send(buffer);
   } catch (e) { console.error('[compta:export-logiciel]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// GET /api/compta/ventilation?debut&fin
+// Ce que recoit chaque nature facturee sur la periode : le compte, la regle
+// qui a repondu, et le montant. « a_ventiler » liste ce qui ne correspond a
+// AUCUNE regle — c'est la seule chose a regler, et elle etait invisible.
+router.get('/ventilation', requireRole('admin', 'comptabilite'), async (req, res) => {
+  try {
+    const { debut, fin } = periode(req);
+    const plan = await chargerPlan(req.activeCampingId);
+    const { data: factures, error } = await supabase.from('factures')
+      .select('id,numero,date_emission,statut,lignes')
+      .eq('camping_id', req.activeCampingId)
+      .gte('date_emission', debut).lte('date_emission', fin);
+    if (error) throw error;
+
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    // Regroupement par designation : le gestionnaire pense « le menage »,
+    // pas « la ligne 3 de la facture 412 ».
+    const parDesignation = new Map();
+    for (const f of (factures || [])) {
+      for (const l of (f.lignes || [])) {
+        const nom = String(l.designation || '(sans désignation)').trim();
+        const v = ventilerLigne(nom, plan);
+        const cle = nom.toLowerCase();
+        const e = parDesignation.get(cle) || {
+          designation: nom, compte: v.compte, libelle: v.libelle,
+          regle: v.mot, a_ventiler: v.attente, ht: 0, lignes: 0,
+          taux: new Set(), exemples: [],
+        };
+        e.ht = r2(e.ht + ligneHt(l));
+        e.lignes += 1;
+        e.taux.add(Number(l.taux_tva || 0));
+        if (e.exemples.length < 3 && f.numero) e.exemples.push(f.numero);
+        parDesignation.set(cle, e);
+      }
+    }
+    const lignes = [...parDesignation.values()]
+      .map((e) => ({ ...e, taux: [...e.taux].sort((a, b) => a - b) }))
+      .sort((a, b) => (b.a_ventiler - a.a_ventiler) || (Math.abs(b.ht) - Math.abs(a.ht)));
+
+    const aVentiler = lignes.filter((l) => l.a_ventiler);
+    res.json({
+      debut, fin, plan, lignes,
+      a_ventiler: { nombre: aVentiler.length, ht: r2(aVentiler.reduce((s, l) => s + l.ht, 0)) },
+      defaut: VENT_DEFAUT,
+    });
+  } catch (e) {
+    console.error('[compta:ventilation]', e.message);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/compta/ventilation  { regles[], compte_defaut, libelle_defaut,
+//                                compte_attente, attente_active, comptes_tva }
+// Enregistre dans campings.parametres.ventilation. Les deux exports le
+// relisent au prochain telechargement : rien n'est fige dans le code.
+router.put('/ventilation', requireRole('admin', 'comptabilite'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const { data: camp } = await supabase.from('campings').select('parametres')
+      .eq('id', req.activeCampingId).maybeSingle();
+    const parametres = (camp && camp.parametres) || {};
+
+    // On n'accepte que des regles utilisables : un mot vide attraperait
+    // TOUTES les lignes (indexOf('') === 0), un compte vide casserait le fichier.
+    const regles = Array.isArray(b.regles) ? b.regles
+      .map((r) => ({
+        contient: String((r && r.contient) || '').trim(),
+        compte: String((r && r.compte) || '').trim(),
+        libelle: String((r && r.libelle) || '').trim(),
+      }))
+      .filter((r) => r.contient && r.compte) : [];
+    if (Array.isArray(b.regles) && !regles.length && b.regles.length) {
+      return res.status(400).json({ error: 'Chaque règle demande un mot-clé et un compte.' });
+    }
+
+    const comptes_tva = {};
+    for (const [k, v] of Object.entries(b.comptes_tva || {})) {
+      const t = Number(k);
+      if (!Number.isFinite(t)) continue;
+      const c = String(v || '').trim();
+      if (c) comptes_tva[t] = c;
+    }
+
+    const ventilation = {
+      regles,
+      compte_defaut: String(b.compte_defaut || '').trim() || VENT_DEFAUT.compte_defaut,
+      libelle_defaut: String(b.libelle_defaut || '').trim() || VENT_DEFAUT.libelle_defaut,
+      compte_attente: String(b.compte_attente || '').trim() || VENT_DEFAUT.compte_attente,
+      libelle_attente: String(b.libelle_attente || '').trim() || VENT_DEFAUT.libelle_attente,
+      attente_active: !!b.attente_active,
+      ...(Object.keys(comptes_tva).length ? { comptes_tva } : {}),
+    };
+
+    const { error } = await supabase.from('campings')
+      .update({ parametres: { ...parametres, ventilation } })
+      .eq('id', req.activeCampingId);
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'update', entite: 'compta_ventilation',
+      avant: parametres.ventilation || null, apres: ventilation });
+    res.json({ ok: true, plan: fusionner({ ...parametres, ventilation }) });
+  } catch (e) {
+    console.error('[compta:ventilation-put]', e.message);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 module.exports = router;

@@ -1,4 +1,6 @@
 const { supabase } = require('./supabase');
+// Meme ventilation que l'import logiciel : voir lib/ventilation.js.
+const { chargerPlan: chargerPlanVent, ventilerLigne, compteTva, ligneHt } = require('./ventilation');
 
 // Plan comptable par défaut (surchargé par camping.parametres.comptabilite).
 const DEFAULTS = {
@@ -19,6 +21,8 @@ const FEC_COLS = ['JournalCode', 'JournalLib', 'EcritureNum', 'EcritureDate', 'C
 
 function fmtDate(d) { return d ? String(d).slice(0, 10).replace(/-/g, '') : ''; }
 function fmtNum(n) { return (Math.round(Number(n || 0) * 100) / 100).toFixed(2).replace('.', ','); }
+// Arrondi au centime : les ventilations se cumulent, l'ecart doit etre borne a chaque etape.
+const r2c = (n) => Math.round(Number(n || 0) * 100) / 100;
 function auxNum(residentId, rmapComptes) {
   if (!residentId) return '';
   // compte auxiliaire réel (411…) si attribué, sinon code technique de secours
@@ -29,6 +33,7 @@ function auxNum(residentId, rmapComptes) {
 async function buildEcritures(campingId, debut, fin) {
   const { data: camp } = await supabase.from('campings').select('parametres').eq('id', campingId).maybeSingle();
   const P = { ...DEFAULTS, ...((camp?.parametres || {}).comptabilite || {}) };
+  const V = await chargerPlanVent(campingId);   // ventilation des produits + TVA par taux
   P.comptes_reglement = { ...DEFAULTS.comptes_reglement, ...(P.comptes_reglement || {}) };
   P.comptes_reglement_lib = { ...DEFAULTS.comptes_reglement_lib, ...(P.comptes_reglement_lib || {}) };
 
@@ -91,20 +96,66 @@ async function buildEcritures(campingId, debut, fin) {
     const auxL = rmap[f.resident_id] || '';
     const aN = auxNum(f.resident_id, rmapComptes);
 
-    let htTaxe = 0, htAutre = 0;
+    /* Ventilation des produits.
+       Avant : tout sauf la taxe de sejour partait en compte_loyer 706000 —
+       le gaz, l'electricite, le menage, une vente de mobil-home. Desormais
+       chaque ligne va au compte que lui donne lib/ventilation.js, le meme
+       que l'import du logiciel comptable.
+
+       La taxe de sejour reste traitee a part, en 447100 : une taxe
+       collectee pour la commune est une dette, pas un produit. C'est le
+       seul point ou ce fichier et l'import logiciel divergent encore
+       (celui-ci la met en 708021) — a arbitrer avec le comptable. */
+    let htTaxe = 0;
+    const produits = {};   // "compte|libelle" -> HT
+    const tvaParTaux = {}; // taux -> TVA
     for (const l of (f.lignes || [])) {
-      const mHt = Number(l.montant_ht != null ? l.montant_ht : (l.quantite || 1) * (l.pu_ht || 0));
-      if (String(l.designation || '').toLowerCase().startsWith('taxe de séjour')) htTaxe += mHt; else htAutre += mHt;
+      const mHt = ligneHt(l);
+      if (String(l.designation || '').toLowerCase().startsWith('taxe de séjour')) { htTaxe += mHt; continue; }
+      const v = ventilerLigne(l.designation, V);
+      const k = v.compte + '|' + v.libelle;
+      produits[k] = r2c((produits[k] || 0) + mHt);
+      const t = Number(l.taux_tva || 0);
+      if (t > 0) tvaParTaux[t] = r2c((tvaParTaux[t] || 0) + r2c(mHt * t / 100));
     }
+
     const tva = Number(f.total_tva || 0);
     const ttc = Number(f.total_ttc || 0);
     const lt = lettreOf[f.id], dl = dateLetOf[f.id];
 
+    /* Equilibre : le FEC est rejete si debit != credit, et une TVA
+       recalculee ligne par ligne peut s'ecarter d'un centime du total
+       stocke sur la facture. Le total de la facture fait foi : l'ecart
+       est reporte sur le plus gros poste. */
+    const somTva = r2c(Object.values(tvaParTaux).reduce((s, v) => s + v, 0));
+    const ecartTva = r2c(tva - somTva);
+    if (Math.abs(ecartTva) >= 0.005) {
+      const gros = Object.keys(tvaParTaux).sort((a, b) => Math.abs(tvaParTaux[b]) - Math.abs(tvaParTaux[a]))[0];
+      if (gros) tvaParTaux[gros] = r2c(tvaParTaux[gros] + ecartTva); else tvaParTaux[20] = ecartTva;
+    }
+    const htAttendu = r2c(ttc - tva - htTaxe);
+    const somHt = r2c(Object.values(produits).reduce((s, v) => s + v, 0));
+    const ecartHt = r2c(htAttendu - somHt);
+    if (Math.abs(ecartHt) >= 0.005) {
+      const gros = Object.keys(produits).sort((a, b) => Math.abs(produits[b]) - Math.abs(produits[a]))[0];
+      if (gros) produits[gros] = r2c(produits[gros] + ecartHt);
+      else produits[P.compte_loyer + '|' + P.compte_loyer_lib] = ecartHt;
+    }
+
     // Client au débit (TTC), produits + TVA au crédit
     leg(base, P.compte_client, P.compte_client_lib, ttc, { auxNum: aN, auxLib: auxL, let: lt, dateLet: dl });
-    if (Math.abs(htAutre) > 0.0001) leg(base, P.compte_loyer, P.compte_loyer_lib, -htAutre);
+    for (const k of Object.keys(produits)) {
+      const mt = produits[k];
+      if (Math.abs(mt) <= 0.0001) continue;
+      const [cpt, lib] = k.split('|');
+      leg(base, cpt, lib, -mt);
+    }
     if (Math.abs(htTaxe) > 0.0001) leg(base, P.compte_taxe_sejour, P.compte_taxe_sejour_lib, -htTaxe);
-    if (Math.abs(tva) > 0.0001) leg(base, P.compte_tva, P.compte_tva_lib, -tva);
+    for (const t of Object.keys(tvaParTaux).sort((a, b) => Number(a) - Number(b))) {
+      const mt = tvaParTaux[t];
+      if (Math.abs(mt) <= 0.0001) continue;
+      leg(base, compteTva(t, V), `TVA collectée ${t} %`, -mt);
+    }
   }
 
   // --- Écritures d'encaissement (règlements) ---
