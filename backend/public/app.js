@@ -2804,6 +2804,27 @@ function majListeEmplacements() {
 }
 
 window.ouvrirEmplacement = (id) => { EMP_SEL = id; vueEmplacements(); };
+/* La suppression d'un emplacement efface aussi son historique de
+   releves (ON DELETE CASCADE cote base) : la confirmation doit le dire
+   avant, pas la surprise apres. */
+window.supprimerEmplacement = async (id, numero) => {
+  const ok = await askConfirm(
+    `Supprimer l\u2019emplacement ${numero} ?\n\n`
+    + 'Son historique de relevés d\u2019eau et d\u2019électricité sera supprimé avec lui, '
+    + 'définitivement. Les factures et prestations déjà émises sont conservées.',
+    { titre: 'Supprimer l\u2019emplacement', ok: 'Supprimer', danger: true }
+  );
+  if (!ok) return;
+  try {
+    await api('/api/emplacements/' + id, { method: 'DELETE' });
+    EMP_SEL = null;
+    toast(`Emplacement ${numero} supprimé`);
+    /* Le plan garde les emplacements en memoire : on le fait relire. */
+    if (typeof carteState !== 'undefined' && carteState) carteState = null;
+    route();
+  } catch (err) { toast(err.message, true); }
+};
+
 window.filtrerEmplacements = (k) => { EMP_FILTRE = k; EMP_SEL = null; vueEmplacements(); };
 window.chercherEmplacements = (v) => { EMP_Q = v; majListeEmplacements(); };
 
@@ -2843,6 +2864,7 @@ async function empFiche(id) {
         </div>
       </div>
       <div style="flex:none;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm" data-act="supprimerEmplacement" data-a1="${e.id}" data-a2="${esc(e.numero)}">Supprimer</button>
         <button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/carte">Voir sur le plan</button>
         <button class="btn btn-primary btn-sm" data-act="modifierEmplacement" data-a1="${e.id}">Modifier</button>
       </div>

@@ -163,4 +163,39 @@ router.put('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
   }
 });
 
+// DELETE /api/emplacements/:id  (admin, gestionnaire)
+// Refuse si un resident est rattache : un emplacement habite ne se supprime
+// pas, on demenage d'abord. Les releves de compteur de cet emplacement
+// partent avec lui (ON DELETE CASCADE, cf. db/08_releves_compteurs.sql) ;
+// residents et prestations sont seulement detaches (ON DELETE SET NULL).
+router.delete('/:id', requireRole('admin', 'gestionnaire'), async (req, res) => {
+  try {
+    const { data: emp } = await supabase.from('emplacements').select('*')
+      .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
+    if (!emp) return res.status(404).json({ error: 'Emplacement introuvable' });
+
+    const { data: occupants } = await supabase.from('residents')
+      .select('id,nom,prenom')
+      .eq('camping_id', req.activeCampingId).eq('emplacement_id', emp.id);
+
+    if (occupants && occupants.length) {
+      const qui = occupants.map((r) => `${r.prenom || ''} ${r.nom || ''}`.trim()).filter(Boolean).join(', ');
+      return res.status(409).json({
+        error: `Emplacement ${emp.numero} occupé par ${qui || 'un résident'} : `
+          + 'déplacez le résident vers un autre emplacement avant de le supprimer.',
+      });
+    }
+
+    const { error } = await supabase.from('emplacements').delete()
+      .eq('camping_id', req.activeCampingId).eq('id', emp.id);
+    if (error) throw error;
+
+    await writeAudit(req, { action: 'delete', entite: 'emplacements', entite_id: emp.id, avant: emp });
+    res.json({ ok: true, numero: emp.numero });
+  } catch (e) {
+    console.error('[emplacements:delete]', e.message);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 module.exports = router;
