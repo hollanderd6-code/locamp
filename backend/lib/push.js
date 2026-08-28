@@ -61,7 +61,9 @@ async function envoyer(canal, tokens, { titre, corps, donnees = {} }) {
       notification: { title: titre, body: corps || '' },
       data,
       apns: { payload: { aps: { sound: 'default', badge: 1 } } },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'locamp' } },
+      // Pas de channelId : un canal inexistant fait jeter la notification
+      // silencieusement par Android 8+. Le canal par defaut existe toujours.
+      android: { priority: 'high', notification: { sound: 'default' } },
     });
 
     // Nettoyage des jetons refusés définitivement
