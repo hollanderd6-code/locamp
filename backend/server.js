@@ -266,6 +266,7 @@ app.use('/api/rgpd', rgpdRoutes);
 app.use('/api/signatures', signaturesRoutes);
 app.use('/api/carte-elements', carteElementsRoutes);
 app.use('/api/compteurs', compteursRoutes);
+app.use('/api/push', require('./routes/push'));
 app.use('/api/portail', portailRoutes);
 app.use('/api/cron', cronRoutes);
 
