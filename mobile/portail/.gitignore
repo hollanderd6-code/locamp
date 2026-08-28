@@ -2,3 +2,8 @@ node_modules/
 ios/
 android/
 www/
+
+# Signature Android — jamais dans le depot
+android/keystore.properties
+*.keystore
+*.jks
