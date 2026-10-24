@@ -1,6 +1,7 @@
 const { getStripe } = require('../lib/stripe');
 const { supabase } = require('../lib/supabase');
 const { recomputeFacture } = require('../lib/paiement');
+const { inscrireReglement, jourParis } = require('../lib/fiscal');
 const { creerNotifsStaff, creerNotifResident } = require('../lib/notifications');
 
 // Handler du webhook Stripe (monté AVANT express.json, avec express.raw).
@@ -24,10 +25,15 @@ async function stripeWebhook(req, res) {
         const { data: exist } = await supabase.from('reglements').select('id').eq('stripe_session_id', s.id).maybeSingle();
         if (!exist) {
           const montant = Math.round((s.amount_total || 0)) / 100;
-          await supabase.from('reglements').insert({
+          const { data: reglement, error: insErr } = await supabase.from('reglements').insert({
             camping_id, resident_id: resident_id || null, mode: 'stripe', montant,
+            date_reglement: jourParis(),
             reference: s.payment_intent || s.id, affectations: [{ facture_id, montant }], stripe_session_id: s.id,
-          });
+          }).select().single();
+          if (insErr) throw insErr;
+          // Chaîne fiscale : faite par la base depuis db/16 ; avant, il faut l'inscrire ici
+          // (les paiements en ligne échappaient jusqu'ici au journal fiscal).
+          await inscrireReglement(camping_id, reglement, null);
           await recomputeFacture(camping_id, facture_id);
 
           // Notifications : paiement en ligne reçu -> staff (droit encaisser) + confirmation résident
@@ -53,7 +59,13 @@ async function stripeWebhook(req, res) {
             });
           }
         }
-      } catch (e) { console.error('[stripe webhook] traitement:', e.message); }
+      } catch (e) {
+        // 500 : Stripe renverra l'événement. Sans cela, un paiement reçu dont
+        // l'enregistrement a échoué serait perdu (le doublon est exclu par
+        // stripe_session_id, vérifié plus haut).
+        console.error('[stripe webhook] traitement:', e.message);
+        return res.status(500).json({ error: 'Traitement impossible, réessayer' });
+      }
     }
   }
   res.json({ received: true });

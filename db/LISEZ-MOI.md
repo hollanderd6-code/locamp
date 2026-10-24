@@ -19,6 +19,8 @@ Exécuter dans l'ordre numérique, dans Supabase → SQL Editor.
 | `13_comptes_clients` | comptes comptables résidents |
 | `14_notifications` | notifications |
 | **`15_efacture`** | **Factur-X, factures reçues, e-reporting** |
+| `16_inalterabilite` | journal fiscal protégé en base, factures émises figées, annulation des encaissements, chaînage par triggers |
+| `17_ecarts_schema` | colonnes lues par le code et absentes des migrations |
 
 En gras : reconstitués le 23 août 2026 depuis le schéma réel de la base.
 
@@ -71,3 +73,32 @@ quelque part, ces dix tables sont lisibles.
 Aucune table n'a de *policy* : RLS activé sans policy interdit tout sauf
 `service_role`. C'est une posture correcte — elle mériterait juste d'être
 appliquée partout.
+
+## 16 — inaltérabilité (loi anti-fraude TVA)
+
+À exécuter **avant** de déployer le backend 1.0.0 (il fonctionne sans, en
+mode dégradé, et affiche un avertissement sur l'écran Conformité fiscale).
+
+- `reglements` devient une **vue** des encaissements non annulés ; la table
+  s'appelle désormais `reglements_registre`. Après tout
+  `alter table reglements_registre add column …`, recréer la vue
+  (`create or replace view reglements … select * …`), sinon la nouvelle
+  colonne reste invisible au code.
+- Les fonctions `fiscal_append`, `fiscal_verifier`, `fiscal_cloture` ne sont
+  créées que si elles n'existent pas. Celles de la production **ne sont
+  toujours pas versionnées** : coller le résultat du bloc 5 de
+  `00_diagnostic_chaine_fiscale.sql` dans un fichier
+  `10b_fonctions_fiscales_production.sql`.
+
+## Écarts connus entre ce dépôt et la production
+
+Relevés en rejouant 01 → 16 sur une base vierge :
+
+- `user_campings.permissions` (jsonb) était lue par le code sans être créée
+  par aucune migration — corrigé par `17_ecarts_schema.sql` ;
+- la contrainte `factures_statut_check` de `04` n'autorise pas `brouillon`,
+  que le code utilise.
+
+Une installation neuve échoue donc encore sur ce dernier point : relancer
+`00_extraire_schema_reel.sql` sur `factures` pour la
+reconstituer.

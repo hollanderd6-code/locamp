@@ -96,7 +96,11 @@ function ventilerLigne(designation, plan) {
   if (p.attente_active && p.compte_attente) {
     return { compte: p.compte_attente, libelle: p.libelle_attente || "Compte d'attente", mot: null, attente: true };
   }
-  return { compte: p.compte_defaut, libelle: p.libelle_defaut || p.compte_defaut, mot: null, attente: true };
+  // Un plan à l'ancien format (parametres.compta) nomme ces clés *_produit_defaut :
+  // sans ce repli, la ligne partait sans compte dans le fichier comptable.
+  const compte = p.compte_defaut || p.compte_produit_defaut || DEFAUT.compte_defaut;
+  const libelle = p.libelle_defaut || p.libelle_produit_defaut || compte;
+  return { compte, libelle, mot: null, attente: true };
 }
 
 /** Compte de TVA collectee pour un taux donne. */

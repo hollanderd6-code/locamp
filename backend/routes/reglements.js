@@ -1,7 +1,7 @@
 const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { writeAudit } = require('../lib/audit');
-const { inscrireReglement } = require('../lib/fiscal');
+const { inscrireReglement, chainageEnBase, jourParis } = require('../lib/fiscal');
 const { recomputeFacture, autoAffectations } = require('../lib/paiement');
 const { getStripe } = require('../lib/stripe');
 const { auth, campingScope, requireRole, requirePerm } = require('../middleware/auth');
@@ -151,7 +151,7 @@ router.post('/', requirePerm('encaisser'), async (req, res) => {
 
     const { data: reglement, error } = await supabase.from('reglements').insert({
       camping_id: req.activeCampingId, resident_id: resident_id || null, mode, montant: m,
-      date_reglement: date_reglement || new Date().toISOString().slice(0, 10),
+      date_reglement: date_reglement || jourParis(),
       reference: reference || null, statut_cheque: statut, affectations,
       auteur_id: req.user.uid,
     }).select().single();
@@ -190,17 +190,54 @@ router.put('/:id/statut-cheque', requirePerm('encaisser'), async (req, res) => {
   } catch (e) { console.error('[reglements:cheque]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// DELETE /api/reglements/:id  (admin) -> recalcule les factures affectées
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+/* Annuler un encaissement (admin).
+   Un encaissement ne se SUPPRIME pas (art. 286-I-3° bis du CGI) : il s'annule.
+   La ligne d'origine reste en base (reglements_registre), marquée annulée ;
+   l'annulation entre dans la chaîne fiscale comme une écriture inverse, avec
+   son auteur, sa date et son motif. Pour l'utilisateur, le résultat est le
+   même qu'une suppression : l'encaissement disparaît des listes et les
+   factures qu'il payait redeviennent dues.
+
+   POST /api/reglements/:id/annuler  { motif }
+   DELETE /api/reglements/:id        { motif }   (même effet, ancienne route) */
+async function annulerReglement(req, res) {
   try {
+    const motif = String(req.body?.motif || req.query.motif || '').trim();
+    if (!motif) return res.status(400).json({ error: 'Motif d\'annulation obligatoire (il figure au journal fiscal)' });
+    if (!await chainageEnBase()) {
+      return res.status(503).json({ error: 'Annulation indisponible : exécuter db/16_inalterabilite.sql dans Supabase.' });
+    }
     const { data: reg } = await supabase.from('reglements').select('*')
       .eq('camping_id', req.activeCampingId).eq('id', req.params.id).maybeSingle();
-    if (!reg) return res.status(404).json({ error: 'Règlement introuvable' });
-    await supabase.from('reglements').delete().eq('camping_id', req.activeCampingId).eq('id', req.params.id);
+    if (!reg) return res.status(404).json({ error: 'Règlement introuvable (ou déjà annulé)' });
+
+    const { data, error } = await supabase.rpc('reglement_annuler', {
+      p_camping: req.activeCampingId, p_id: reg.id, p_auteur: req.user.uid, p_motif: motif,
+    });
+    if (error) throw error;
+    const annule = Array.isArray(data) ? data[0] : data;
+    if (!annule) return res.status(409).json({ error: 'Règlement déjà annulé' });
+
     for (const a of (reg.affectations || [])) await recomputeFacture(req.activeCampingId, a.facture_id);
-    await writeAudit(req, { action: 'delete', entite: 'reglements', entite_id: reg.id, avant: { mode: reg.mode, montant: reg.montant } });
-    res.json({ ok: true });
-  } catch (e) { console.error('[reglements:delete]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+    await writeAudit(req, { action: 'annulation', entite: 'reglements', entite_id: reg.id,
+      avant: { mode: reg.mode, montant: reg.montant, date_reglement: reg.date_reglement, affectations: reg.affectations },
+      apres: { annule_le: annule.annule_le, motif } });
+    res.json({ ok: true, reglement: annule });
+  } catch (e) { console.error('[reglements:annuler]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+}
+router.post('/:id/annuler', requireRole('admin'), annulerReglement);
+router.delete('/:id', requireRole('admin'), annulerReglement);
+
+// GET /api/reglements/annules  -> encaissements annulés (consultation, contrôle fiscal)
+router.get('/annules', requirePerm('compta'), async (req, res) => {
+  try {
+    if (!await chainageEnBase()) return res.json({ reglements: [] });
+    const { data, error } = await supabase.from('reglements_registre').select('*')
+      .eq('camping_id', req.activeCampingId).not('annule_at', 'is', null)
+      .order('annule_at', { ascending: false }).limit(200);
+    if (error) throw error;
+    res.json({ reglements: data || [] });
+  } catch (e) { console.error('[reglements:annules]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // POST /api/reglements/facture/:id/lien-paiement  -> crée une session Stripe Checkout

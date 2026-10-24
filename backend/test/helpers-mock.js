@@ -1,12 +1,22 @@
 // Faux client Supabase minimal pour tester la logique métier sans vraie base.
-// Supporte : from().select().eq().in().order().contains().maybeSingle()/then, update().eq().
-function makeSupabaseMock(store) {
+// Supporte : from().select().eq().neq().not().in().filter('cs').order().contains().maybeSingle()/then, update().eq().
+// rpc() renvoie `version` (1 par défaut : le code se comporte comme avant db/16).
+function makeSupabaseMock(store, { version = 1 } = {}) {
   function query(table) {
     let rows = [...(store[table] || [])];
     const api = {
       select() { return api; },
       eq(k, v) { rows = rows.filter((r) => r[k] === v); return api; },
       in(k, vals) { rows = rows.filter((r) => vals.includes(r[k])); return api; },
+      neq(k, v) { rows = rows.filter((r) => r[k] !== v); return api; },
+      not(k, op, v) { if (op === 'is' && v === null) rows = rows.filter((r) => r[k] != null); return api; },
+      filter(k, op, v) { // seul « cs » (containment jsonb) est utilisé par le code
+        if (op === 'cs') {
+          const needle = JSON.parse(v)[0];
+          rows = rows.filter((r) => Array.isArray(r[k]) && r[k].some((x) => Object.entries(needle).every(([kk, vv]) => x[kk] === vv)));
+        }
+        return api;
+      },
       is(k, v) { rows = rows.filter((r) => (v === null ? r[k] == null : r[k] === v)); return api; },
       gte(k, v) { rows = rows.filter((r) => String(r[k]) >= String(v)); return api; },
       lte(k, v) { rows = rows.filter((r) => String(r[k]) <= String(v)); return api; },
@@ -28,6 +38,6 @@ function makeSupabaseMock(store) {
     };
     return api;
   }
-  return { from: query, rpc: () => Promise.resolve({ data: 1, error: null }) };
+  return { from: query, rpc: () => Promise.resolve({ data: version, error: null }) };
 }
 module.exports = { makeSupabaseMock };

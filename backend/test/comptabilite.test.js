@@ -33,12 +33,12 @@ test('toFEC — entête tabulé + une ligne', () => {
 });
 
 // ---- Équilibre comptable : LE test critique ----
-function loadComptaWithStore(store) {
-  const mock = makeSupabaseMock(store);
+function loadComptaWithStore(store, opts) {
+  const mock = makeSupabaseMock(store, opts);
   const supPath = require.resolve('../lib/supabase');
   require.cache[supPath] = { id: supPath, filename: supPath, loaded: true, exports: { supabase: mock } };
-  const cpPath = require.resolve('../lib/comptabilite');
-  delete require.cache[cpPath];
+  // fiscal.js garde sa propre référence au client : le recharger aussi
+  for (const m of ['../lib/comptabilite', '../lib/fiscal']) delete require.cache[require.resolve(m)];
   return require('../lib/comptabilite');
 }
 const somme = (lignes, col) => lignes.reduce((s, l) => s + Number(String(l[col]).replace(',', '.')), 0);
@@ -73,4 +73,28 @@ test('buildEcritures — équilibre avec TVA multi-taux', async () => {
   const { buildEcritures } = loadComptaWithStore(store);
   const lignes = await buildEcritures('c1', '2026-01-01', '2026-12-31');
   assert.equal(Math.round(somme(lignes, 'Debit') * 100) / 100, Math.round(somme(lignes, 'Credit') * 100) / 100);
+});
+test('buildEcritures — encaissement annulé : écriture d\'origine + écriture inverse, équilibrées', async () => {
+  const regl = { id: 'g1abcdef', camping_id: 'c1', resident_id: 'r1', mode: 'espece', montant: 330,
+    date_reglement: '2026-07-10', affectations: [], annule_at: '2026-08-02T09:00:00Z', annule_le: '2026-08-02' };
+  const store = {
+    campings: [{ id: 'c1', parametres: {} }],
+    residents: [{ id: 'r1', nom: 'Dupont', prenom: 'Marie', compte_comptable: '41100001' }],
+    factures: [],
+    reglements: [],                 // la vue : l'encaissement annulé n'y figure plus
+    reglements_registre: [regl],    // la table : il y est toujours
+  };
+  const { buildEcritures } = loadComptaWithStore(store, { version: 16 });
+
+  // juillet : l'encaissement a bien eu lieu, il reste dans la période déjà exportée
+  const juillet = await buildEcritures('c1', '2026-07-01', '2026-07-31');
+  assert.equal(somme(juillet, 'Debit'), 330);
+  // août : l'annulation contre-passe, à sa date, sans réécrire juillet
+  const aout = await buildEcritures('c1', '2026-08-01', '2026-08-31');
+  assert.equal(aout.length, 2);
+  assert.ok(aout.every((l) => l.EcritureDate === '20260802'));
+  assert.ok(aout.every((l) => l.EcritureLib.startsWith('Annulation')));
+  assert.equal(somme(aout, 'Debit'), somme(aout, 'Credit'));
+  const caisse = aout.find((l) => l.CompteNum !== '411000' && !l.CompAuxNum);
+  assert.equal(caisse.Credit, '330,00', 'la caisse est créditée : l\'argent ressort');
 });

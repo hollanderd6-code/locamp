@@ -1,4 +1,5 @@
 const { supabase } = require('./supabase');
+const { reglementsComptables } = require('./fiscal');
 // Meme ventilation que l'import logiciel : voir lib/ventilation.js.
 const { chargerPlan: chargerPlanVent, ventilerLigne, compteTva, ligneHt } = require('./ventilation');
 
@@ -38,10 +39,9 @@ async function buildEcritures(campingId, debut, fin) {
   P.comptes_reglement_lib = { ...DEFAULTS.comptes_reglement_lib, ...(P.comptes_reglement_lib || {}) };
 
   const [{ data: factures }, { data: reglements }, { data: residents }] = await Promise.all([
-    supabase.from('factures').select('*').eq('camping_id', campingId)
+    supabase.from('factures').select('*').eq('camping_id', campingId).neq('statut', 'brouillon')
       .gte('date_emission', debut).lte('date_emission', fin).order('date_emission'),
-    supabase.from('reglements').select('*').eq('camping_id', campingId)
-      .gte('date_reglement', debut).lte('date_reglement', fin).order('date_reglement'),
+    reglementsComptables(campingId, debut, fin).then((data) => ({ data })),
     supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', campingId),
   ]);
   const rmap = {};
@@ -165,7 +165,7 @@ async function buildEcritures(campingId, debut, fin) {
     const compteBank = P.comptes_reglement[r.mode] || '512000';
     const bankLib = P.comptes_reglement_lib[compteBank] || 'Banque';
     const base = { jc: isCaisse ? P.journal_caisse : P.journal_banque, jl: isCaisse ? P.journal_caisse_lib : P.journal_banque_lib,
-      num, date: r.date_reglement, piece: r.reference || r.id.slice(0, 8), pieceDate: r.date_reglement, lib: `Règlement ${r.mode} ${r.reference || ''}`.trim() };
+      num, date: r.date_reglement, piece: r.reference || r.id.slice(0, 8), pieceDate: r.date_reglement, lib: `${r.annulation ? 'Annulation règlement' : 'Règlement'} ${r.mode} ${r.reference || ''}`.trim() };
     const auxL = rmap[r.resident_id] || '';
     const aN = auxNum(r.resident_id, rmapComptes);
     const montant = Number(r.montant || 0);

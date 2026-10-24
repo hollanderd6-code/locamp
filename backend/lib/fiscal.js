@@ -11,6 +11,32 @@ const { supabase } = require('./supabase');
 const RACINE = '0'.repeat(64);
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
+/** Date du jour (AAAA-MM-JJ) à Paris. Le serveur tourne en UTC : entre minuit
+ *  et 1 h ou 2 h du matin, toISOString() donnerait encore la veille. */
+function jourParis(d = new Date()) {
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+}
+
+/** Veille d'une date AAAA-MM-JJ (calcul sur le calendrier, sans fuseau). */
+function veille(jour) {
+  const [a, m, j] = jour.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, j - 1)).toISOString().slice(0, 10);
+}
+
+/* Depuis db/16_inalterabilite.sql, la base chaîne elle-même factures, avoirs,
+   encaissements et annulations (triggers, même transaction). Tant que cette
+   migration n'a pas tourné, on garde l'inscription côté Node. La version est
+   relue toutes les 5 minutes : appliquer la migration suffit, sans redéployer. */
+let versionCache = { v: null, t: 0 };
+async function schemaVersion() {
+  if (versionCache.v !== null && Date.now() - versionCache.t < 5 * 60 * 1000) return versionCache.v;
+  const { data, error } = await supabase.rpc('locamp_schema_version');
+  const v = error ? 0 : Number(data) || 0;
+  versionCache = { v, t: Date.now() };
+  return v;
+}
+const chainageEnBase = async () => (await schemaVersion()) >= 16;
+
 /**
  * Inscrit un événement fiscal dans la chaîne (best-effort : n'interrompt jamais
  * l'opération métier, mais toute anomalie est journalisée).
@@ -35,8 +61,8 @@ async function inscrire(campingId, { type, entite, entite_id, donnees, montant, 
   }
 }
 
-/** Raccourci : événement facture (ou avoir). */
-const inscrireFacture = (campingId, facture, req) => inscrire(campingId, {
+/** Raccourci : événement facture (ou avoir). Sans effet si la base chaîne elle-même. */
+const inscrireFacture = async (campingId, facture, req) => (await chainageEnBase()) ? null : inscrire(campingId, {
   type: facture.statut === 'avoir' ? 'avoir' : 'facture',
   entite: 'factures',
   entite_id: facture.id,
@@ -54,8 +80,8 @@ const inscrireFacture = (campingId, facture, req) => inscrire(campingId, {
   auteur_email: req?.user?.email,
 });
 
-/** Raccourci : événement encaissement. */
-const inscrireReglement = (campingId, reglement, req) => inscrire(campingId, {
+/** Raccourci : événement encaissement. Sans effet si la base chaîne elle-même. */
+const inscrireReglement = async (campingId, reglement, req) => (await chainageEnBase()) ? null : inscrire(campingId, {
   type: 'reglement',
   entite: 'reglements',
   entite_id: reglement.id,
@@ -100,12 +126,45 @@ async function verifierChaine(campingId) {
   };
 }
 
+/**
+ * Encaissements d'une période pour la comptabilité (FEC, export logiciel).
+ * Un encaissement annulé RESTE à sa date : il a bien eu lieu, et la période a pu
+ * être exportée entre-temps. Son annulation s'ajoute en écriture inverse
+ * (montant négatif), datée du jour de l'annulation — exactement comme un avoir.
+ */
+async function reglementsComptables(campingId, debut, fin) {
+  if (!await chainageEnBase()) {
+    const { data, error } = await supabase.from('reglements').select('*').eq('camping_id', campingId)
+      .gte('date_reglement', debut).lte('date_reglement', fin).order('date_reglement');
+    if (error) throw error;
+    return data || [];
+  }
+  const [orig, ann] = await Promise.all([
+    supabase.from('reglements_registre').select('*').eq('camping_id', campingId)
+      .gte('date_reglement', debut).lte('date_reglement', fin).order('date_reglement'),
+    supabase.from('reglements_registre').select('*').eq('camping_id', campingId)
+      .not('annule_at', 'is', null).gte('annule_le', debut).lte('annule_le', fin),
+  ]);
+  if (orig.error) throw orig.error;
+  if (ann.error) throw ann.error;
+  const inverses = (ann.data || []).map((r) => ({
+    ...r,
+    montant: -Number(r.montant || 0),
+    date_reglement: r.annule_le,
+    reference: `Annulation ${r.reference || r.id.slice(0, 8)}`,
+    affectations: [],
+    annulation: true,
+  }));
+  return [...(orig.data || []), ...inverses]
+    .sort((a, b) => String(a.date_reglement).localeCompare(String(b.date_reglement)));
+}
+
 /** Bornes d'une période de clôture. */
 function bornes(type, periode) {
   if (type === 'journaliere') return { debut: periode, fin: periode };
   if (type === 'mensuelle') {
     const [a, m] = periode.split('-').map(Number);
-    return { debut: `${periode}-01`, fin: new Date(a, m, 0).toISOString().slice(0, 10) };
+    return { debut: `${periode}-01`, fin: new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10) };
   }
   return { debut: `${periode}-01-01`, fin: `${periode}-12-31` };
 }
@@ -121,19 +180,36 @@ async function cloturer(campingId, type, periode, req) {
 
   const { debut, fin } = bornes(type, periode);
 
-  const [factRes, reglRes, seqRes] = await Promise.all([
+  // Encaissements de la période, y compris ceux annulés depuis : ils ont bien eu
+  // lieu ce jour-là. Leur annulation est une écriture inverse, comptée le jour
+  // où elle a été faite (annule_le) — jamais en réécrivant une période passée.
+  const v16 = await chainageEnBase();
+  const tableRegl = v16 ? 'reglements_registre' : 'reglements';
+
+  const [factRes, reglRes, annRes, seqRes] = await Promise.all([
     // Toutes les factures, y compris celles annulées par un avoir : elles ont bien été
     // émises. L'avoir (montant déjà négatif) les contrepasse ; les exclure fausserait le total.
+    // Les brouillons n'ont rien d'émis : ils restent hors clôture.
     supabase.from('factures').select('id,total_ht,total_tva,total_ttc,statut')
-      .eq('camping_id', campingId).gte('date_emission', debut).lte('date_emission', fin),
-    supabase.from('reglements').select('id,montant,mode')
+      .eq('camping_id', campingId).neq('statut', 'brouillon')
+      .gte('date_emission', debut).lte('date_emission', fin),
+    supabase.from(tableRegl).select('id,montant,mode')
       .eq('camping_id', campingId).gte('date_reglement', debut).lte('date_reglement', fin),
+    v16
+      ? supabase.from('reglements_registre').select('id,montant,mode')
+        .eq('camping_id', campingId).not('annule_at', 'is', null)
+        .gte('annule_le', debut).lte('annule_le', fin)
+      : Promise.resolve({ data: [] }),
     supabase.from('journal_fiscal').select('seq')
       .eq('camping_id', campingId).order('seq', { ascending: false }).limit(1),
   ]);
+  if (factRes.error) throw factRes.error;
+  if (reglRes.error) throw reglRes.error;
+  if (annRes.error) throw annRes.error;
 
   const factures = factRes.data || [];
   const reglements = reglRes.data || [];
+  const annulations = annRes.data || [];
 
   // Les montants d'un avoir sont DÉJÀ négatifs : aucun signe supplémentaire,
   // sinon l'avoir gonflerait le chiffre d'affaires au lieu de le réduire.
@@ -143,10 +219,12 @@ async function cloturer(campingId, type, periode, req) {
     tva += Number(f.total_tva || 0);
     ttc += Number(f.total_ttc || 0);
   }
-  const encaisse = reglements.reduce((s, r) => s + Number(r.montant || 0), 0);
+  const encaisse = reglements.reduce((s, r) => s + Number(r.montant || 0), 0)
+    - annulations.reduce((s, r) => s + Number(r.montant || 0), 0);
 
   const parMode = {};
   reglements.forEach((r) => { parMode[r.mode] = r2((parMode[r.mode] || 0) + Number(r.montant)); });
+  annulations.forEach((r) => { parMode[r.mode] = r2((parMode[r.mode] || 0) - Number(r.montant)); });
 
   const seqFin = seqRes.data?.[0]?.seq || 0;
 
@@ -155,7 +233,7 @@ async function cloturer(campingId, type, periode, req) {
     p_seq_debut: null, p_seq_fin: seqFin,
     p_nb_fact: factures.length, p_nb_regl: reglements.length,
     p_ht: r2(ht), p_tva: r2(tva), p_ttc: r2(ttc), p_encaisse: r2(encaisse),
-    p_detail: { par_mode: parMode, debut, fin },
+    p_detail: { par_mode: parMode, debut, fin, nb_annulations: annulations.length },
     p_auteur: req?.user?.uid || null,
   });
   if (error) throw error;
@@ -173,9 +251,9 @@ async function cloturer(campingId, type, periode, req) {
   return { cloture };
 }
 
-/** Clôture automatique de la veille, pour tous les campings actifs. */
+/** Clôture automatique de la veille (heure de Paris), pour tous les campings actifs. */
 async function cloturerVeille() {
-  const d = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const d = veille(jourParis());
   const { data: campings } = await supabase.from('campings').select('id,nom');
   let n = 0;
   for (const c of (campings || [])) {
@@ -191,4 +269,5 @@ async function cloturerVeille() {
 module.exports = {
   inscrire, inscrireFacture, inscrireReglement,
   verifierChaine, cloturer, cloturerVeille, RACINE,
+  schemaVersion, chainageEnBase, jourParis, veille, reglementsComptables,
 };

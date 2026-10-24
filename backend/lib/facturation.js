@@ -2,7 +2,7 @@ const { supabase } = require('./supabase');
 const { buildFacturePdf } = require('./pdf');
 const { uploadDocument, downloadDocument, BUCKET } = require('./storage');
 const { sendEmail } = require('./email');
-const { inscrireFacture } = require('./fiscal');
+const { inscrireFacture, chainageEnBase, jourParis } = require('./fiscal');
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -316,12 +316,15 @@ async function creerFacture({ campingId, resident_id, contrat_id, periode, ligne
   const numero = brouillon
     ? `PROFORMA-${require('crypto').randomUUID().slice(0, 8)}`
     : await nextNumeroFacture(campingId);
-  const { data: facture, error } = await supabase.from('factures').insert({
+  const nouvelle = {
     camping_id: campingId, resident_id: resident_id || null, contrat_id: contrat_id || null,
-    numero, periode: periode || null, date_emission: new Date().toISOString().slice(0, 10),
+    numero, periode: periode || null, date_emission: jourParis(),
     lignes: t.lignes, total_ht: t.total_ht, total_tva: t.total_tva, total_ttc: t.total_ttc,
     statut, avoir_de,
-  }).select().single();
+  };
+  // emis_par (db/16) : l'auteur que le trigger de chaînage inscrit au journal fiscal
+  if (!brouillon && req?.user?.uid && await chainageEnBase()) nouvelle.emis_par = req.user.uid;
+  const { data: facture, error } = await supabase.from('factures').insert(nouvelle).select().single();
   if (error) throw error;
 
   // Un brouillon reste hors chaîne fiscale, sans e-mail ni notification :
@@ -383,9 +386,10 @@ async function emettreFacture(campingId, factureId, req = null) {
   if (!(f.lignes || []).length) return { error: 'Facture vide : ajoutez au moins une ligne', code: 400 };
 
   const numero = await nextNumeroFacture(campingId);
-  const { data: facture, error } = await supabase.from('factures').update({
-    numero, statut: 'emise', date_emission: new Date().toISOString().slice(0, 10),
-  }).eq('camping_id', campingId).eq('id', factureId).select().single();
+  const maj = { numero, statut: 'emise', date_emission: jourParis() };
+  if (req?.user?.uid && await chainageEnBase()) maj.emis_par = req.user.uid;
+  const { data: facture, error } = await supabase.from('factures').update(maj)
+    .eq('camping_id', campingId).eq('id', factureId).select().single();
   if (error) throw error;
 
   await inscrireFacture(campingId, facture, req);

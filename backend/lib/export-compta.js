@@ -1,4 +1,5 @@
 const { supabase } = require('./supabase');
+const { reglementsComptables } = require('./fiscal');
 // Ventilation partagee avec le FEC : une seule table de correspondance.
 const { chargerPlan: chargerPlanVent, ventilerLigne, compteTva } = require('./ventilation');
 
@@ -101,11 +102,11 @@ async function exportCompta(campingId, debut, fin) {
       // Les factures annulées par un avoir RESTENT dans l'export : elles ont bien été
       // émises, et c'est l'avoir (déjà négatif) qui les contrepasse. Les exclure ferait
       // disparaître leur produit tout en gardant l'avoir → CA faussé.
-      supabase.from('factures').select('*').eq('camping_id', campingId)
+      supabase.from('factures').select('*').eq('camping_id', campingId).neq('statut', 'brouillon')
         .gte('date_emission', debut).lte('date_emission', fin)
         .order('date_emission').order('numero'),
-      supabase.from('reglements').select('*').eq('camping_id', campingId)
-        .gte('date_reglement', debut).lte('date_reglement', fin).order('date_reglement'),
+      // annulations comprises, en écriture inverse (voir lib/fiscal.js)
+      reglementsComptables(campingId, debut, fin).then((data) => ({ data })),
       supabase.from('residents').select('id,nom,prenom,compte_comptable').eq('camping_id', campingId),
       supabase.from('moyens_paiement').select('code,libelle,compte_comptable').eq('camping_id', campingId)
         .then((r) => r, () => ({ data: [] })),
@@ -208,8 +209,9 @@ async function exportCompta(campingId, debut, fin) {
       const lib = (r.reference && /cheque|ancv/i.test(code)) ? String(r.reference) : libMoyen;
       out.push(ligne({
         piece, journal: plan.journal_banque, date: ymd(r.date_reglement),
-        compte: cli.compte, libelle: lib,
-        montant: r.montant, sens: 'C', nom: cli.nom,
+        compte: cli.compte, libelle: r.annulation ? `Annulation ${lib}` : lib,
+        // fmtMontant écrit la valeur absolue : le signe passe dans le sens
+        montant: r.montant, sens: Number(r.montant) < 0 ? 'D' : 'C', nom: cli.nom,
       }));
     }
 
@@ -219,7 +221,7 @@ async function exportCompta(campingId, debut, fin) {
       piece, journal: plan.journal_banque, date: ymd(dernier.date_reglement),
       compte: moyen.compte_comptable || plan.compte_banque,
       libelle: `Paiements  ${jjmmaaaa(regs[0].date_reglement)} - `,
-      montant: total, sens: 'D', nom: libMoyen,
+      montant: total, sens: total < 0 ? 'C' : 'D', nom: libMoyen,
     }));
   }
 

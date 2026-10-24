@@ -4326,7 +4326,7 @@ window.chargerFiscal = async () => {
   if (!box) return;
   box.innerHTML = '<p class="muted">Vérification de la chaîne…</p>';
   try {
-    const { chaine, clotures, cumul_perpetuel } = await api('/api/fiscal/etat');
+    const { chaine, clotures, cumul_perpetuel, logiciel, protection_base, editeur_complet } = await api('/api/fiscal/etat');
     const mois = new Date().toISOString().slice(0, 7);
     const hier = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
@@ -4349,6 +4349,12 @@ window.chargerFiscal = async () => {
           <div class="kpi"><div class="v">${clotures.length}</div><div class="l">Clôtures archivées</div></div>
         </div>
 
+        ${protection_base === false ? `<div class="card" style="background:var(--rouge-pale);border-color:#E4C4BC;margin-top:12px">
+            <h2 style="color:var(--rouge);margin:0 0 6px">⚠ Protection en base non installée</h2>
+            <p style="margin:0">Exécuter <code>db/16_inalterabilite.sql</code> dans Supabase. Sans elle, le journal reste modifiable en base, les encaissements ne peuvent pas être annulés proprement, et l’attestation ne peut pas être délivrée.</p>
+          </div>` : ''}
+        ${protection_base && editeur_complet === false ? `<p class="muted" style="margin-top:10px">Attestation : identité de l’éditeur à renseigner sur le serveur (variables <code>LOCAMP_EDITEUR_*</code>).</p>` : ''}
+        ${logiciel ? `<p class="muted" style="margin-top:6px;font-size:12px">${esc(logiciel.nom)} version ${esc(logiciel.version)}${logiciel.build ? ' · build ' + esc(logiciel.build) : ''}</p>` : ''}
         ${chaine.integre
           ? `<p class="muted" style="margin-top:6px">Aucune anomalie. Empreinte finale : <code style="font-size:11px">${esc(chaine.empreinte_finale.slice(0, 32))}…</code></p>`
           : `<div class="card" style="background:var(--rouge-pale);border-color:#E4C4BC;margin-top:12px">
@@ -5823,6 +5829,27 @@ function majListeReglements() {
 }
 
 window.ouvrirReglement = (id) => { REG_SEL = id; majListeReglements(); majFicheReglement(); };
+
+/* Un encaissement ne se supprime pas (loi anti-fraude TVA) : il s'annule.
+   L'original reste au journal fiscal, l'annulation y entre en écriture
+   inverse avec son motif. Pour l'écran, l'effet est celui d'une suppression. */
+window.annulerReglement = async (id) => {
+  const g = REG_CACHE.reglements.find((x) => x.id === id);
+  if (!g) return;
+  const motif = await askPrompt(
+    `Annuler l'encaissement de ${eur(g.montant)} du ${dfr(g.date_reglement)} ?\n`
+    + 'Il disparaîtra des listes et les factures qu\u2019il payait redeviendront dues. '
+    + 'L\u2019annulation reste tracée au journal fiscal.',
+    '', { titre: 'Annuler l\u2019encaissement', ok: 'Annuler l\u2019encaissement', placeholder: 'Motif (obligatoire) — ex. erreur de saisie, chèque rejeté' });
+  if (motif === null) return;
+  if (!String(motif).trim()) { toast('Le motif est obligatoire', true); return; }
+  try {
+    await api(`/api/reglements/${id}/annuler`, { method: 'POST', body: { motif: String(motif).trim() } });
+    REG_SEL = null;
+    toast('Encaissement annulé');
+    route();
+  } catch (e) { toast(e.message, true); }
+};
 window.filtrerReglements = (k) => { REG_FILTRE = k; REG_SEL = null; vueReglements(); };
 window.chercherReglements = (v) => { REG_Q = v; majListeReglements(); };
 
@@ -5853,9 +5880,10 @@ function regFiche(g) {
   : '<span style="font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:var(--r-s);background:var(--sapin-pale);color:var(--sapin)">Entièrement lettré</span>'}
         </div>
       </div>
-      ${g.resident_id ? `<div style="flex:none">
-        <button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/residents/${g.resident_id}">Ouvrir la fiche</button>
-      </div>` : ''}
+      <div style="flex:none;display:flex;gap:8px;flex-wrap:wrap">
+        ${g.resident_id ? `<button class="btn btn-ghost btn-sm" data-act="allerA" data-a1="#/residents/${g.resident_id}">Ouvrir la fiche</button>` : ''}
+        ${MES_DROITS.admin ? `<button class="btn btn-ghost btn-sm" data-act="annulerReglement" data-a1="${g.id}">Annuler l\u2019encaissement</button>` : ''}
+      </div>
     </div>
 
     <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
