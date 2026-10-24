@@ -76,8 +76,10 @@ appliquée partout.
 
 ## 16 — inaltérabilité (loi anti-fraude TVA)
 
-À exécuter **avant** de déployer le backend 1.0.0 (il fonctionne sans, en
-mode dégradé, et affiche un avertissement sur l'écran Conformité fiscale).
+Ordre : **d'abord** déployer le backend 1.0.0 (il fonctionne sans cette
+migration, en mode dégradé, avec un avertissement sur l'écran Conformité
+fiscale), **ensuite** exécuter `16`. Dans l'ordre inverse, l'ancien backend
+inscrirait chaque opération deux fois au journal jusqu'à son remplacement.
 
 - `reglements` devient une **vue** des encaissements non annulés ; la table
   s'appelle désormais `reglements_registre`. Après tout

@@ -61,8 +61,17 @@ async function inscrire(campingId, { type, entite, entite_id, donnees, montant, 
   }
 }
 
+/* Pendant la bascule (db/16 vient d'être appliquée, la version en cache n'est
+   pas encore relue), le trigger a pu inscrire l'opération : on ne la double pas. */
+async function dejaInscrit(campingId, entite, entiteId) {
+  const { data } = await supabase.from('journal_fiscal').select('id')
+    .eq('camping_id', campingId).eq('entite', entite).eq('entite_id', entiteId).limit(1);
+  return !!(data && data.length);
+}
+
 /** Raccourci : événement facture (ou avoir). Sans effet si la base chaîne elle-même. */
-const inscrireFacture = async (campingId, facture, req) => (await chainageEnBase()) ? null : inscrire(campingId, {
+const inscrireFacture = async (campingId, facture, req) => ((await chainageEnBase())
+  || await dejaInscrit(campingId, 'factures', facture.id)) ? null : inscrire(campingId, {
   type: facture.statut === 'avoir' ? 'avoir' : 'facture',
   entite: 'factures',
   entite_id: facture.id,
@@ -81,7 +90,8 @@ const inscrireFacture = async (campingId, facture, req) => (await chainageEnBase
 });
 
 /** Raccourci : événement encaissement. Sans effet si la base chaîne elle-même. */
-const inscrireReglement = async (campingId, reglement, req) => (await chainageEnBase()) ? null : inscrire(campingId, {
+const inscrireReglement = async (campingId, reglement, req) => ((await chainageEnBase())
+  || await dejaInscrit(campingId, 'reglements', reglement.id)) ? null : inscrire(campingId, {
   type: 'reglement',
   entite: 'reglements',
   entite_id: reglement.id,

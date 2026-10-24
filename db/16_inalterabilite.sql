@@ -3,9 +3,11 @@
 -- Article 286-I-3° bis du CGI : inaltérabilité, sécurisation,
 -- conservation, archivage.
 -- ============================================================
--- À COLLER DANS  Supabase → SQL Editor  ET EXÉCUTER, AVANT de
--- déployer le backend qui l'accompagne (il le détecte et se replie
--- sur l'ancien fonctionnement tant que ce fichier n'a pas tourné).
+-- ORDRE : 1) déployer le backend 1.0.0 ; 2) coller ce fichier dans
+-- Supabase → SQL Editor et l'exécuter. Le backend 1.0.0 détecte la
+-- migration tout seul (en moins de 5 minutes) et ne double aucune
+-- inscription. L'ordre inverse ferait inscrire deux fois chaque
+-- opération par l'ancien backend, jusqu'à son remplacement.
 -- Rejouable sans risque : tout est en « if not exists » / « or replace ».
 --
 -- CE QUI CHANGE

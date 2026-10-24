@@ -12,7 +12,7 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 
 ## Démarrage
 
-1. Exécuter les migrations `db/*.sql` dans Supabase, dans l'ordre (16 avant de déployer le backend 1.0.0).
+1. Exécuter les migrations `db/*.sql` dans Supabase, dans l'ordre (pour 16 : déployer d'abord le backend 1.0.0, puis l'exécuter).
 2. Créer un bucket Storage privé nommé `documents` (Supabase → Storage).
 3. Déployer `backend/` (voir `backend/README.md`).
 
