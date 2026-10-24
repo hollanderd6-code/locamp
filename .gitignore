@@ -1,0 +1,18 @@
+# Sorties de build Android (projet TWA a la racine) — regenerables
+/build/
+/app/build/
+/.gradle/
+*.apk
+*.aab
+*.idsig
+
+# Cles de signature : JAMAIS dans le depot (a garder hors de Git, sauvegardees a part)
+*.keystore
+*.jks
+keystore.properties
+
+# Divers
+.DS_Store
+*.bak
+node_modules/
+.env

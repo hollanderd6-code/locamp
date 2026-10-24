@@ -1,11 +1,15 @@
-# Camping résidentiel — Backend (Lot 0 : socle)
+# Locamp — Backend
 
-API Node/Express + Supabase (PostgreSQL). Multi-tenant, authentification JWT, rôles et journal d'audit.
+API Node/Express + Supabase (PostgreSQL). Multi-tenant, authentification JWT, rôles,
+journal d'audit, facturation, encaissements, comptabilité, conformité fiscale.
+Sert aussi les fronts web : gestion (`/`) et portail locataire (`/portail`).
+
+Tests : `npm test`.
 
 ## Prérequis
 
 - Node >= 20
-- Un projet Supabase avec le schéma `01_schema_lot0.sql` déjà exécuté.
+- Un projet Supabase avec les migrations `db/*.sql` exécutées dans l'ordre.
 
 ## Installation locale
 
@@ -24,6 +28,8 @@ npm run dev            # démarre avec rechargement auto
 | `JWT_SECRET` | Secret de signature des jetons JWT |
 | `JWT_EXPIRES` | Durée de validité du jeton (def. `30d`) |
 | `BOOTSTRAP_SECRET` | Secret pour créer le tout premier administrateur |
+| `CRON_SECRET` | Secret des tâches planifiées (`/api/cron/*`) |
+| `LOCAMP_EDITEUR_*` | Identité de l'éditeur sur l'attestation fiscale (voir plus bas) |
 
 ## Déploiement Render
 
@@ -158,3 +164,42 @@ Page dédiée aux résidents sur **`/portail`** (mobile-first, même identité L
 - **Documents** : consultation + dépôt.
 
 Fichiers : `backend/public/portail/`. En test sans Brevo : `PORTAIL_DEV=true` → le lien s'affiche à l'écran.
+
+## Conformité anti-fraude TVA (art. 286-I-3° bis du CGI)
+
+Un camping assujetti à la TVA qui encaisse des particuliers doit utiliser un
+logiciel qui garantit l'inaltérabilité, la sécurisation, la conservation et
+l'archivage des données, et le prouver par un certificat (NF525, LNE) ou une
+**attestation individuelle de l'éditeur** (rétablie par l'art. 125 de la loi de
+finances 2026). Amende : 7 500 € par logiciel.
+
+Ce que fait Locamp (à partir de la version 1.0.0 et de `db/16_inalterabilite.sql`) :
+
+| Exigence | Mise en œuvre |
+|---|---|
+| Inaltérabilité | Journal fiscal chaîné SHA-256, alimenté **par des triggers** dans la transaction de l'opération (factures, avoirs, encaissements — Stripe compris —, annulations). Journal, clôtures, factures émises et encaissements refusent modification et suppression **en base**. |
+| Correction | Facture : avoir. Encaissement : annulation motivée (`POST /api/reglements/:id/annuler`), écriture inverse chaînée ; l'original est conservé (`reglements_registre`). |
+| Sécurisation | Comptes nominatifs, droits par camping, audit (auteur, IP). Vérification de chaîne : écran *Conformité fiscale*. |
+| Conservation | Clôtures journalières (cron), mensuelles, annuelles, figées, cumul perpétuel. |
+| Archivage | `GET /api/fiscal/archive` : l'empreinte SHA-256 du fichier est inscrite dans la chaîne (en-tête `X-Empreinte-SHA256`). Pour vérifier une archive : `sha256sum` du fichier = empreinte de l'événement `archive`. |
+
+**Version.** La version du logiciel (`package.json`) figure sur l'attestation et
+les archives. Toute modification du périmètre fiscal (chaîne, clôtures,
+annulations, archive) impose une **nouvelle version majeure** et de nouvelles
+attestations.
+
+**Attestation** (`GET /api/fiscal/attestation.pdf`) — une par camping client,
+nominative. Elle n'est délivrée que si `db/16` est appliquée et la chaîne
+intègre. Renseigner l'éditeur (vous, pas le camping) :
+
+```
+LOCAMP_EDITEUR_NOM=…            # raison sociale de l'éditeur
+LOCAMP_EDITEUR_SIREN=…
+LOCAMP_EDITEUR_ADRESSE=…
+LOCAMP_EDITEUR_REPRESENTANT=…   # nom du signataire
+LOCAMP_EDITEUR_QUALITE=Président
+LOCAMP_EDITEUR_VILLE=…
+```
+
+Avant de signer : comparer le texte au modèle officiel en vigueur sur
+bofip.impots.gouv.fr, et faire valider par l'expert-comptable.
