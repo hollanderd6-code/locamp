@@ -17,35 +17,75 @@ struct WebViewHote: UIViewRepresentable {
     }
 
     func updateUIView(_ v: ConteneurWeb, context: Context) {
-        guard actif else { return }
-        let wv = Pont.partage.webView!
-        guard wv.superview !== v else { return }
-        wv.removeFromSuperview()
-        wv.translatesAutoresizingMaskIntoConstraints = false
-        v.addSubview(wv)
-        NSLayoutConstraint.activate([
-            wv.topAnchor.constraint(equalTo: v.topAnchor),
-            wv.bottomAnchor.constraint(equalTo: v.bottomAnchor),
-            wv.leadingAnchor.constraint(equalTo: v.leadingAnchor),
-            wv.trailingAnchor.constraint(equalTo: v.trailingAnchor),
-        ])
+        v.actif = actif
+    }
+
+    static func dismantleUIView(_ v: ConteneurWeb, coordinator: ()) {
+        v.actif = false
     }
 }
 
-/// Mesure aussi, cote UIKit, la place prise par les barres : deuxieme
-/// source pour les marges du site, au cas ou SwiftUI n'en donnerait pas.
+/// L'hote UIKit du WKWebView partage.
+///
+/// Quand SwiftUI reconstruit un ecran (barre de recherche qui apparait,
+/// changement d'onglet…), l'ancien et le nouvel hote coexistent un instant,
+/// tous deux « actifs ». Si chacun deplacait le WKWebView a son tour, il
+/// pouvait finir dans celui qui disparait : page blanche (Plan, Residents).
+/// La regle est donc globale et deterministe : le WKWebView va a l'hote
+/// actif, affiche a l'ecran, et le plus recemment affiche.
 final class ConteneurWeb: UIView {
+    private static let tous = NSHashTable<ConteneurWeb>.weakObjects()
+    private static var compteur = 0
+
+    /// Ordre d'arrivee a l'ecran : le plus recent l'emporte.
+    private var rang = 0
+
+    var actif = false {
+        didSet { if actif != oldValue { Self.repartir() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        Self.tous.add(self)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) non utilise") }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            Self.compteur += 1
+            rang = Self.compteur
+        }
+        Self.repartir()
+    }
+
     override func safeAreaInsetsDidChange() {
         super.safeAreaInsetsDidChange()
         signaler()
     }
 
-    override func didAddSubview(_ subview: UIView) {
-        super.didAddSubview(subview)
-        signaler()
+    private static func repartir() {
+        guard let wv = Pont.partage.webView else { return }
+        let elu = tous.allObjects
+            .filter { $0.actif && $0.window != nil }
+            .max { $0.rang < $1.rang }
+        guard let elu, wv.superview !== elu else { return }
+        wv.removeFromSuperview()
+        wv.translatesAutoresizingMaskIntoConstraints = false
+        elu.addSubview(wv)
+        NSLayoutConstraint.activate([
+            wv.topAnchor.constraint(equalTo: elu.topAnchor),
+            wv.bottomAnchor.constraint(equalTo: elu.bottomAnchor),
+            wv.leadingAnchor.constraint(equalTo: elu.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: elu.trailingAnchor),
+        ])
+        elu.signaler()
     }
 
-    private func signaler() {
+    /// Mesure aussi, cote UIKit, la place prise par les barres : deuxieme
+    /// source pour les marges du site, au cas ou SwiftUI n'en donnerait pas.
+    fileprivate func signaler() {
         guard let wv = Pont.partage.webView, wv.superview === self else { return }
         Pont.partage.definirMargesUIKit(safeAreaInsets)
     }
