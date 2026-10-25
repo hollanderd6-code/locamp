@@ -25,6 +25,11 @@ targets:
     platform: iOS
     sources:
       - path: LocampGestion
+      # Copie embarquee du pont, injectee si le site deploye ne l'a pas.
+      - path: ../../backend/public/natif.js
+        buildPhase: resources
+      - path: ../../backend/public/natif.css
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.locamp.gestion

@@ -26,6 +26,9 @@
 (function () {
   const canal = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.locamp;
   if (!canal) return;
+  // L'app embarque aussi ce fichier et l'injecte si le site ne l'a pas
+  // (site pas encore deploye) : il ne doit s'executer qu'une fois.
+  if (window.LocampNatif) return;
 
   const VERSION_PONT = 1;
   document.documentElement.classList.add('natif', 'natif-ios');

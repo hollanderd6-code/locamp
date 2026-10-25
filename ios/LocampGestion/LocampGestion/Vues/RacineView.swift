@@ -32,7 +32,7 @@ struct ConnexionView: View {
             .background(Color("Fond"))
             .onAppear { pont.definirMarges(EdgeInsets()) }
             .overlay {
-                if !pont.pret {
+                if pont.chargement {
                     ProgressView()
                         .controlSize(.large)
                         .padding(28)

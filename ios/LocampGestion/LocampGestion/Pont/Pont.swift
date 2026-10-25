@@ -17,6 +17,8 @@ final class Pont: NSObject {
 
     // MARK: Etat publie par le site
     private(set) var pret = false
+    /// Vrai tant que la page charge (roue d'attente).
+    private(set) var chargement = true
     private(set) var connecte = false
     private(set) var etat: EtatWeb?
     private(set) var superposition = false
@@ -64,6 +66,12 @@ final class Pont: NSObject {
         window.LOCAMP_NATIF = { plateforme: 'ios', version: 1 };
         """
         ucc.addUserScript(WKUserScript(source: amorce, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // Copie embarquee du pont (backend/public/natif.css + natif.js) :
+        // si le site en ligne ne les a pas encore, l'app les injecte elle-meme.
+        // natif.js se protege contre une double execution.
+        if let secours = Self.pontEmbarque() {
+            ucc.addUserScript(WKUserScript(source: secours, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
         // Le pont est un singleton : la retention forte par le controleur
         // de contenu ne cree pas de fuite.
         ucc.add(self, name: "locamp")
@@ -89,6 +97,26 @@ final class Pont: NSObject {
 
         wv.load(URLRequest(url: adresse))
         return wv
+    }
+
+    private static func pontEmbarque() -> String? {
+        func lire(_ nom: String, _ ext: String) -> String? {
+            guard let url = Bundle.main.url(forResource: nom, withExtension: ext) else { return nil }
+            return try? String(contentsOf: url, encoding: .utf8)
+        }
+        guard let js = lire("natif", "js") else { return nil }
+        var source = ""
+        if let css = lire("natif", "css"),
+           let data = try? JSONSerialization.data(withJSONObject: [css], options: []),
+           let json = String(data: data, encoding: .utf8) {
+            source += """
+            if (!document.querySelector('link[href*="natif.css"]')) {
+              var st = document.createElement('style'); st.textContent = \(json)[0]; document.head.appendChild(st);
+            }
+
+            """
+        }
+        return source + js
     }
 
     @objc private func tirerPourRafraichir(_ rc: UIRefreshControl) {
@@ -299,6 +327,11 @@ extension Pont: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         pret = false
+        chargement = true
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        chargement = false
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -306,6 +339,7 @@ extension Pont: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        chargement = false
         let e = error as NSError
         guard e.code != NSURLErrorCancelled else { return }
         afficherToast("Connexion impossible. Tirez pour réessayer.", erreur: true)
