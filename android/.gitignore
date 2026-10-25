@@ -9,3 +9,6 @@ captures/
 *.jks
 *.keystore
 keystore.properties
+# Configuration Firebase de chaque app : a telecharger depuis la console
+# (voir README), gardee hors du depot.
+google-services.json
