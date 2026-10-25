@@ -60,10 +60,12 @@ struct BarreEcran: ToolbarContent {
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button("Notifications", systemImage: etat.badges.notifications > 0 ? "bell.badge" : "bell") {
-                pont.ouvrirNotifications()
+            if Configuration.cloche {
+                Button("Notifications", systemImage: etat.badges.notifications > 0 ? "bell.badge" : "bell") {
+                    pont.ouvrirNotifications()
+                }
+                .symbolRenderingMode(etat.badges.notifications > 0 ? .multicolor : .monochrome)
             }
-            .symbolRenderingMode(etat.badges.notifications > 0 ? .multicolor : .monochrome)
 
             if !etat.actionsSecondaires.isEmpty {
                 Menu("Actions", systemImage: "ellipsis") {
@@ -122,7 +124,9 @@ struct MenuCompte: View {
                     .pickerStyle(.menu)
                 }
             }
-            Button("Nouvel espace camping…", systemImage: "plus") { pont.changerCamping("__new__") }
+            if Configuration.espacesCamping {
+                Button("Nouvel espace camping…", systemImage: "plus") { pont.changerCamping("__new__") }
+            }
             Divider()
             Button("Se déconnecter", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                 pont.deconnexion()

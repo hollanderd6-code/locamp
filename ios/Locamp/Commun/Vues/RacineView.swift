@@ -52,23 +52,18 @@ struct OngletsView: View {
         let b = pont.etat?.badges
 
         TabView(selection: $pont.onglet) {
-            Tab("Accueil", systemImage: "square.grid.2x2", value: OngletApp.accueil) {
-                NavigationStack { EcranWeb(actif: pont.onglet == .accueil, titreParDefaut: "Accueil") }
+            ForEach(Configuration.onglets) { o in
+                Tab(o.titre, systemImage: o.symbole, value: o) {
+                    NavigationStack { EcranWeb(actif: pont.onglet == o, titreParDefaut: o.titre) }
+                }
+                .badge(o.badge.map { b?[keyPath: $0] ?? 0 } ?? 0)
             }
-            Tab("Carte", systemImage: "map", value: OngletApp.carte) {
-                NavigationStack { EcranWeb(actif: pont.onglet == .carte, titreParDefaut: "Carte") }
+            if !Configuration.ecransPlus.isEmpty {
+                Tab(OngletApp.plus.titre, systemImage: OngletApp.plus.symbole, value: OngletApp.plus) {
+                    PlusView()
+                }
+                .badge(Configuration.ecransPlus.compactMap(\.badge).reduce(0) { $0 + (b?[keyPath: $1] ?? 0) })
             }
-            Tab("Résidents", systemImage: "person.2", value: OngletApp.residents) {
-                NavigationStack { EcranWeb(actif: pont.onglet == .residents, titreParDefaut: "Résidents") }
-            }
-            Tab("Facturation", systemImage: "doc.text", value: OngletApp.factures) {
-                NavigationStack { EcranWeb(actif: pont.onglet == .factures, titreParDefaut: "Facturation") }
-            }
-            .badge(b?.factures ?? 0)
-            Tab("Plus", systemImage: "ellipsis", value: OngletApp.plus) {
-                PlusView()
-            }
-            .badge(b?.messagerie ?? 0)
         }
         .tabViewStyle(.sidebarAdaptable)
         .onChange(of: pont.onglet) { _, o in
@@ -91,11 +86,11 @@ struct PlusView: View {
         NavigationStack(path: $pont.cheminPlus) {
             List {
                 Section {
-                    ForEach(EcranPlus.allCases) { e in
+                    ForEach(Configuration.ecransPlus) { e in
                         NavigationLink(value: e) {
                             Label(e.titre, systemImage: e.symbole)
                         }
-                        .badge(e == .messagerie ? (etat?.badges.messagerie ?? 0) : 0)
+                        .badge(e.badge.map { etat?.badges[keyPath: $0] ?? 0 } ?? 0)
                     }
                 }
 
@@ -117,7 +112,9 @@ struct PlusView: View {
                                 ForEach(ctx.exercices) { Text($0.nom).tag($0.id) }
                             } label: { Label("Exercice", systemImage: "calendar") }
                         }
-                        Button("Nouvel espace camping…", systemImage: "plus") { pont.changerCamping("__new__") }
+                        if Configuration.espacesCamping {
+                            Button("Nouvel espace camping…", systemImage: "plus") { pont.changerCamping("__new__") }
+                        }
                     }
 
                     Section {

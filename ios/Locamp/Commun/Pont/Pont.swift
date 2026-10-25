@@ -24,7 +24,7 @@ final class Pont: NSObject {
     private(set) var superposition = false
 
     // MARK: Etat de l'interface native
-    var onglet: OngletApp = .accueil
+    var onglet: OngletApp = .premier
     var cheminPlus: [EcranPlus] = []
     var dialogue: DialogueWeb?
     var toast: ToastWeb?
@@ -63,10 +63,13 @@ final class Pont: NSObject {
         let ucc = WKUserContentController()
         // Pose la classe des le premier octet : sans elle, la barre laterale
         // web apparaitrait une fraction de seconde avant natif.js.
-        let amorce = """
+        var amorce = """
         document.documentElement.classList.add('natif', 'natif-ios');
         window.LOCAMP_NATIF = { plateforme: 'ios', version: 1 };
         """
+        // Portail : le paiement en ligne est masque avant que portail.js ne
+        // le lise (regle App Store 3.1.1).
+        if Configuration.paiementMasque { amorce += "\nwindow.LOCAMP_NATIVE = true;" }
         ucc.addUserScript(WKUserScript(source: amorce, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         // Copie embarquee du pont (backend/public/natif.css + natif.js) :
         // si le site en ligne ne les a pas encore, l'app les injecte elle-meme.
@@ -120,13 +123,13 @@ final class Pont: NSObject {
             guard let url = Bundle.main.url(forResource: nom, withExtension: ext) else { return nil }
             return try? String(contentsOf: url, encoding: .utf8)
         }
-        guard let js = lire("natif", "js") else { return nil }
+        guard let js = lire(Configuration.fichiersPont, "js") else { return nil }
         var source = ""
-        if let css = lire("natif", "css"),
+        if let css = lire(Configuration.fichiersPont, "css"),
            let data = try? JSONSerialization.data(withJSONObject: [css], options: []),
            let json = String(data: data, encoding: .utf8) {
             source += """
-            if (!document.querySelector('link[href*="natif.css"]')) {
+            if (!document.querySelector('link[href*="\(Configuration.fichiersPont).css"]')) {
               var st = document.createElement('style'); st.textContent = \(json)[0]; document.head.appendChild(st);
             }
 
@@ -208,17 +211,17 @@ final class Pont: NSObject {
     /// L'utilisateur a touche un onglet natif.
     func ongletChoisi(_ o: OngletApp) {
         if o == .plus {
-            if let e = cheminPlus.last { allerSiBesoin(groupe: e.rawValue, ecran: memoire[.plus] ?? e.rawValue) }
+            if let e = cheminPlus.last { allerSiBesoin(groupes: [e.id], ecran: memoire[.plus] ?? e.id) }
             return
         }
-        guard let g = o.groupe else { return }
-        allerSiBesoin(groupe: g, ecran: memoire[o] ?? g)
+        guard let g = o.groupes.first else { return }
+        allerSiBesoin(groupes: o.groupes, ecran: memoire[o] ?? g)
     }
 
     /// Un ecran de « Plus » a ete ouvert ou ferme.
     func cheminPlusChange() {
         guard onglet == .plus, let e = cheminPlus.last else { return }
-        allerSiBesoin(groupe: e.rawValue, ecran: e.rawValue)
+        allerSiBesoin(groupes: [e.id], ecran: e.id)
     }
 
     func sousOngletChoisi(_ id: String) {
@@ -227,8 +230,8 @@ final class Pont: NSObject {
         naviguer(id)
     }
 
-    private func allerSiBesoin(groupe: String, ecran: String) {
-        if etat?.groupe == groupe { return }
+    private func allerSiBesoin(groupes: [String], ecran: String) {
+        if let g = etat?.groupe, groupes.contains(g) { return }
         naviguer(ecran)
     }
 
@@ -284,7 +287,7 @@ extension Pont: WKScriptMessageHandler {
         case "session":
             let c = corps["connecte"] as? Bool ?? false
             withAnimation(.smooth) { connecte = c }
-            if !c { etat = nil; memoire = [:]; cheminPlus = []; onglet = .accueil }
+            if !c { etat = nil; memoire = [:]; cheminPlus = []; onglet = .premier }
 
         case "etat":
             guard let brut = corps["etat"],

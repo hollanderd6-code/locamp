@@ -1,0 +1,44 @@
+/* ================================================================
+   Portail locataire — mode app iOS native
+   ================================================================
+   Ne s'applique que sous html.natif-ios (posee par l'app iOS). L'app
+   dessine la barre d'onglets, la barre de titre, le menu du compte, les
+   alertes et les toasts en Liquid Glass ; le site ne garde que le contenu,
+   qui defile sous le verre. --natif-haut / --natif-bas : hauteur des
+   barres natives, fournie par l'app.
+   ================================================================ */
+html.natif-ios{
+  --natif-haut:env(safe-area-inset-top);
+  --natif-bas:env(safe-area-inset-bottom);
+  -webkit-text-size-adjust:100%;
+}
+html.natif-ios body{
+  font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior-y:none;
+}
+html.natif-ios h1,html.natif-ios h2,html.natif-ios .brand-name,html.natif-ios .btn,
+html.natif-ios .hero-solde .montant{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
+
+/* ---- Habillage web remplace par le natif ---- */
+html.natif-ios .topbar,
+html.natif-ios .onglets,
+html.natif-ios .toast,
+html.natif-ios #sig-retour{display:none!important}
+
+/* ---- Contenu sous les barres de verre ---- */
+html.natif-ios .content,
+html.natif-ios body[data-onglet] .content{
+  padding-top:calc(var(--natif-haut) + 12px);
+  padding-bottom:24px;
+}
+html.natif-ios .footy,
+html.natif-ios body[data-onglet] .footy{margin-bottom:0;padding-bottom:calc(var(--natif-bas) + 24px)}
+
+/* ---- Vitesse : fondu court, sans cascade ---- */
+html.natif-ios .content > *{animation-duration:.16s!important;animation-delay:0s!important}
+
+/* ---- Touches iOS ---- */
+html.natif-ios .btn{border-radius:999px}
+html.natif-ios .card{border-radius:22px}
+html.natif-ios input,html.natif-ios select,html.natif-ios textarea{font-size:16px} /* pas de zoom au focus */

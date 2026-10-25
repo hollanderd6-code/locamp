@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct LocampGestionApp: App {
+struct LocampApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {

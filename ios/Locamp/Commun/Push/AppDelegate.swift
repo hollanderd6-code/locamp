@@ -8,7 +8,7 @@ import FirebaseMessaging
 /// Notifications push.
 ///
 /// Le serveur envoie par Firebase Cloud Messaging (backend/lib/push.js,
-/// canal « staff », projet locamp-gestion). L'app obtient donc un jeton FCM
+/// canal « staff » pour Gestion, « portail » pour Locataire). L'app obtient donc un jeton FCM
 /// et le confie au site, qui l'enregistre avec la session de l'utilisateur
 /// (POST /api/push/register). Sans le paquet Firebase, l'app fonctionne,
 /// simplement sans push.
@@ -50,10 +50,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let type = d["type"] as? String
         let entite = d["entite"] as? String
         await MainActor.run {
-            let pont = Pont.partage
-            if type == "nouveau_message" { pont.naviguer("messagerie") }
-            else if type == "relance" || type == "paiement_recu" { pont.naviguer("impayes") }
-            else if entite == "facture" { pont.naviguer("factures") }
+            if let ecran = Configuration.ecran(pourNotification: type, entite: entite) {
+                Pont.partage.naviguer(ecran)
+            }
         }
     }
 }

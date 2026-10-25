@@ -93,51 +93,40 @@ struct ToastWeb: Identifiable, Equatable {
     var erreur: Bool
 }
 
-/// Les cinq onglets natifs. Les huit entrees du menu web s'y repartissent :
-/// les quatre moins frequentes vivent sous « Plus ».
-enum OngletApp: String, CaseIterable, Hashable {
-    case accueil, carte, residents, factures, plus
+/// Un onglet natif. La liste est propre a chaque app (Configuration.swift).
+struct OngletApp: Hashable, Identifiable {
+    let id: String
+    let titre: String
+    let symbole: String
+    /// Groupes web (cles de GROUPES_NAV, rubriques du portail) affiches
+    /// par cet onglet. Le premier est l'ecran ouvert par defaut.
+    let groupes: [String]
+    /// Pastille de l'onglet, lue dans les badges publies par le site.
+    var badge: KeyPath<EtatWeb.Badges, Int>? = nil
 
-    /// Groupe web (cle de GROUPES_NAV / data-nav) affiche par l'onglet.
-    var groupe: String? {
-        switch self {
-        case .accueil: "dashboard"
-        case .carte: "carte"
-        case .residents: "residents"
-        case .factures: "factures"
-        case .plus: nil
-        }
-    }
-}
+    static func == (a: OngletApp, b: OngletApp) -> Bool { a.id == b.id }
+    func hash(into h: inout Hasher) { h.combine(id) }
 
-enum EcranPlus: String, CaseIterable, Hashable, Identifiable {
-    case messagerie, compteurs, compta, parametres
-    var id: String { rawValue }
+    /// L'onglet « Plus », qui regroupe les ecrans moins frequents.
+    static let plus = OngletApp(id: "plus", titre: "Plus", symbole: "ellipsis", groupes: [])
 
-    var titre: String {
-        switch self {
-        case .messagerie: "Messagerie"
-        case .compteurs: "Compteurs"
-        case .compta: "Comptabilité"
-        case .parametres: "Réglages"
-        }
-    }
+    static var premier: OngletApp { Configuration.onglets[0] }
 
-    var symbole: String {
-        switch self {
-        case .messagerie: "bubble.left.and.bubble.right"
-        case .compteurs: "gauge.with.dots.needle.33percent"
-        case .compta: "chart.bar.xaxis"
-        case .parametres: "gearshape"
-        }
-    }
-}
-
-extension OngletApp {
     /// Ou range-t-on un groupe web ?
     static func pour(groupe: String) -> (OngletApp, EcranPlus?) {
-        if let o = OngletApp.allCases.first(where: { $0.groupe == groupe }) { return (o, nil) }
-        if let e = EcranPlus(rawValue: groupe) { return (.plus, e) }
-        return (.accueil, nil)
+        if let o = Configuration.onglets.first(where: { $0.groupes.contains(groupe) }) { return (o, nil) }
+        if let e = Configuration.ecransPlus.first(where: { $0.id == groupe }) { return (.plus, e) }
+        return (premier, nil)
     }
+}
+
+/// Un ecran de l'onglet « Plus ».
+struct EcranPlus: Hashable, Identifiable {
+    let id: String
+    let titre: String
+    let symbole: String
+    var badge: KeyPath<EtatWeb.Badges, Int>? = nil
+
+    static func == (a: EcranPlus, b: EcranPlus) -> Bool { a.id == b.id }
+    func hash(into h: inout Hasher) { h.combine(id) }
 }

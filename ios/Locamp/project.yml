@@ -1,0 +1,75 @@
+# Projet Xcode des deux apps iOS natives de Locamp :
+#   - Locamp Gestion   (fr.locamp.gestion) : le logiciel du camping
+#   - Mon camping      (fr.locamp.portail) : l'espace locataire
+# Le code natif (Commun/) est partage ; chaque app a sa configuration
+# (Gestion/Configuration.swift, Portail/Configuration.swift), son icone et
+# son projet Firebase.
+#
+# Le .xcodeproj n'est pas suivi par Git : on le genere avec XcodeGen.
+#   brew install xcodegen
+#   cd ios/Locamp && xcodegen generate && open Locamp.xcodeproj
+name: Locamp
+options:
+  bundleIdPrefix: fr.locamp
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  developmentLanguage: fr
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    ENABLE_PREVIEWS: YES
+    # A renseigner dans Xcode (Signing & Capabilities) ou ici :
+    # DEVELOPMENT_TEAM: XXXXXXXXXX
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: "12.0.0"
+targets:
+  LocampGestion:
+    type: application
+    platform: iOS
+    sources:
+      - path: Commun
+      - path: Gestion
+      # Copie embarquee du pont, injectee si le site deploye ne l'a pas.
+      - path: ../../backend/public/natif.js
+        buildPhase: resources
+      - path: ../../backend/public/natif.css
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: LocampGestion
+        PRODUCT_BUNDLE_IDENTIFIER: fr.locamp.gestion
+        INFOPLIST_FILE: Config/Gestion-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/Gestion.entitlements
+        LOCAMP_URL: "https://locamp.onrender.com/"
+    dependencies:
+      - package: Firebase
+        product: FirebaseMessaging
+
+  LocampLocataire:
+    type: application
+    platform: iOS
+    sources:
+      - path: Commun
+      - path: Portail
+      - path: ../../backend/public/portail/natif-portail.js
+        buildPhase: resources
+      - path: ../../backend/public/portail/natif-portail.css
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: LocampLocataire
+        PRODUCT_BUNDLE_IDENTIFIER: fr.locamp.portail
+        INFOPLIST_FILE: Config/Portail-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/Portail.entitlements
+        LOCAMP_URL: "https://locamp.onrender.com/portail/"
+    dependencies:
+      - package: Firebase
+        product: FirebaseMessaging
