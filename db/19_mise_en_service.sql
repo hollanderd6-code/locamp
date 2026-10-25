@@ -68,6 +68,8 @@ declare
   v_ok    constant text := 'JE CONFIRME QUE CE SONT DES DONNEES D''ESSAI';
   n_journal bigint; n_clot bigint; n_fact bigint; n_regl bigint; n_relances bigint;
   n_remises bigint; n_soldes bigint; n_prest bigint; n_notifs bigint;
+  v_trig  record;
+  v_suspendus text[] := '{}';
 begin
   select nom into v_nom from campings where id = p_camping;
   if v_nom is null then
@@ -121,14 +123,24 @@ begin
   end if;
 
   -- ── exécution ──
-  -- Les protections de db/16 sont levées le temps de cette transaction
+  -- Les protections sont levées le temps de cette transaction
   -- seulement. ALTER TABLE verrouille les tables : aucune autre écriture
   -- ne peut se glisser pendant l'opération, et tout est annulé en bloc
   -- à la moindre erreur.
-  alter table journal_fiscal      disable trigger trg_jf_ecriture_seule;
-  alter table clotures_fiscales   disable trigger trg_clot_ecriture_seule;
-  alter table factures            disable trigger trg_factures_figees;
-  alter table reglements_registre disable trigger trg_reglements_figes;
+  -- Toutes les protections actives de ces tables, QUEL QUE SOIT LEUR NOM :
+  -- la production en porte d'antérieures à db/16 (fiscal_append_only…).
+  -- On ne suspend que celles qui sont actives, et on rétablit exactement
+  -- celles-là. Les contraintes (clés étrangères) ne sont pas concernées.
+  for v_trig in
+    select c.relname as tbl, t.tgname as nom
+    from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and not t.tgisinternal and t.tgenabled <> 'D'
+      and c.relname in ('journal_fiscal', 'clotures_fiscales', 'factures', 'reglements_registre')
+  loop
+    execute format('alter table public.%I disable trigger %I', v_trig.tbl, v_trig.nom);
+    v_suspendus := v_suspendus || (v_trig.tbl || '.' || v_trig.nom);
+  end loop;
 
   update prestations set statut = 'en_cours', facture_id = null
     where camping_id = p_camping and facture_id is not null;
@@ -143,11 +155,12 @@ begin
   delete from journal_fiscal      where camping_id = p_camping;
   delete from compteurs           where camping_id = p_camping and cle like 'facture:%';
 
-  alter table journal_fiscal      enable trigger trg_jf_ecriture_seule;
-  alter table clotures_fiscales   enable trigger trg_clot_ecriture_seule;
-  alter table factures            enable trigger trg_factures_figees;
-  alter table reglements_registre enable trigger trg_reglements_figes;
+  for i in 1 .. coalesce(array_length(v_suspendus, 1), 0) loop
+    execute format('alter table public.%I enable trigger %I',
+      split_part(v_suspendus[i], '.', 1), split_part(v_suspendus[i], '.', 2));
+  end loop;
 
+  v_bilan := v_bilan || jsonb_build_object('protections_suspendues_puis_retablies', to_jsonb(v_suspendus));
   insert into mises_en_service (camping_id, par, bilan)
     values (p_camping, current_user, v_bilan);
 
