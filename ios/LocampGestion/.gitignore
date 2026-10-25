@@ -1,0 +1,5 @@
+# Genere par XcodeGen (project.yml fait foi)
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+build/

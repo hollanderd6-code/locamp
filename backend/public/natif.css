@@ -1,0 +1,77 @@
+/* ================================================================
+   Locamp — mode app iOS native
+   ================================================================
+   Ne s'applique que sous html.natif-ios, classe posee par l'app iOS
+   (script injecte au demarrage) puis par natif.js. Sans elle, cette
+   feuille ne change rien au site.
+
+   L'app dessine en Liquid Glass natif : barre d'onglets, barre de titre,
+   boutons d'action, menus, recherche, alertes et toasts. Le site retire
+   donc son propre habillage et se contente du contenu.
+
+   --natif-haut / --natif-bas : hauteur des barres natives qui flottent
+   au-dessus de la page, en px. L'app les met a jour a chaque changement
+   (rotation, barre d'onglets masquee...). Le contenu defile SOUS le verre :
+   c'est ce qui donne l'effet Liquid Glass.
+   ================================================================ */
+html.natif-ios{
+  --natif-haut:env(safe-area-inset-top);
+  --natif-bas:env(safe-area-inset-bottom);
+  -webkit-text-size-adjust:100%;
+}
+html.natif-ios body{
+  font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none;
+  overscroll-behavior-y:none;
+}
+html.natif-ios h1,html.natif-ios h2,html.natif-ios h3{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
+
+/* ---- Habillage web remplace par le natif ---- */
+html.natif-ios .topbar,
+html.natif-ios .sidebar,
+html.natif-ios .nav-veil,
+html.natif-ios .nav-burger,
+html.natif-ios .sous-nav,
+html.natif-ios #ptr,
+html.natif-ios .kbd-hint,
+html.natif-ios [data-natif-action],
+html.natif-ios [data-natif-recherche]{display:none!important}
+html.natif-ios body::before{display:none!important}
+/* Le titre est affiche en grand par la barre native. */
+html.natif-ios #main .page-head h1{display:none}
+html.natif-ios #main .page-head{margin-bottom:14px}
+
+/* ---- Mise en page : une colonne, contenu sous les barres de verre ---- */
+html.natif-ios .app{display:block;min-height:100vh}
+html.natif-ios .main{
+  max-width:none;
+  padding:calc(var(--natif-haut) + 10px) 16px calc(var(--natif-bas) + 28px);
+}
+@media (min-width:880px){
+  html.natif-ios .main{padding-left:28px;padding-right:28px}
+}
+
+/* ---- Ecran de connexion : plein ecran, aucune barre native ---- */
+html.natif-ios .login-wrap{padding-top:calc(env(safe-area-inset-top) + 24px);padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
+
+/* ---- Panneaux web restants (fiche, apercu PDF...) ----
+   L'app masque sa barre d'onglets pendant qu'ils sont ouverts ; ils
+   n'ont donc a eviter que l'encoche et l'indicateur d'accueil. */
+html.natif-ios .drawer-panel{
+  padding-top:calc(env(safe-area-inset-top) + 24px);
+  padding-bottom:calc(env(safe-area-inset-bottom) + 24px);
+}
+@media (max-width:880px){
+  html.natif-ios .drawer-panel{padding-top:28px;border-radius:28px 28px 0 0}
+}
+html.natif-ios .drawer-backdrop{background:rgba(12,25,20,.28);backdrop-filter:blur(8px) saturate(1.4);-webkit-backdrop-filter:blur(8px) saturate(1.4)}
+
+/* ---- Touches iOS sur les controles qui restent en web ---- */
+html.natif-ios .btn{border-radius:999px;min-height:40px}
+html.natif-ios .card{border-radius:22px}
+html.natif-ios input,html.natif-ios select,html.natif-ios textarea{font-size:16px} /* pas de zoom au focus */
+html.natif-ios .toast{display:none!important} /* les toasts sont natifs */
+
+/* Le site n'a pas de theme sombre : l'app force le mode clair
+   (UIUserInterfaceStyle = Light) tant qu'il n'existe pas. */
