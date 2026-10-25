@@ -31,7 +31,9 @@
   if (window.LocampNatif) return;
 
   const VERSION_PONT = 1;
-  document.documentElement.classList.add('natif', 'natif-ios');
+  // Plateforme posee par l'app (script de demarrage) : 'ios' ou 'android'.
+  const PLATEFORME = (window.LOCAMP_NATIF && window.LOCAMP_NATIF.plateforme) || 'ios';
+  document.documentElement.classList.add('natif', 'natif-' + PLATEFORME);
 
   function envoyer(type, donnees) {
     try { canal.postMessage(Object.assign({ type }, donnees || {})); }
@@ -261,7 +263,7 @@
     if (!jeton || jetonEnregistre) return;
     if (typeof TOKEN === 'undefined' || !TOKEN || !ACTIVE_CAMPING) return;
     jetonEnregistre = true;
-    api('/api/push/register', { method: 'POST', body: { token: jeton, platform: 'ios' } })
+    api('/api/push/register', { method: 'POST', body: { token: jeton, platform: PLATEFORME } })
       .catch((e) => { jetonEnregistre = false; console.warn('[natif] push refuse :', e.message); });
   }
   const logoutPrec = window.logout || (typeof logout === 'function' ? logout : null);

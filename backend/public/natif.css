@@ -1,8 +1,8 @@
 /* ================================================================
    Locamp — mode app iOS native
    ================================================================
-   Ne s'applique que sous html.natif-ios, classe posee par l'app iOS
-   (script injecte au demarrage) puis par natif.js. Sans elle, cette
+   Ne s'applique que sous html.natif, classe posee par l'app iOS ou
+   Android (script injecte au demarrage) puis par natif.js. Sans elle, cette
    feuille ne change rien au site.
 
    L'app dessine en Liquid Glass natif : barre d'onglets, barre de titre,
@@ -14,53 +14,53 @@
    (rotation, barre d'onglets masquee...). Le contenu defile SOUS le verre :
    c'est ce qui donne l'effet Liquid Glass.
    ================================================================ */
-html.natif-ios{
+html.natif{
   --natif-haut:env(safe-area-inset-top);
   --natif-bas:env(safe-area-inset-bottom);
   -webkit-text-size-adjust:100%;
 }
-html.natif-ios body{
+html.natif body{
   font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
   -webkit-tap-highlight-color:transparent;
   -webkit-touch-callout:none;
   overscroll-behavior-y:none;
 }
-html.natif-ios h1,html.natif-ios h2,html.natif-ios h3{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
+html.natif h1,html.natif h2,html.natif h3{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
 
 /* ---- Habillage web remplace par le natif ---- */
-html.natif-ios .topbar,
-html.natif-ios .sidebar,
-html.natif-ios .nav-veil,
-html.natif-ios .nav-burger,
-html.natif-ios .sous-nav,
-html.natif-ios #ptr,
-html.natif-ios .kbd-hint,
-html.natif-ios [data-natif-action],
-html.natif-ios [data-natif-recherche]{display:none!important}
-html.natif-ios body::before{display:none!important}
+html.natif .topbar,
+html.natif .sidebar,
+html.natif .nav-veil,
+html.natif .nav-burger,
+html.natif .sous-nav,
+html.natif #ptr,
+html.natif .kbd-hint,
+html.natif [data-natif-action],
+html.natif [data-natif-recherche]{display:none!important}
+html.natif body::before{display:none!important}
 /* Le titre est affiche en grand par la barre native. */
-html.natif-ios #main .page-head h1{display:none}
-html.natif-ios #main .page-head{margin-bottom:14px}
+html.natif #main .page-head h1{display:none}
+html.natif #main .page-head{margin-bottom:14px}
 
 /* ---- Mise en page : une colonne, contenu sous les barres de verre ---- */
-html.natif-ios .app{display:block;min-height:100vh}
-html.natif-ios .main{
+html.natif .app{display:block;min-height:100vh}
+html.natif .main{
   max-width:none;
   padding:calc(var(--natif-haut) + 10px) 16px calc(var(--natif-bas) + 28px);
 }
 @media (min-width:880px){
-  html.natif-ios .main{padding-left:28px;padding-right:28px}
+  html.natif .main{padding-left:28px;padding-right:28px}
 }
 
 /* ---- Ecran de connexion : plein ecran, aucune barre native ---- */
-html.natif-ios .login-wrap{padding-top:calc(env(safe-area-inset-top) + 24px);padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
+html.natif .login-wrap{padding-top:calc(env(safe-area-inset-top) + 24px);padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
 
 /* ---- Panneaux web restants (fiche, encaissement...) : en feuille iOS ----
    L'app masque ses barres pendant qu'ils sont ouverts. La feuille monte du
    bas, laisse voir le haut de l'ecran comme une feuille iOS 26, et se ferme
    par la croix ronde, le voile ou Echap. */
-html.natif-ios .drawer-backdrop{background:rgba(0,0,0,.32);backdrop-filter:none;-webkit-backdrop-filter:none}
-html.natif-ios .drawer-panel{
+html.natif .drawer-backdrop{background:rgba(0,0,0,.32);backdrop-filter:none;-webkit-backdrop-filter:none}
+html.natif .drawer-panel{
   top:auto!important;bottom:0;left:0;right:0;width:auto!important;max-width:none!important;
   height:calc(100% - env(safe-area-inset-top) - 12px)!important;
   border-radius:34px 34px 0 0!important;
@@ -72,19 +72,19 @@ html.natif-ios .drawer-panel{
 }
 @keyframes natifFeuille{from{transform:translateY(100%)}to{transform:none}}
 /* poignee */
-html.natif-ios .drawer-panel::before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);
+html.natif .drawer-panel::before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);
   width:36px;height:5px;border-radius:99px;background:rgba(60,60,67,.3)}
 /* croix : bouton rond translucide, comme les feuilles iOS */
-html.natif-ios .drawer-close{
+html.natif .drawer-close{
   position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
   background:rgba(120,120,128,.16)!important;color:rgba(60,60,67,.75)!important;
   font-size:22px;line-height:1;border:none;transform:none!important;
 }
-html.natif-ios .drawer h2{font-size:22px;letter-spacing:-.02em;padding-right:44px;margin-top:0}
+html.natif .drawer h2{font-size:22px;letter-spacing:-.02em;padding-right:44px;margin-top:0}
 @media (min-width:880px){
   /* iPad : feuille centree, comme une feuille de formulaire */
-  html.natif-ios .drawer-panel{left:50%!important;right:auto;width:min(620px,92vw)!important;
+  html.natif .drawer-panel{left:50%!important;right:auto;width:min(620px,92vw)!important;
     transform:translateX(-50%);height:calc(100% - 80px)!important;border-radius:34px!important;bottom:40px;
     animation:none!important}
 }
@@ -92,13 +92,19 @@ html.natif-ios .drawer h2{font-size:22px;letter-spacing:-.02em;padding-right:44p
 /* ---- Vitesse ----
    La cascade d'entree des vues (jusqu'a 0,6 s) donnait une impression de
    lenteur a chaque onglet : dans l'app, un fondu court, sans decalage. */
-html.natif-ios #main > *{animation-duration:.16s!important;animation-delay:0s!important}
+html.natif #main > *{animation-duration:.16s!important;animation-delay:0s!important}
 
 /* ---- Touches iOS sur les controles qui restent en web ---- */
-html.natif-ios .btn{border-radius:999px;min-height:40px}
-html.natif-ios .card{border-radius:22px}
-html.natif-ios input,html.natif-ios select,html.natif-ios textarea{font-size:16px} /* pas de zoom au focus */
-html.natif-ios .toast{display:none!important} /* les toasts sont natifs */
+html.natif .btn{border-radius:999px;min-height:40px}
+html.natif .card{border-radius:22px}
+html.natif input,html.natif select,html.natif textarea{font-size:16px} /* pas de zoom au focus */
+html.natif .toast{display:none!important} /* les toasts sont natifs */
 
 /* Le site n'a pas de theme sombre : l'app force le mode clair
    (UIUserInterfaceStyle = Light) tant qu'il n'existe pas. */
+
+/* ---- Android : feuille Material 3 (coins 28 dp, poignee 32 x 4) ---- */
+html.natif-android .drawer-panel{border-radius:28px 28px 0 0!important}
+html.natif-android .drawer-panel::before{width:32px;height:4px;background:rgba(0,0,0,.28)}
+html.natif-android body{font-family:system-ui,"Roboto",sans-serif}
+html.natif-android h1,html.natif-android h2,html.natif-android h3{font-family:system-ui,"Roboto",sans-serif}

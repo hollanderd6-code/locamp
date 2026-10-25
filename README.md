@@ -8,6 +8,7 @@ Logiciel de gestion de camping résidentiel (location longue durée).
 - `db/` — migrations SQL (à exécuter dans Supabase, dans l'ordre — voir `db/LISEZ-MOI.md`).
 - `mobile/gestion`, `mobile/portail` — applications Capacitor (iOS/Android).
 - `ios/Locamp` — apps iOS natives SwiftUI (Liquid Glass) : Gestion et Locataire, qui affichent le site dans une coquille native. Voir `ios/README.md`.
+- `android/` — apps Android natives Kotlin / Jetpack Compose (Material 3) : Gestion et Locataire, même pont avec le site. Voir `android/README.md`.
 - `app/`, `twa-manifest.json` — application Android TWA (Bubblewrap).
 - `outils/` — scripts de correctifs ponctuels déjà appliqués (historique).
 

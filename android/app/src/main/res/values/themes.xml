@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ecran de demarrage (androidx.core.splashscreen), puis le theme de l'app. -->
+    <style name="Theme.Locamp.Demarrage" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/fond_demarrage</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Locamp</item>
+    </style>
+
+    <style name="Theme.Locamp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ivoire</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
