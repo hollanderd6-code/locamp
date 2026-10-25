@@ -73,3 +73,23 @@ targets:
     dependencies:
       - package: Firebase
         product: FirebaseMessaging
+
+# Un schema par app : les deux apparaissent dans le selecteur en haut
+# d'Xcode (a gauche du choix de l'appareil).
+schemes:
+  LocampGestion:
+    build:
+      targets:
+        LocampGestion: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  LocampLocataire:
+    build:
+      targets:
+        LocampLocataire: all
+    run:
+      config: Debug
+    archive:
+      config: Release
