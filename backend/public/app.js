@@ -1945,12 +1945,25 @@ function resContrat(r) {
 const resDu = (r) => Number(r.solde || 0) > 0.005;
 
 const RES_FILTRES = [
-  ['tous', 'Tous', () => true],
-  ['renouveler', 'À renouveler', (r) => r.actif !== false && resContrat(r).ko],
-  ['impayes', 'Impayés', (r) => resDu(r)],
-  ['pieces', 'Pièces manquantes', (r) => r.actif !== false && resAssurance(r).ko],
-  ['inactifs', 'Inactifs', (r) => r.actif === false],
+  ['tous', 'Tous', (r) => r.actif !== false],
+  ['impayes', 'Solde dû', (r) => resDu(r)],
+  ['completer', 'À compléter', (r) => r.actif !== false && (resContrat(r).ko || resAssurance(r).ko)],
+  ['inactifs', 'Anciens', (r) => r.actif === false],
 ];
+
+/* L'etat du dossier en un mot : ce qui manque d'abord, le plus grave en
+   premier. Le detail (dates) reste dans l'infobulle et sur la fiche. */
+function resDossier(r) {
+  const ct = resContrat(r), as = resAssurance(r);
+  const out = [];
+  if (ct.ko) {
+    const txt = !r.contrat ? 'Sans contrat' : /Expir/.test(ct.txt) ? 'Contrat expiré' : /Non sign/.test(ct.txt) ? 'Contrat à signer' : 'Contrat à renouveler';
+    out.push({ txt, cls: /expir|Sans/i.test(txt) ? 'rouge' : 'bleu', titre: ct.txt });
+  }
+  if (as.ko) out.push({ txt: as.txt === 'Manquante' ? 'Assurance manquante' : /Expir/.test(as.txt) && !/dans/.test(as.txt) ? 'Assurance expirée' : 'Assurance à renouveler', cls: 'ambre', titre: 'Assurance : ' + as.txt });
+  if (!out.length) out.push({ txt: 'Complet', cls: 'vert', titre: `Contrat : ${ct.txt} · Assurance : ${as.txt}` });
+  return out;
+}
 
 function resVisibles() {
   const f = (RES_FILTRES.find((x) => x[0] === RES_FILTRE) || RES_FILTRES[0])[2];
@@ -1965,23 +1978,23 @@ function resVisibles() {
 }
 
 function resLigne(r) {
-  const ct = resContrat(r);
-  const as = resAssurance(r);
   const emp = r.emplacement_id ? RES_CACHE.empNum[r.emplacement_id] : null;
   const du = resDu(r);
+  const ini = `${(r.prenom || '').trim().charAt(0)}${(r.nom || '').trim().charAt(0)}`.toUpperCase();
   return `
     <tr class="row-click" data-act="allerA" data-a1="#/residents/${r.id}">
-      <td style="padding:9px 12px">
-        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px">
-          ${esc(r.prenom || '')} ${esc(r.nom)}${r.actif === false ? ' <span class="badge indisponible">inactif</span>' : ''}</div>
-        <div class="muted" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px">
-          ${esc(r.email || r.telephone || '—')}</div>
+      <td>
+        <div class="res-qui">
+          <span class="res-av" aria-hidden="true">${esc(ini)}</span>
+          <div style="min-width:0">
+            <div class="res-nom">${esc(r.prenom || '')} ${esc(r.nom)}</div>
+            <div class="muted res-sous">${esc(r.telephone || r.email || '—')}</div>
+          </div>
+        </div>
       </td>
-      <td data-l="Empl." style="padding:9px 12px">${emp ? `<strong>${esc(emp)}</strong>` : '<span class="muted">—</span>'}</td>
-      <td data-l="Contrat" style="padding:9px 12px;font-size:13px;color:${ct.col}">${ct.txt}</td>
-      <td data-l="Assurance" style="padding:9px 12px;font-size:13px;color:${as.col}">${as.txt}</td>
-      <td class="right" data-l="Solde" style="padding:9px 12px;font-variant-numeric:tabular-nums;
-          ${du ? 'color:var(--rouge);font-weight:600' : ''}">${du || Number(r.solde || 0) < -0.005 ? eur(r.solde) : '—'}</td>
+      <td data-l="Emplacement"><span>${emp ? `<strong>${esc(emp.split(' · ')[0])}</strong>${emp.includes(' · ') ? ` <span class="muted">· ${esc(emp.split(' · ').slice(1).join(' · '))}</span>` : ''}` : '<span class="muted">—</span>'}</span></td>
+      <td data-l="Dossier"><div class="res-dossier">${resDossier(r).map((d) => `<span class="etiq ${d.cls}" title="${esc(d.titre)}">${esc(d.txt)}</span>`).join('')}</div></td>
+      <td class="right" data-l="Solde" style="font-variant-numeric:tabular-nums;${du ? 'color:var(--rouge);font-weight:600' : 'color:var(--brume)'}">${du ? eur(r.solde) : Number(r.solde || 0) < -0.005 ? 'Avance ' + eur(-Number(r.solde)) : 'À jour'}</td>
     </tr>`;
 }
 
@@ -1990,7 +2003,7 @@ function majListeResidents() {
   if (!body) return;
   const v = resVisibles();
   body.innerHTML = v.length ? v.map(resLigne).join('')
-    : `<tr><td colspan="5" class="muted" style="padding:18px">Aucun résident ne correspond${RES_FILTRE === 'tous' && !RES_Q ? '. Créer le premier avec « Nouveau résident ».' : '.'}</td></tr>`;
+    : `<tr><td colspan="4" class="muted" style="padding:18px">Aucun résident ne correspond${RES_FILTRE === 'tous' && !RES_Q ? '. Créer le premier avec « Nouveau résident ».' : '.'}</td></tr>`;
   const c = $('#res-compte');
   if (c) c.textContent = v.length + (v.length > 1 ? ' résidents affichés' : ' résident affiché');
 }
@@ -2021,68 +2034,35 @@ async function vueResidents() {
 
   const actifs = RES_CACHE.residents.filter((r) => r.actif !== false);
   const compte = (k) => RES_CACHE.residents.filter((RES_FILTRES.find((x) => x[0] === k) || RES_FILTRES[0])[2]).length;
-  const duTotal = RES_CACHE.residents.reduce((s, r) => s + (resDu(r) ? Number(r.solde) : 0), 0);
+  if (!RES_FILTRES.some(([k]) => k === RES_FILTRE)) RES_FILTRE = 'tous';
+  const resume = [
+    `${actifs.length} résident${actifs.length > 1 ? 's' : ''}`,
+    compte('impayes') ? `${compte('impayes')} avec un solde dû` : '',
+    compte('completer') ? `${compte('completer')} dossier${compte('completer') > 1 ? 's' : ''} à compléter` : '',
+  ].filter(Boolean).join(' · ');
 
-  const chiffres = [
-    { k: 'Résidents actifs', v: String(actifs.length), n: RES_CACHE.residents.length - actifs.length
-      ? `${RES_CACHE.residents.length - actifs.length} inactif${RES_CACHE.residents.length - actifs.length > 1 ? 's' : ''}` : 'aucun inactif', col: '' },
-    { k: 'Dû total', v: duTotal > 0.005 ? eur(duTotal) : '—',
-      n: `${compte('impayes')} résident${compte('impayes') > 1 ? 's' : ''} débiteur${compte('impayes') > 1 ? 's' : ''}`,
-      col: duTotal > 0.005 ? 'var(--rouge)' : '' },
-    { k: 'À renouveler', v: String(compte('renouveler')), n: 'contrat échu, non signé ou sous 30 j', col: compte('renouveler') ? RES_AMBRE : '' },
-    { k: 'Pièces manquantes', v: String(compte('pieces')), n: 'assurance absente ou expirée', col: compte('pieces') ? RES_AMBRE : '' },
-  ];
-
-  const puces = RES_FILTRES.map(([k, l]) => {
-    const on = k === RES_FILTRE;
-    return `<button data-act="filtrerResidents" data-a1="${k}"
-      style="padding:5px 12px;border-radius:20px;font-size:13px;cursor:pointer;font-family:inherit;
-             border:1px solid ${on ? 'var(--nuit)' : 'var(--hairline)'};
-             background:${on ? 'var(--nuit)' : 'transparent'};color:${on ? 'var(--ivoire)' : '#5D6E66'};
-             font-weight:${on ? '600' : '400'}">${l} ${compte(k)}</button>`;
-  }).join('');
-
-  /* Largeur bornee : au-dela, l'oeil ne relie plus un nom a son solde. */
   $('#main').innerHTML = `
-    <div style="max-width:1180px">
-      <div class="page-head"><div><h1>Résidents</h1>
-        <div class="muted" style="font-size:13.5px;margin-top:4px">
-          ${actifs.length} résident${actifs.length > 1 ? 's' : ''} actif${actifs.length > 1 ? 's' : ''}${compte('renouveler') ? ' · ' + compte('renouveler') + ' contrat' + (compte('renouveler') > 1 ? 's' : '') + ' à renouveler' : ''}${compte('impayes') ? ' · ' + compte('impayes') + ' impayé' + (compte('impayes') > 1 ? 's' : '') : ''}
-        </div></div>
-        <div class="toolbar">
-          <input class="search" id="res-search" data-act="chercherResidents" data-evt="input" data-a1="@value"
-                 placeholder="Rechercher un nom, un e-mail, un emplacement" value="${esc(RES_Q)}" style="min-width:280px">
-          <button class="btn btn-primary" data-act="formResident">Nouveau résident</button>
-        </div></div>
+      <div class="page-head"><div><h1>Résidents</h1><div class="muted">${resume}</div></div>
+        <button class="btn btn-primary" data-act="formResident">Nouveau résident</button></div>
 
-      <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
-        ${chiffres.map((c, i) => `
-          <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
-            <div style="font-size:13px;font-weight:500;color:var(--brume)">${c.k}</div>
-            <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col : ''}">${c.v}</div>
-            <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
-          </div>`).join('')}
-      </div>
-
-      <div id="res-puces" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-        ${puces}
+      <div class="liste-outils">
+        <input class="search" id="res-search" data-act="chercherResidents" data-evt="input" data-a1="@value"
+               placeholder="Nom, emplacement, e-mail, téléphone" value="${esc(RES_Q)}" aria-label="Rechercher un résident">
+        <div class="seg" role="tablist" aria-label="Filtres">
+          ${RES_FILTRES.map(([k, l]) => `<button role="tab" aria-selected="${k === RES_FILTRE}" class="${k === RES_FILTRE ? 'actif' : ''}"
+            data-act="filtrerResidents" data-a1="${k}">${l} <span>${compte(k)}</span></button>`).join('')}
+        </div>
         <span id="res-compte" class="muted" style="margin-left:auto;font-size:12.5px"></span>
       </div>
 
       <div class="card" style="padding:0;overflow:hidden">
-        <table>
+        <table class="table-res">
           <thead><tr>
-            <th style="padding:10px 12px">Résident</th>
-            <th style="padding:10px 12px">Empl.</th>
-            <th style="padding:10px 12px">Contrat</th>
-            <th style="padding:10px 12px">Assurance</th>
-            <th class="right" style="padding:10px 12px">Solde</th>
+            <th>Résident</th><th>Emplacement</th><th>Dossier</th><th class="right">Solde</th>
           </tr></thead>
           <tbody id="res-body"></tbody>
         </table>
-      </div>
-      <p class="muted" style="margin:10px 0 0;font-size:12.5px">Un solde positif est une somme due. Cliquez une ligne pour ouvrir la fiche.</p>
-    </div>`;
+      </div>`;
 
   majListeResidents();
 }
@@ -2115,7 +2095,7 @@ async function vueFicheClient(id) {
     (g.affectations || []).forEach((a) => {
       if (!a || !a.facture_id) return;
       (payParFacture[a.facture_id] ||= []).push({
-        mode: _modeLib[g.mode] || g.mode, montant: Number(a.montant || 0), date: g.date_reglement, reference: g.reference || null,
+        mode: _modeLib[g.mode] || lib(g.mode), montant: Number(a.montant || 0), date: g.date_reglement, reference: g.reference || null,
       });
     });
   });
@@ -2136,37 +2116,41 @@ async function vueFicheClient(id) {
   const nbEnCours = (prestations || []).filter((p) => p.statut === 'en_cours').length;
 
   $('#main').innerHTML = `
-    <div class="page-head">
-      <div>
-        <div class="eyebrow"><a href="#/residents" style="color:inherit;text-decoration:none">← Résidents</a></div>
+    <div class="eyebrow"><a href="#/residents">← Résidents</a></div>
+    <div class="fiche-tete">
+      <span class="fiche-av" aria-hidden="true">${esc(`${(r.prenom || '').trim().charAt(0)}${(r.nom || '').trim().charAt(0)}`.toUpperCase())}</span>
+      <div class="fiche-id">
         <h1>${esc(r.civilite || '')} ${esc(r.prenom || '')} ${esc(r.nom)}</h1>
-        <div class="muted" style="margin-top:4px">
-          ${emplacement ? `Empl. <strong>${esc(emplacement.numero)}</strong>${emplacement.secteur ? ' · ' + esc(emplacement.secteur) : ''}` : 'Aucun emplacement'}
-          ${r.compte_comptable ? ` · Compte <strong>${esc(r.compte_comptable)}</strong>` : ''}
-          ${r.email ? ' · ' + esc(r.email) : ''}
+        <div class="muted">
+          ${emplacement ? `<strong style="color:var(--encre)">${esc(emplacement.numero)}</strong>${emplacement.secteur ? ' · ' + esc(emplacement.secteur) : ''}` : 'Aucun emplacement'}
           ${r.telephone ? ' · ' + esc(r.telephone) : ' · <span style="color:var(--rouge)">téléphone manquant</span>'}
-          ${(() => { if (!r.assurance_expire_le) return ' · <span class="badge en_retard" title="Aucune attestation d\u2019assurance enregistrée">assurance manquante</span>';
+          ${r.email ? ' · ' + esc(r.email) : ''}
+          ${r.compte_comptable ? ' · compte ' + esc(r.compte_comptable) : ''}
+        </div>
+        ${r.adresse ? `<div class="muted">${esc(r.adresse)}</div>` : ''}
+        <div class="fiche-etiqs">
+          ${(() => { if (!r.assurance_expire_le) return '<span class="etiq rouge" title="Aucune attestation d\u2019assurance enregistrée">assurance manquante</span>';
             const jr = Math.floor((new Date(r.assurance_expire_le) - new Date()) / 86400000);
-            if (jr < 0) return ` · <span class="badge en_retard" title="Attestation expirée le ${dfr(r.assurance_expire_le)}">assurance expirée</span>`;
-            if (jr <= 60) return ` · <span class="badge partielle" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}expire le ${dfr(r.assurance_expire_le)}">assurance : ${jr} j</span>`;
-            return ` · <span class="badge reglee" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}valable jusqu\u2019au ${dfr(r.assurance_expire_le)}">assurance OK</span>`; })()}
-          ${(() => { if (!lesContrats.length) return ' · <span class="badge en_retard" title="Aucun contrat de location enregistré">contrat manquant</span>';
+            if (jr < 0) return `<span class="etiq rouge" title="Attestation expirée le ${dfr(r.assurance_expire_le)}">assurance expirée</span>`;
+            if (jr <= 60) return `<span class="etiq ambre" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}expire le ${dfr(r.assurance_expire_le)}">assurance : ${jr} j</span>`;
+            return `<span class="etiq vert" title="${r.assurance_ref ? esc(r.assurance_ref) + ' — ' : ''}valable jusqu\u2019au ${dfr(r.assurance_expire_le)}">assurance OK</span>`; })()}
+          ${(() => { if (!lesContrats.length) return '<span class="etiq rouge" title="Aucun contrat de location enregistré">contrat manquant</span>';
             // contrat de référence : celui qui finit le plus tard (sans date_fin = illimité)
             const sansFin = lesContrats.find((c) => !c.date_fin);
-            if (sansFin) return ` · <span class="badge reglee" title="Contrat ${esc(sansFin.numero || '')} sans date de fin">contrat OK</span>`;
+            if (sansFin) return `<span class="etiq vert" title="Contrat ${esc(sansFin.numero || '')} sans date de fin">contrat OK</span>`;
             const ref = lesContrats.reduce((m, c) => (!m || c.date_fin > m.date_fin ? c : m), null);
             const jr = Math.floor((new Date(ref.date_fin) - new Date()) / 86400000);
             const sig = ref.statut === 'signe' ? ' · signé' : ' · à faire signer';
-            if (jr < 0) return ` · <span class="badge en_retard" title="Contrat ${esc(ref.numero || '')} expiré le ${dfr(ref.date_fin)} — pensez au renouvellement">contrat expiré</span>`;
-            if (jr <= 60) return ` · <span class="badge partielle" title="Contrat ${esc(ref.numero || '')}${sig} — expire le ${dfr(ref.date_fin)}">contrat : ${jr} j${ref.statut !== 'signe' ? ' · non signé' : ''}</span>`;
-            return ` · <span class="badge ${ref.statut === 'signe' ? 'reglee' : 'partielle'}" title="Contrat ${esc(ref.numero || '')}${sig} — jusqu\u2019au ${dfr(ref.date_fin)}">${ref.statut === 'signe' ? 'contrat OK' : 'contrat non signé'}</span>`; })()}
+            if (jr < 0) return `<span class="etiq rouge" title="Contrat ${esc(ref.numero || '')} expiré le ${dfr(ref.date_fin)} — pensez au renouvellement">contrat expiré</span>`;
+            if (jr <= 60) return `<span class="etiq ambre" title="Contrat ${esc(ref.numero || '')}${sig} — expire le ${dfr(ref.date_fin)}">contrat : ${jr} j${ref.statut !== 'signe' ? ' · non signé' : ''}</span>`;
+            return `<span class="etiq ${ref.statut === 'signe' ? 'vert' : 'ambre'}" title="Contrat ${esc(ref.numero || '')}${sig} — jusqu\u2019au ${dfr(ref.date_fin)}">${ref.statut === 'signe' ? 'contrat OK' : 'contrat non signé'}</span>`; })()}
         </div>
-        ${r.adresse ? `<div class="muted" style="margin-top:2px">${esc(r.adresse)}</div>` : ''}
       </div>
-      <div class="toolbar">
+      <div class="fiche-actions">
+        <button class="btn btn-primary" data-act="encaisserClient" data-a1="${id}">Encaisser</button>
+        <button class="btn btn-ghost" data-act="messageRapide" data-a1="${id}">Message</button>
         <button class="btn btn-ghost" data-act="formResident" data-a1="${id}">Modifier</button>
         <button class="btn btn-ghost" data-act="nouveauContrat" data-a1="${id}">Nouveau contrat</button>
-        <button class="btn btn-ghost" data-act="encaisserClient" data-a1="${id}">Encaisser</button>
       </div>
     </div>
 
@@ -2187,14 +2171,14 @@ async function vueFicheClient(id) {
     </div>` : ''}
 
     <div class="fiche-tabs">
-      ${tabBtn('prestations', `Prestations${nbEnCours ? ` (${nbEnCours})` : ''}`, true)}
-      ${tabBtn('factures', `Factures${factures.length ? ` (${factures.length})` : ''}`, false)}
+      ${tabBtn('factures', `Factures${factures.length ? ` (${factures.length})` : ''}`, true)}
+      ${tabBtn('prestations', `Prestations${nbEnCours ? ` (${nbEnCours})` : ''}`, false)}
       ${tabBtn('compte', 'Compte', false)}
       ${tabBtn('messages', `Messages${nbNonLus ? ` (${nbNonLus})` : ''}`, false)}
       ${tabBtn('documents', 'Documents', false)}
     </div>
 
-    <section data-panel="prestations">
+    <section data-panel="prestations" class="hidden">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <h2 style="margin:0">Prestations</h2>
@@ -2229,7 +2213,7 @@ async function vueFicheClient(id) {
       </div>
     </section>
 
-    <section data-panel="factures" class="hidden">
+    <section data-panel="factures">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <h2 style="margin:0">Factures</h2>

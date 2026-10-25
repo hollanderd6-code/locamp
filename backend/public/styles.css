@@ -1654,3 +1654,49 @@ body .sidebar .sidebar-foot .user-ini,.topbar-ini{background:var(--sapin-pale);b
 .cs-tuile{height:44px;border-radius:8px;font:700 11.5px "Inter",sans-serif;cursor:pointer;padding:0}
 .cs-tuile.estompe{opacity:.2}
 .map-panel-sec h3{text-transform:none;letter-spacing:0;font-size:13px;color:var(--encre)}
+
+/* ---- Listes : outils, controle segmente, etiquettes ---- */
+.liste-outils{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
+.liste-outils .search{width:300px;max-width:100%;min-height:40px}
+.seg{display:inline-flex;gap:2px;padding:3px;background:var(--ivoire-2);border-radius:10px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{min-height:34px;padding:0 12px;border:0;border-radius:8px;background:transparent;font:500 13px "Inter",sans-serif;color:#3A4640;cursor:pointer;white-space:nowrap}
+.seg button span{color:var(--brume)}
+.seg button.actif{background:var(--carte);color:var(--encre);font-weight:600;box-shadow:0 1px 2px rgba(23,32,28,.08)}
+.etiq{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:3px 9px;border-radius:6px;white-space:nowrap}
+.etiq.vert{background:var(--sapin-pale);color:#143D30}
+.etiq.ambre{background:var(--laiton-pale);color:#7A4E08}
+.etiq.bleu{background:var(--bleu-pale);color:var(--bleu)}
+.etiq.rouge{background:var(--rouge-pale);color:var(--rouge)}
+.etiq.gris{background:var(--gris-pale);color:var(--brume)}
+.table-res td{padding:10px 14px}
+.table-res th{padding:11px 14px}
+.res-qui{display:flex;align-items:center;gap:10px}
+.res-av{width:34px;height:34px;border-radius:17px;background:var(--sapin-pale);color:#143D30;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex:none}
+.res-nom{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-sous{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-dossier{display:flex;gap:6px;flex-wrap:wrap}
+@media (max-width:640px){
+  .liste-outils .search{width:100%}
+  .liste-outils #res-compte{display:none}
+  .table-res td{padding:6px 0}
+  .card .table-res tbody td:first-child{padding-bottom:8px}
+}
+
+/* ---- Fiche resident ---- */
+.fiche-tete{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin:4px 0 18px}
+.fiche-av{width:56px;height:56px;border-radius:28px;background:var(--sapin-pale);color:#143D30;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;flex:none}
+.fiche-id{flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px}
+.fiche-id h1{margin:0}
+.fiche-etiqs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.fiche-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:640px){
+  .fiche-av{width:44px;height:44px;font-size:15px}
+  .fiche-actions{width:100%}
+  .fiche-actions .btn{flex:1 1 calc(50% - 4px)}
+}
+@media (max-width:640px){
+  .fiche-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fiche-actions .btn-primary{grid-column:1 / -1}
+  .fiche-actions .btn{width:auto}
+}
