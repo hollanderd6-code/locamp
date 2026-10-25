@@ -312,9 +312,22 @@
   /* ---------- Observation ----------
      Les vues reecrivent #main a chaque filtre : on observe plutot que de
      modifier les quarante vues. Les badges vivent hors de #main. */
-  const obs = new MutationObserver(() => { publierSession(); publierSuperposition(); publier(); });
+  /* Un seul passage par image, quel que soit le nombre de mutations : la
+     carte en edition ou une liste filtree en produisent des centaines. */
+  let planifie = false;
+  function tout() {
+    planifie = false;
+    publierSession(); publierSuperposition(); publier();
+  }
+  const obs = new MutationObserver(() => {
+    if (planifie) return;
+    planifie = true;
+    requestAnimationFrame(tout);
+  });
+  // Ajouts et retraits d'elements (vues, tiroir, fenetres), et les seuls
+  // attributs qui portent un etat : session, tiroir, badges, bouton desactive.
   obs.observe(document.body, {
-    childList: true, subtree: true, characterData: true,
+    childList: true, subtree: true,
     attributes: true, attributeFilter: ['class', 'style', 'disabled'],
   });
   window.addEventListener('hashchange', publier);

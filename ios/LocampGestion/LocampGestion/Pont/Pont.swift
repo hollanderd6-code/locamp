@@ -34,6 +34,8 @@ final class Pont: NSObject {
     /// rouvre « Reglements » si c'est la qu'on etait.
     @ObservationIgnored private var memoire: [OngletApp: String] = [:]
     @ObservationIgnored private var marges = UIEdgeInsets.zero
+    @ObservationIgnored private var margesSwiftUI = UIEdgeInsets.zero
+    @ObservationIgnored private var margesUIKit = UIEdgeInsets.zero
     @ObservationIgnored private var jetonPush: String?
 
     @ObservationIgnored let adresse: URL = {
@@ -95,7 +97,21 @@ final class Pont: NSObject {
         rafraichir.addTarget(self, action: #selector(tirerPourRafraichir(_:)), for: .valueChanged)
         wv.scrollView.refreshControl = rafraichir
 
-        wv.load(URLRequest(url: adresse))
+        // Les polices Google bloquent l'affichage le temps d'un aller-retour
+        // vers Google ; l'app utilise la police systeme (natif.css). On les
+        // ecarte avant le premier chargement, en quelques millisecondes.
+        let regles = #"""
+        [{"trigger":{"url-filter":"^https?://fonts\\.(googleapis|gstatic)\\.com/"},"action":{"type":"block"}}]
+        """#
+        let url = adresse
+        WKContentRuleListStore.default().compileContentRuleList(
+            forIdentifier: "locamp-polices", encodedContentRuleList: regles
+        ) { liste, _ in
+            DispatchQueue.main.async {
+                if let liste { wv.configuration.userContentController.add(liste) }
+                wv.load(URLRequest(url: url))
+            }
+        }
         return wv
     }
 
@@ -160,7 +176,20 @@ final class Pont: NSObject {
 
     /// Hauteur des barres natives qui recouvrent la page.
     func definirMarges(_ m: EdgeInsets) {
-        let ui = UIEdgeInsets(top: m.top, left: m.leading, bottom: m.bottom, right: m.trailing)
+        margesSwiftUI = UIEdgeInsets(top: m.top, left: m.leading, bottom: m.bottom, right: m.trailing)
+        fusionnerMarges()
+    }
+
+    func definirMargesUIKit(_ m: UIEdgeInsets) {
+        margesUIKit = m
+        fusionnerMarges()
+    }
+
+    /// Deux mesures (SwiftUI, UIKit) : on garde la plus grande, bord par bord.
+    /// Mieux vaut quelques points de vide qu'une ligne cachee sous une barre.
+    private func fusionnerMarges() {
+        let a = margesSwiftUI, b = margesUIKit
+        let ui = UIEdgeInsets(top: max(a.top, b.top), left: 0, bottom: max(a.bottom, b.bottom), right: 0)
         guard ui != marges else { return }
         marges = ui
         appliquerMarges()

@@ -67,6 +67,12 @@ html.natif-ios .drawer-panel{
 }
 html.natif-ios .drawer-backdrop{background:rgba(12,25,20,.28);backdrop-filter:blur(8px) saturate(1.4);-webkit-backdrop-filter:blur(8px) saturate(1.4)}
 
+/* ---- Vitesse ----
+   La cascade d'entree des vues (jusqu'a 0,6 s) donnait une impression de
+   lenteur a chaque onglet : dans l'app, un fondu court, sans decalage. */
+html.natif-ios #main > *{animation-duration:.16s!important;animation-delay:0s!important}
+html.natif-ios .drawer-panel{animation-duration:.22s}
+
 /* ---- Touches iOS sur les controles qui restent en web ---- */
 html.natif-ios .btn{border-radius:999px;min-height:40px}
 html.natif-ios .card{border-radius:22px}

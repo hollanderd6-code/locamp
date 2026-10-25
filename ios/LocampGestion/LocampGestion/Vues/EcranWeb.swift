@@ -16,15 +16,16 @@ struct EcranWeb: View {
     private var etat: EtatWeb? { actif ? pont.etat : nil }
 
     var body: some View {
+        // Le lecteur RESPECTE la zone sure : c'est ce qui lui fait mesurer la
+        // hauteur des barres (ignoresSafeArea sur lui les remettrait a zero —
+        // c'etait le haut des pages coupe). Seul le site deborde dessous.
         GeometryReader { geo in
             WebViewHote(actif: actif)
+                .ignoresSafeArea()
                 .onChange(of: geo.safeAreaInsets, initial: true) { _, m in if actif { pont.definirMarges(m) } }
                 .onChange(of: actif) { _, a in if a { pont.definirMarges(geo.safeAreaInsets) } }
-                .overlay(alignment: .top) { BordFlou(hauteur: geo.safeAreaInsets.top, bord: .top) }
-                .overlay(alignment: .bottom) { BordFlou(hauteur: geo.safeAreaInsets.bottom, bord: .bottom) }
         }
-        .ignoresSafeArea()
-        .background(Color("Fond"))
+        .background(Color("Fond").ignoresSafeArea())
         .navigationTitle(etat?.titre ?? titreParDefaut)
         .toolbarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(etat?.retour == true)
@@ -174,27 +175,5 @@ struct RechercheNative: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-// MARK: - Bord flou
-
-/// Le site defile sous les barres de verre. Sans un leger flou au bord,
-/// le texte de la page croiserait le titre : c'est l'equivalent du
-/// « scroll edge effect » qu'iOS applique a ses propres listes.
-struct BordFlou: View {
-    let hauteur: CGFloat
-    let bord: VerticalEdge
-
-    var body: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .mask(LinearGradient(
-                stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55), .init(color: .clear, location: 1)],
-                startPoint: bord == .top ? .top : .bottom,
-                endPoint: bord == .top ? .bottom : .top))
-            .frame(height: max(0, hauteur + 12))
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
