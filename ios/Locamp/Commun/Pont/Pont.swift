@@ -172,6 +172,12 @@ final class Pont: NSObject {
         appeler("repondre", d.id, valeur)
     }
 
+    /// Un ecran natif a lu des messages : les pastilles web se recalculent.
+    func rafraichirBadges() { appeler("rafraichirBadges") }
+
+    /// L'API a repondu 401 a un ecran natif : le site gere la deconnexion.
+    func sessionExpiree() { appeler("recharger") }
+
     func recevoirJetonPush(_ jeton: String) {
         jetonPush = jeton
         if pret { appeler("jetonPush", jeton) }
@@ -295,6 +301,15 @@ extension Pont: WKScriptMessageHandler {
                   let e = try? JSONDecoder().decode(EtatWeb.self, from: data) else { return }
             etat = e
             synchroniserOnglet(e)
+
+        case "auth":
+            // Session du site, pour les ecrans natifs (messagerie).
+            if let jeton = corps["jeton"] as? String, !jeton.isEmpty,
+               let base = URL(string: corps["base"] as? String ?? "") {
+                ClientAPI.partage.identifiants = .init(base: base, jeton: jeton, camping: corps["camping"] as? String)
+            } else {
+                ClientAPI.partage.identifiants = nil
+            }
 
         case "superposition":
             withAnimation(.smooth(duration: 0.25)) { superposition = corps["ouverte"] as? Bool ?? false }

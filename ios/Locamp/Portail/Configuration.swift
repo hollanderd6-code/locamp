@@ -10,7 +10,8 @@ enum Configuration {
     static let onglets: [OngletApp] = [
         OngletApp(id: "solde", titre: "Accueil", symbole: "house", groupes: ["solde"]),
         OngletApp(id: "factures", titre: "Factures", symbole: "doc.text", groupes: ["factures"]),
-        OngletApp(id: "messages", titre: "Messages", symbole: "bubble.left.and.bubble.right", groupes: ["messages"], badge: \.messagerie),
+        OngletApp(id: "messages", titre: "Messages", symbole: "bubble.left.and.bubble.right", groupes: ["messages"], badge: \.messagerie,
+                  natif: .messagerieLocataire),
         OngletApp(id: "documents", titre: "Documents", symbole: "folder", groupes: ["documents"], badge: \.notifications),
     ]
 

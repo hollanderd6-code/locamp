@@ -54,7 +54,10 @@ struct OngletsView: View {
         TabView(selection: $pont.onglet) {
             ForEach(Configuration.onglets) { o in
                 Tab(o.titre, systemImage: o.symbole, value: o) {
-                    NavigationStack { EcranWeb(actif: pont.onglet == o, titreParDefaut: o.titre) }
+                    NavigationStack {
+                        if let n = o.natif { VueNative(ecran: n) }
+                        else { EcranWeb(actif: pont.onglet == o, titreParDefaut: o.titre) }
+                    }
                 }
                 .badge(o.badge.map { b?[keyPath: $0] ?? 0 } ?? 0)
             }
@@ -136,7 +139,8 @@ struct PlusView: View {
             }
             .navigationTitle("Plus")
             .navigationDestination(for: EcranPlus.self) { e in
-                EcranWeb(actif: pont.onglet == .plus && pont.cheminPlus.last == e, titreParDefaut: e.titre)
+                if let n = e.natif { VueNative(ecran: n) }
+                else { EcranWeb(actif: pont.onglet == .plus && pont.cheminPlus.last == e, titreParDefaut: e.titre) }
             }
         }
         .onChange(of: pont.cheminPlus) { _, _ in pont.cheminPlusChange() }
@@ -228,5 +232,17 @@ struct FenetreVue: View {
         let pc = UIPrintInteractionController.shared
         pc.printFormatter = fenetre.webView.viewPrintFormatter()
         pc.present(animated: true)
+    }
+}
+
+/// Aiguillage vers les ecrans 100 % natifs.
+struct VueNative: View {
+    let ecran: EcranNatif
+
+    var body: some View {
+        switch ecran {
+        case .messagerieGestion: ConversationsView()
+        case .messagerieLocataire: MessagerieLocataireView()
+        }
     }
 }

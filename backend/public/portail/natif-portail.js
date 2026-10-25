@@ -63,9 +63,31 @@
       },
       contexte: {
         campings: [], campingActif: null, exercices: [], exerciceActif: null,
+        nomCamping: texte(document.querySelector('#sous-titre .ctx-camping')) || null,
         utilisateur: { nom, email: '', admin: false, sousTitre: texte($id('sous-titre')) },
       },
     };
+  }
+
+
+  function lireAuth() {
+    return {
+      base: (typeof API !== 'undefined' && API) || location.origin,
+      jeton: (typeof RTOKEN !== 'undefined' && RTOKEN) || null,
+      camping: null,
+    };
+  }
+
+  /* ---------- Session pour les ecrans natifs (messagerie) ----------
+     Les ecrans SwiftUI appellent l'API eux-memes, avec la session du site.
+     Le jeton ne quitte pas l'appareil : il passe du site a l'app, en memoire. */
+  let authPrec = '';
+  function publierAuth() {
+    const a = lireAuth();
+    const json = JSON.stringify(a);
+    if (json === authPrec) return;
+    authPrec = json;
+    envoyer('auth', a);
   }
 
   let dernier = '';
@@ -73,6 +95,7 @@
   function publier() {
     clearTimeout(minuterie);
     minuterie = setTimeout(() => {
+      publierAuth();
       if (!estConnecte()) return;
       const etat = lireEtat();
       const json = JSON.stringify(etat);
@@ -157,6 +180,13 @@
       if (!r) return;
       attentes.delete(id);
       r(valeur);
+    },
+    /* L'ecran natif a lu le fil : les notifications « nouveau message »
+       sont marquees lues, la pastille de l'onglet se recalcule. */
+    rafraichirBadges() {
+      if (typeof majOngletMessages !== 'function') return;
+      majOngletMessages().then(() => { if (typeof marquerMessagesLus === 'function') return marquerMessagesLus(); })
+        .then(() => publier()).catch(() => {});
     },
     jetonPush(t) {
       if (!t || t === jeton) return;

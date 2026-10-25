@@ -44,6 +44,7 @@ struct EtatWeb: Decodable, Equatable {
     struct Contexte: Decodable, Equatable {
         var campings: [Choix]
         var campingActif: String?
+        var nomCamping: String?
         var exercices: [Choix]
         var exerciceActif: String?
         var utilisateur: Utilisateur
@@ -103,6 +104,8 @@ struct OngletApp: Hashable, Identifiable {
     let groupes: [String]
     /// Pastille de l'onglet, lue dans les badges publies par le site.
     var badge: KeyPath<EtatWeb.Badges, Int>? = nil
+    /// Ecran 100 % natif a la place du site (messagerie).
+    var natif: EcranNatif? = nil
 
     static func == (a: OngletApp, b: OngletApp) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
@@ -126,7 +129,13 @@ struct EcranPlus: Hashable, Identifiable {
     let titre: String
     let symbole: String
     var badge: KeyPath<EtatWeb.Badges, Int>? = nil
+    var natif: EcranNatif? = nil
 
     static func == (a: EcranPlus, b: EcranPlus) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
+}
+
+/// Les ecrans dessines entierement en SwiftUI, sans le site.
+enum EcranNatif: Hashable {
+    case messagerieGestion, messagerieLocataire
 }

@@ -16,7 +16,8 @@ enum Configuration {
     ]
 
     static let ecransPlus: [EcranPlus] = [
-        EcranPlus(id: "messagerie", titre: "Messagerie", symbole: "bubble.left.and.bubble.right", badge: \.messagerie),
+        EcranPlus(id: "messagerie", titre: "Messagerie", symbole: "bubble.left.and.bubble.right", badge: \.messagerie,
+                   natif: .messagerieGestion),
         EcranPlus(id: "compteurs", titre: "Compteurs", symbole: "gauge.with.dots.needle.33percent"),
         EcranPlus(id: "compta", titre: "Comptabilité", symbole: "chart.bar.xaxis"),
         EcranPlus(id: "parametres", titre: "Réglages", symbole: "gearshape"),

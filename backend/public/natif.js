@@ -151,11 +151,33 @@
       contexte: {
         campings,
         campingActif: typeof ACTIVE_CAMPING !== 'undefined' ? ACTIVE_CAMPING : null,
+        nomCamping: (campings.find((c) => c.id === (typeof ACTIVE_CAMPING !== 'undefined' ? ACTIVE_CAMPING : null)) || {}).nom || null,
         exercices: opts(exSel).map((o) => ({ id: o.value, nom: texte(o) })),
         exerciceActif: exSel ? exSel.value : null,
         utilisateur: { nom, email: user ? user.email || '' : '', admin: !!(typeof MES_DROITS !== 'undefined' && MES_DROITS.admin) },
       },
     };
+  }
+
+
+  function lireAuth() {
+    return {
+      base: (typeof API !== 'undefined' && API) || location.origin,
+      jeton: (typeof TOKEN !== 'undefined' && TOKEN) || null,
+      camping: (typeof ACTIVE_CAMPING !== 'undefined' && ACTIVE_CAMPING) || null,
+    };
+  }
+
+  /* ---------- Session pour les ecrans natifs (messagerie) ----------
+     Les ecrans SwiftUI appellent l'API eux-memes, avec la session du site.
+     Le jeton ne quitte pas l'appareil : il passe du site a l'app, en memoire. */
+  let authPrec = '';
+  function publierAuth() {
+    const a = lireAuth();
+    const json = JSON.stringify(a);
+    if (json === authPrec) return;
+    authPrec = json;
+    envoyer('auth', a);
   }
 
   /* ---------- Publication, sans doublons ni rafale ---------- */
@@ -164,6 +186,7 @@
   function publier() {
     clearTimeout(minuterie);
     minuterie = setTimeout(() => {
+      publierAuth();
       if (!estConnecte()) return;
       const etat = lireEtat();
       const json = JSON.stringify(etat);
@@ -299,6 +322,10 @@
       if (!r) return;
       attentes.delete(id);
       r(valeur);
+    },
+    /* Un ecran natif a lu des messages : la pastille web se recalcule. */
+    rafraichirBadges() {
+      if (typeof majBadgeMessagerie === 'function') majBadgeMessagerie();
     },
     jetonPush(t) {
       if (!t || t === jeton) return;
