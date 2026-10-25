@@ -55,23 +55,44 @@ html.natif-ios .main{
 /* ---- Ecran de connexion : plein ecran, aucune barre native ---- */
 html.natif-ios .login-wrap{padding-top:calc(env(safe-area-inset-top) + 24px);padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
 
-/* ---- Panneaux web restants (fiche, apercu PDF...) ----
-   L'app masque sa barre d'onglets pendant qu'ils sont ouverts ; ils
-   n'ont donc a eviter que l'encoche et l'indicateur d'accueil. */
+/* ---- Panneaux web restants (fiche, encaissement...) : en feuille iOS ----
+   L'app masque ses barres pendant qu'ils sont ouverts. La feuille monte du
+   bas, laisse voir le haut de l'ecran comme une feuille iOS 26, et se ferme
+   par la croix ronde, le voile ou Echap. */
+html.natif-ios .drawer-backdrop{background:rgba(0,0,0,.32);backdrop-filter:none;-webkit-backdrop-filter:none}
 html.natif-ios .drawer-panel{
-  padding-top:calc(env(safe-area-inset-top) + 24px);
-  padding-bottom:calc(env(safe-area-inset-bottom) + 24px);
+  top:auto!important;bottom:0;left:0;right:0;width:auto!important;max-width:none!important;
+  height:calc(100% - env(safe-area-inset-top) - 12px)!important;
+  border-radius:34px 34px 0 0!important;
+  padding:46px 20px calc(env(safe-area-inset-bottom) + 28px)!important;
+  background:var(--carte,#fff);
+  box-shadow:0 -10px 40px rgba(0,0,0,.18);
+  animation:natifFeuille .32s cubic-bezier(.2,.9,.25,1) both!important;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;
 }
-@media (max-width:880px){
-  html.natif-ios .drawer-panel{padding-top:28px;border-radius:28px 28px 0 0}
+@keyframes natifFeuille{from{transform:translateY(100%)}to{transform:none}}
+/* poignee */
+html.natif-ios .drawer-panel::before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  width:36px;height:5px;border-radius:99px;background:rgba(60,60,67,.3)}
+/* croix : bouton rond translucide, comme les feuilles iOS */
+html.natif-ios .drawer-close{
+  position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(120,120,128,.16)!important;color:rgba(60,60,67,.75)!important;
+  font-size:22px;line-height:1;border:none;transform:none!important;
 }
-html.natif-ios .drawer-backdrop{background:rgba(12,25,20,.28);backdrop-filter:blur(8px) saturate(1.4);-webkit-backdrop-filter:blur(8px) saturate(1.4)}
+html.natif-ios .drawer h2{font-size:22px;letter-spacing:-.02em;padding-right:44px;margin-top:0}
+@media (min-width:880px){
+  /* iPad : feuille centree, comme une feuille de formulaire */
+  html.natif-ios .drawer-panel{left:50%!important;right:auto;width:min(620px,92vw)!important;
+    transform:translateX(-50%);height:calc(100% - 80px)!important;border-radius:34px!important;bottom:40px;
+    animation:none!important}
+}
 
 /* ---- Vitesse ----
    La cascade d'entree des vues (jusqu'a 0,6 s) donnait une impression de
    lenteur a chaque onglet : dans l'app, un fondu court, sans decalage. */
 html.natif-ios #main > *{animation-duration:.16s!important;animation-delay:0s!important}
-html.natif-ios .drawer-panel{animation-duration:.22s}
 
 /* ---- Touches iOS sur les controles qui restent en web ---- */
 html.natif-ios .btn{border-radius:999px;min-height:40px}

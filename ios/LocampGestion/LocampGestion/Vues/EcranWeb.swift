@@ -30,8 +30,13 @@ struct EcranWeb: View {
         .toolbarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(etat?.retour == true)
         .toolbar { if let etat { BarreEcran(etat: etat, pont: pont) } }
+        // Ecrans regroupes (Plan / Emplacements, Factures / Reglements /
+        // Impayes) : controle segmente sous la barre. Masque, comme les
+        // barres, quand un panneau web recouvre la page.
         .safeAreaInset(edge: .top, spacing: 0) {
-            if let etat, etat.onglets.count > 1 { SousOnglets(etat: etat) }
+            if let etat, etat.onglets.count > 1, !pont.superposition {
+                SousOnglets(etat: etat, pont: pont)
+            }
         }
         .modifier(RechercheNative(recherche: etat?.recherche, texte: $texteRecherche))
         .toolbar(pont.superposition ? .hidden : .visible, for: .navigationBar)
@@ -139,7 +144,7 @@ struct MenuCompte: View {
 
 struct SousOnglets: View {
     let etat: EtatWeb
-    @Environment(Pont.self) private var pont
+    let pont: Pont
 
     var body: some View {
         Picker("Section", selection: Binding(
@@ -147,14 +152,23 @@ struct SousOnglets: View {
             set: { pont.sousOngletChoisi($0) })
         ) {
             ForEach(etat.onglets) { o in
-                Text(o.badge > 0 ? "\(o.titre) (\(o.badge))" : o.titre).tag(o.id)
+                Text(o.titre).tag(o.id)
             }
         }
         .pickerStyle(.segmented)
-        .padding(4)
-        .glassEffect(.regular, in: .capsule)
+        .controlSize(.large)
         .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
+        // Fondu de matiere : le site defile dessous sans croiser le texte.
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.7),
+                                             .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+                .ignoresSafeArea(edges: .top)
+        }
+        .accessibilityLabel(etat.titre)
     }
 }
 
