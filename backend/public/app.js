@@ -252,7 +252,7 @@ window.askMois = (defaut = new Date().toISOString().slice(0, 7),
     padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.28);
     transform:translateY(8px) scale(.98);transition:transform .16s cubic-bezier(.3,.9,.3,1)}
   .ask-overlay.in .ask-box{transform:none}
-  .ask-titre{font-family:"Fraunces",serif;font-size:18px;font-weight:600;margin:0 0 8px;color:#14283F}
+  .ask-titre{font-family:"Inter",system-ui,sans-serif;font-size:18px;font-weight:600;margin:0 0 8px;color:#14283F}
   .ask-msg{font-size:14.5px;line-height:1.55;color:#4A5A54;margin:0 0 18px;white-space:normal}
   .ask-input{width:100%;font:15px/1.4 "Inter",sans-serif;padding:11px 13px;margin-bottom:18px;
     border:1px solid #E7E1D4;border-radius:10px;background:#fff}
@@ -564,6 +564,42 @@ function chargerPdfJs() {
 }
 
 const routes = { dashboard: vueDashboard, carte: vueCarte, residents: vueResidents, emplacements: vueEmplacements, contrats: vueContrats, factures: vueFactures, reglements: vueReglements, impayes: vueImpayes, compteurs: vueCompteurs, messagerie: vueMessagerie, compta: vueCompta, signatures: vueSignatures, parametres: vueParametres, administration: vueAdministration };
+/* ---- Menu a 8 entrees ----
+   Chaque entree du menu regroupe des ecrans voisins, presentes en onglets
+   en tete de page (.sous-nav). Les adresses ne changent pas : #/reglements
+   reste #/reglements, il s'affiche simplement sous « Facturation ». */
+const GROUPES_NAV = {
+  carte: [['carte', 'Plan'], ['emplacements', 'Emplacements']],
+  residents: [['residents', 'Résidents'], ['contrats', 'Contrats'], ['signatures', 'Signatures']],
+  factures: [['factures', 'Factures'], ['reglements', 'Règlements'], ['impayes', 'Impayés']],
+  parametres: [['parametres', 'Camping'], ['administration', 'Utilisateurs', 'admin']],
+};
+function groupeNav(name) {
+  for (const [g, ecrans] of Object.entries(GROUPES_NAV)) {
+    if (ecrans.some(([e]) => e === name)) return g;
+  }
+  return name;
+}
+function htmlSousNav(name) {
+  const ecrans = GROUPES_NAV[groupeNav(name)];
+  if (!ecrans) return '';
+  const nImp = ($('#nav-imp-badge')?.textContent || '').trim();
+  return `<nav class="sous-nav" aria-label="Sous-navigation">${ecrans
+    .filter(([, , droit]) => !droit || MES_DROITS[droit])
+    .map(([e, lib]) => `<a href="#/${e}" class="${e === name ? 'active' : ''}"${e === name ? ' aria-current="page"' : ''}>${esc(lib)}${
+      e === 'impayes' && nImp && nImp !== '0' ? ` <span class="n">${esc(nImp)}</span>` : ''}</a>`).join('')}</nav>`;
+}
+/* Les vues reecrivent #main a chaque filtre ou rechargement : la sous-
+   navigation est reposee chaque fois qu'elle a disparu, plutot que de
+   demander a chacune des vues de penser a l'inclure. */
+let _sousNavEcran = null;
+new MutationObserver(() => {
+  const m = $('#main');
+  if (!_sousNavEcran || !m || m.firstElementChild?.classList.contains('sous-nav')) return;
+  if (!m.firstElementChild || m.querySelector(':scope > p.muted:only-child')) return;
+  m.insertAdjacentHTML('afterbegin', htmlSousNav(_sousNavEcran));
+}).observe(document.getElementById('main') || document.body, { childList: true });
+
 let _hashPrec = location.hash;
 function route() {
   const raw = (location.hash.replace('#/', '') || 'dashboard').split('?')[0];
@@ -579,7 +615,9 @@ function route() {
     carteState = null;
   }
   _hashPrec = location.hash;
-  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
+  const groupe = groupeNav(name);
+  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === groupe));
+  _sousNavEcran = (GROUPES_NAV[groupe] && !(name === 'residents' && param)) ? name : null;
   ($('#main').innerHTML = '<p class="muted">Chargement…</p>');
   const fn = (name === 'residents' && param) ? () => vueFicheClient(param) : (routes[name] || vueDashboard);
   fn().catch((e) => { $('#main').innerHTML = `<p class="form-error">${esc(e.message)}</p>`; });
@@ -751,7 +789,7 @@ async function vueDashboard() {
     <div class="card bandeau" style="display:flex;padding:0;margin-bottom:16px">
       ${chiffres.map((c, i) => `
         <div style="flex:1;padding:14px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
-          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
+          <div style="font-size:13px;font-weight:500;color:var(--brume)">${c.k}</div>
           <div style="font-size:24px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col + ';font-weight:600' : ''}">${c.v}</div>
           <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
         </div>`).join('')}
@@ -1859,7 +1897,7 @@ async function vueResidents() {
       <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
         ${chiffres.map((c, i) => `
           <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
-            <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
+            <div style="font-size:13px;font-weight:500;color:var(--brume)">${c.k}</div>
             <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col : ''}">${c.v}</div>
             <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
           </div>`).join('')}
@@ -2458,7 +2496,7 @@ window.formFacturation = async (residentId) => {
 
     <form id="f-fact" style="margin-top:16px">
       <div style="background:#FBF9F4;border:1px solid var(--hairline);border-radius:11px;padding:14px;margin-bottom:16px">
-        <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:10px">Loyer emplacement</div>
+        <div style="font-size:13px;font-weight:600;color:var(--encre);margin-bottom:10px">Loyer emplacement</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input name="loyer_mensuel" type="number" step="0.01" placeholder="Montant TTC / mois" value="${f.loyer_mensuel != null ? f.loyer_mensuel : ''}" style="flex:1;min-width:140px">
           <input name="loyer_tva" type="number" step="0.1" placeholder="TVA %" value="${f.loyer_tva != null ? f.loyer_tva : ''}" style="width:86px">
@@ -2467,7 +2505,7 @@ window.formFacturation = async (residentId) => {
         </div>
       </div>
 
-      <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume);margin-bottom:8px">Lignes récurrentes</div>
+      <div style="font-size:13px;font-weight:600;color:var(--encre);margin-bottom:8px">Lignes récurrentes</div>
       <div id="rec-lignes">${(f.lignes || []).map(ligne).join('') || ligne()}</div>
       <button type="button" class="btn btn-ghost btn-sm" id="rec-add">+ Ajouter une ligne</button>
       <div style="margin-top:16px"><button class="btn btn-primary btn-block">Enregistrer</button></div>
@@ -2716,7 +2754,7 @@ window.formResident = async (id = null) => {
       <label>Attestation valable jusqu\u2019au<input type="date" name="assurance_expire_le" value="${v('assurance_expire_le')}"></label>
       <label>Assureur / n° de police<input name="assurance_ref" value="${v('assurance_ref')}" placeholder="MAIF n° 1234567"></label>
       <div class="full" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--hairline)">
-        <div style="font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brume)">Client entreprise (facultatif)</div>
+        <div style="font-size:13px;font-weight:600;color:var(--encre)">Client entreprise (facultatif)</div>
         <p class="muted" style="margin:4px 0 0;font-size:12.5px">À remplir uniquement pour une société, un CE ou une association.
           Le SIRET déclenche la facturation électronique (Factur-X) ; sans lui, le client est un particulier.</p>
       </div>
@@ -2912,11 +2950,11 @@ async function empFiche(id) {
           </div>
           <div style="display:flex;border-top:1px solid var(--hairline)">
             <div style="flex:1;padding:13px 18px">
-              <div class="muted" style="font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase">Reste dû</div>
+              <div class="muted" style="font-size:13px;font-weight:500">Reste dû</div>
               <div style="font-size:20px;margin-top:4px;font-variant-numeric:tabular-nums;${du > 0.005 ? 'color:var(--rouge);font-weight:600' : ''}">${empEur(du)}</div>
             </div>
             <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
-              <div class="muted" style="font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase">Factures en attente</div>
+              <div class="muted" style="font-size:13px;font-weight:500">Factures en attente</div>
               <div style="font-size:20px;margin-top:4px;font-variant-numeric:tabular-nums">${factures.length || '—'}</div>
             </div>
           </div>
@@ -3427,8 +3465,8 @@ async function facFiche(id) {
     <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
       <div class="card" style="padding:0;overflow:hidden">
         <div style="display:grid;grid-template-columns:1fr 68px 96px 108px;gap:12px;padding:10px 18px;
-                    border-bottom:1px solid var(--hairline);font-size:11px;font-weight:600;
-                    letter-spacing:.08em;text-transform:uppercase;color:var(--brume)">
+                    border-bottom:1px solid var(--hairline);font-size:12.5px;font-weight:500;
+                    color:var(--brume)">
           <div>Poste</div><div style="text-align:right">Qté</div>
           <div style="text-align:right">PU</div><div style="text-align:right">Total</div>
         </div>
@@ -3916,24 +3954,24 @@ async function vueCompteurs() {
 
     <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
       <div style="flex:1;padding:13px 18px">
-        <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Tournée</div>
+        <div style="font-size:13px;font-weight:500;color:var(--brume)">Tournée</div>
         <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${faits} / ${total}</div>
         <div style="height:5px;border-radius:4px;background:var(--hairline);margin-top:9px;overflow:hidden;display:flex">
           <div style="width:${pc}%;background:var(--sapin)"></div>
         </div>
       </div>
       <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
-        <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Jamais relevés</div>
+        <div style="font-size:13px;font-weight:500;color:var(--brume)">Jamais relevés</div>
         <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${compte('jamais') ? 'color:' + CPT_AMBRE : ''}">${compte('jamais') || '—'}</div>
         <div class="muted" style="font-size:12px;margin-top:2px">compteurs à initialiser</div>
       </div>
       <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
-        <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">En retard</div>
+        <div style="font-size:13px;font-weight:500;color:var(--brume)">En retard</div>
         <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${compte('restants') - compte('jamais') ? 'color:var(--rouge);font-weight:600' : ''}">${(compte('restants') - compte('jamais')) || '—'}</div>
         <div class="muted" style="font-size:12px;margin-top:2px">dernier relevé de plus d'un mois</div>
       </div>
       <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
-        <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Prix du ${U}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--brume)">Prix du ${U}</div>
         <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${prixOk ? prixTexte + ' €' : '—'}</div>
         <div class="muted" style="font-size:12px;margin-top:2px">${prixOk ? 'TVA ' + d.taux_tva + ' %' : 'à renseigner'}</div>
       </div>
@@ -6304,15 +6342,15 @@ function impFiche(d) {
     <div style="padding:20px 26px;display:flex;flex-direction:column;gap:16px">
       <div class="card bandeau" style="display:flex;padding:0">
         <div style="flex:1;padding:13px 18px">
-          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Total dû</div>
+          <div style="font-size:13px;font-weight:500;color:var(--brume)">Total dû</div>
           <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${eur(d.total)}</div>
         </div>
         <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
-          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Dont en retard</div>
+          <div style="font-size:13px;font-weight:500;color:var(--brume)">Dont en retard</div>
           <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${d.montantRetard > 0.005 ? 'color:var(--rouge);font-weight:600' : ''}">${d.montantRetard > 0.005 ? eur(d.montantRetard) : '—'}</div>
         </div>
         <div style="flex:1;padding:13px 18px;border-left:1px solid var(--hairline)">
-          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">Plus ancienne</div>
+          <div style="font-size:13px;font-weight:500;color:var(--brume)">Plus ancienne</div>
           <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums">${d.pireRetard > 0 ? d.pireRetard + ' j' : '—'}</div>
         </div>
       </div>
@@ -6413,7 +6451,7 @@ async function vueImpayes() {
     <div class="card bandeau" style="display:flex;padding:0;margin-bottom:14px">
       ${chiffres.map((c, i) => `
         <div style="flex:1;padding:13px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
-          <div style="font-size:11.5px;font-weight:600;letter-spacing:.09em;color:var(--brume);text-transform:uppercase">${c.k}</div>
+          <div style="font-size:13px;font-weight:500;color:var(--brume)">${c.k}</div>
           <div style="font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col + ';font-weight:600' : ''}">${c.v}</div>
           <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
         </div>`).join('')}

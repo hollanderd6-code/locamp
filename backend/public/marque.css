@@ -15,32 +15,36 @@
    Une couleur nouvelle se declare ICI, jamais en clair dans une page.
    ================================================================ */
 :root{
+  /* Refonte 2026 : fond neutre, une seule couleur d'action (le sapin),
+     texte secondaire assez fonce pour passer 4,5:1 sur blanc. Les NOMS
+     des jetons sont conserves : tout ce qui les utilise suit. */
+
   /* Fonds */
-  --ivoire:#F6F3EC;        /* fond general */
+  --ivoire:#F5F6F4;        /* fond general */
   --carte:#FFFFFF;         /* surfaces posees sur le fond */
-  --hairline:#E7E1D4;      /* filets */
+  --hairline:#E3E7E2;      /* filets */
 
   /* Marque */
-  --nuit:#0F231D;          /* barre laterale, aplats profonds */
-  --encre:#1B2E28;         /* texte courant */
-  --brume:#75837C;         /* texte secondaire */
-  --sapin:#175243;         /* couleur d'action */
-  --sapin-hover:#1C614F;
+  --nuit:#17201C;          /* aplats profonds (puce active, avatar) */
+  --encre:#17201C;         /* texte courant */
+  --brume:#5B665F;         /* texte secondaire (5,9:1 sur blanc) */
+  --sapin:#1E5A46;         /* couleur d'action */
+  --sapin-hover:#174A3A;
   --sapin-pale:#E8F0EC;
-  --laiton:#B98A3C;
-  --or-clair:#C9A24E;    /* le laiton sur fond nuit, ou #B98A3C manque de corps */        /* accent, jamais une action */
-  --laiton-pale:#F7EFDD;
+  --laiton:#8A5A12;        /* accent texte (attention, a renouveler) */
+  --or-clair:#C98B2D;      /* accent graphique, jamais du texte sur blanc */
+  --laiton-pale:#FDF1D8;
 
   /* Etats */
-  --rouge:#A8402A;
-  --rouge-pale:#F6E7E2;
+  --rouge:#A33A15;
+  --rouge-pale:#FBE7DC;
 
   /* Elevation et rayons */
-  --shadow-s:0 1px 2px rgba(15,35,29,.05), 0 2px 8px rgba(15,35,29,.04);
-  --shadow-m:0 2px 6px rgba(15,35,29,.06), 0 12px 32px rgba(15,35,29,.07);
-  --shadow-l:0 8px 24px rgba(15,35,29,.10), 0 24px 64px rgba(15,35,29,.12);
-  --r:16px;
-  --r-s:11px;
+  --shadow-s:0 1px 2px rgba(23,32,28,.05);
+  --shadow-m:0 2px 8px rgba(23,32,28,.06), 0 8px 24px rgba(23,32,28,.06);
+  --shadow-l:0 12px 40px rgba(23,32,28,.14);
+  --r:14px;
+  --r-s:10px;
 }
 
 /* ---------------- Le bloc de marque ----------------
@@ -48,20 +52,18 @@
    « L » en CSS, sans les chevrons : deux portes du meme produit ne
    peuvent pas porter deux marques differentes. */
 .brand{display:flex;align-items:center;gap:13px}
-.brand-mark{width:44px;height:44px;flex:none;line-height:0;
-  border-radius:13px;overflow:hidden;
-  box-shadow:0 3px 10px rgba(15,35,29,.30), inset 0 1px 0 rgba(255,255,255,.10)}
+.brand-mark{width:34px;height:34px;flex:none;line-height:0;
+  border-radius:9px;overflow:hidden}
 .brand-mark svg,
 .brand-mark img{width:100%;height:100%;display:block}
 
 /* Le nom se lit desormais lettre a lettre : LOCAMP espace, pas « Locamp »
    serre. C'est ce qui distingue une enseigne d'un titre de paragraphe — et le
    seul endroit du produit ou l'on peut se le permettre. */
-.brand-name{font-family:"Fraunces",serif;font-size:18px;font-weight:600;
-  letter-spacing:.14em;line-height:1.15;text-transform:uppercase}
+.brand-name{font-family:"Inter",system-ui,sans-serif;font-size:17px;font-weight:700;
+  letter-spacing:-.01em;line-height:1.15}
 .brand-sub{font-size:12.5px;color:var(--brume);margin-top:1px}
 
 /* La ligne sous l'enseigne, dans la barre laterale : « GESTION » cote
    exploitant, « MON ESPACE » cote locataire. Deux portes du meme produit. */
-.brand-role{font-size:9.5px;font-weight:600;letter-spacing:.15em;
-  text-transform:uppercase;color:#6F8378;margin-top:3px}
+.brand-role{font-size:12px;font-weight:500;color:var(--brume);margin-top:1px}

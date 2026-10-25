@@ -1,13 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Locamp">
-  <!-- Une lettre, un filet. L'ancienne marque portait aussi trois chevrons et
-       un second cadre : a 28 px, la taille de l'en-tete mobile, ils se
-       refermaient en tache. -->
-  <defs>
-    <linearGradient id="lcOr" x1="0" y1="0" x2=".35" y2="1">
-      <stop offset="0" stop-color="#EBD49A"/><stop offset=".45" stop-color="#C9A24E"/><stop offset="1" stop-color="#A07C33"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="#0F231D"/>
-  <rect x="8" y="8" width="48" height="48" rx="10" fill="none" stroke="#B98A3C" stroke-width=".9" opacity=".45"/>
-  <text x="32" y="45.5" text-anchor="middle" font-family="Fraunces,Georgia,'Times New Roman',serif" font-size="36" font-weight="500" fill="url(#lcOr)">L</text>
+  <!-- Refonte 2026 : un aplat sapin et une lettre blanche, sans degrade ni
+       filet. Le dessin de la lettre est trace (et non du texte) pour ne
+       dependre d'aucune police installee. -->
+  <rect width="64" height="64" rx="14" fill="#1E5A46"/>
+  <path d="M22 15h8v27h15v7H22z" fill="#FFFFFF"/>
 </svg>

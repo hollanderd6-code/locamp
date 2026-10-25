@@ -14,7 +14,7 @@ body{background:
   radial-gradient(700px 420px at -8% 108%, rgba(185,138,60,.09), transparent 55%),
   var(--ivoire);
   color:var(--encre);font:15px/1.6 "Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
-h1,h2{font-family:"Fraunces",serif;letter-spacing:-.015em;margin:0}
+h1,h2{font-family:"Inter",system-ui,sans-serif;letter-spacing:-.015em;margin:0}
 h1{font-size:24px;font-weight:600}
 h2{font-size:18px;font-weight:600}
 .hidden{display:none!important}
@@ -27,7 +27,7 @@ h2{font-size:18px;font-weight:600}
    ici un simple « L » en CSS, sans les chevrons du monogramme : deux
    portes du meme produit ne peuvent pas porter deux marques. */
 .brand-mark{width:42px;height:42px}
-.brand-name{font-family:"Fraunces",serif;font-size:18px;font-weight:700}
+.brand-name{font-family:"Inter",system-ui,sans-serif;font-size:18px;font-weight:700}
 .brand-sub{font-size:12.5px;color:var(--brume)}
 
 /* ---- écrans d'entrée ---- */
@@ -74,7 +74,7 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px
 
 /* ---- hero solde ---- */
 .hero-solde{position:relative;overflow:hidden}
-.hero-solde .montant{font-family:"Fraunces",serif;font-size:38px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.hero-solde .montant{font-family:"Inter",system-ui,sans-serif;font-size:38px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
 .hero-solde .montant.ok{color:var(--sapin)}
 .hero-solde .montant.du{color:var(--rouge)}
 .hero-solde .lib{color:var(--brume);font-size:13.5px;margin-top:4px}
@@ -364,7 +364,7 @@ body[data-onglet="documents"] #sec-rgpd{order:9}
    large ; appliquee a « Bonjour Charles », elle donnait un titre demesure
    sur deux lignes. Le portail reprend la main sur cette instance. */
 .topbar #hello{
-  font-family:"Fraunces",serif;
+  font-family:"Inter",system-ui,sans-serif;
   font-size:19px;font-weight:600;
   letter-spacing:-.01em;text-transform:none;
   line-height:1.2;
