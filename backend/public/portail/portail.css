@@ -675,3 +675,52 @@ label{text-transform:none;letter-spacing:0;font-weight:500;font-size:13px;color:
 .onglets button.actif::before{display:none}
 .onglets em{background:var(--rouge)}
 .btn-cloche{padding:8px 10px;display:flex;align-items:center}
+
+
+/* ================================================================
+   MESSAGERIE — une page dediee, a la maniere d'une app de messages
+   ================================================================
+   L'onglet Messages n'est plus une carte parmi d'autres : le fil occupe
+   la page, la saisie flotte en bas au-dessus des onglets, et le fil se
+   lit comme sur un telephone (jours, groupes, « Lu »). */
+.msg-jour{align-self:center;font-size:11.5px;font-weight:600;color:var(--brume);
+  margin:14px 0 6px;letter-spacing:.01em}
+.msg-jour:first-child{margin-top:0}
+.msg-fil{gap:0}
+.msg-row{max-width:78%;margin-top:2px}
+.msg-row.debut{margin-top:8px}
+.msg-bubble{border-radius:20px;box-shadow:none;font-size:15px;line-height:1.45;padding:9px 14px}
+.msg-row.me .msg-bubble{border-radius:20px 6px 6px 20px}
+.msg-row.me.debut .msg-bubble{border-top-right-radius:20px}
+.msg-row.me.fin .msg-bubble{border-bottom-right-radius:20px}
+.msg-row.me.debut.fin .msg-bubble{border-radius:20px}
+.msg-row.them .msg-bubble{border-radius:6px 20px 20px 6px;border:none;background:#fff;box-shadow:0 1px 2px rgba(15,35,29,.06)}
+.msg-row.them.debut .msg-bubble{border-top-left-radius:20px}
+.msg-row.them.fin .msg-bubble{border-bottom-left-radius:20px}
+.msg-row.them.debut.fin .msg-bubble{border-radius:20px}
+.msg-meta{font-size:11px;margin:4px 6px 0}
+.msg-vide{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;
+  padding:48px 24px;color:var(--brume);font-size:14px;line-height:1.5}
+.msg-vide strong{color:var(--encre);font-size:17px}
+.msg-vide-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--sapin-pale,#E7EFEA);color:var(--sapin);margin-bottom:6px}
+
+/* Saisie : un champ en capsule et un bouton rond, sur une seule ligne. */
+.msg-form{flex-direction:row;align-items:flex-end;gap:8px}
+.msg-form-pied{display:contents}
+.msg-astuce{display:none}
+#msg-corps{min-height:44px;height:44px;border-radius:22px;padding:10px 16px;line-height:1.4;flex:1}
+#btn-msg{width:44px;height:44px;min-height:0;padding:0;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;margin:0}
+.msg-envoyer-txt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* La page Messages */
+body[data-onglet="messages"] .footy{display:none}
+body[data-onglet="messages"] #sec-messages{background:none;border:none;box-shadow:none;padding:0}
+body[data-onglet="messages"] #sec-messages .card-head .eyebrow{display:none}
+body[data-onglet="messages"] .msg-fil{max-height:none;overflow:visible;background:none;border:none;
+  padding:4px 2px calc(150px + env(safe-area-inset-bottom))}
+body[data-onglet="messages"] .msg-form{position:fixed;z-index:49;left:0;right:0;margin:0 auto;max-width:640px;
+  bottom:calc(58px + env(safe-area-inset-bottom));padding:10px 14px;
+  background:linear-gradient(to top, var(--ivoire) 65%, rgba(245,246,244,0))}
+body.en-signature .msg-form{display:none}

@@ -37,6 +37,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+/* Compression gzip/brotli des reponses : app.js pese plusieurs centaines
+   de Ko en clair, et chaque demarrage de l'app iOS le telecharge ou le
+   revalide. Compresse, il est cinq a six fois plus leger. */
+app.use(require('compression')());
 
 /* ==================== SÉCURITÉ ==================== */
 
@@ -215,7 +219,12 @@ app.get("/healthz", (req, res) => res.status(204).end());
 app.use(express.static('public', {
   etag: true,
   setHeaders(res, chemin) {
-    if (/\.(html|css|js|json|svg)$/i.test(chemin)) {
+    /* Un fichier demande avec son numero de version (« app.js?v=… ») ne
+       changera jamais sous cette adresse : le client le garde un an sans
+       redemander. Une nouvelle version change le numero, donc l'adresse. */
+    if (res.req && res.req.query && res.req.query.v && /\.(css|js|svg)$/i.test(chemin)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (/\.(html|css|js|json|svg)$/i.test(chemin)) {
       res.setHeader('Cache-Control', 'no-cache');
     } else if (/\.(png|jpg|jpeg|webp|ico|woff2?|ttf)$/i.test(chemin)) {
       res.setHeader('Cache-Control', 'public, max-age=604800');

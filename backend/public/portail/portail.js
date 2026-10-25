@@ -326,16 +326,63 @@ function majPied() {
     : 'Espace sécurisé — vos documents et vos échanges sont chiffrés.';
 }
 
+/* Le fil, a la maniere d'une messagerie de telephone : un separateur par
+   jour, les messages d'un meme auteur a moins de 3 minutes groupes (coins
+   resserres, une seule heure en pied de groupe), « Lu » sous le dernier
+   message envoye. On ne redessine que si le fil a change : le
+   rafraichissement periodique ne doit ni clignoter ni faire sauter le
+   defilement. */
+let _filSignature = '';
 function renderMessages(list) {
   const fil = $('#fil-messages');
-  fil.innerHTML = list.length ? list.map((m) => `
-    <div style="max-width:78%;align-self:${m.auteur === 'resident' ? 'flex-end' : 'flex-start'}">
-      <div style="padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;
-        ${m.auteur === 'resident' ? 'background:var(--sapin);color:#fff;border-bottom-right-radius:4px' : 'background:#fff;border:1px solid #E3E0D6;border-bottom-left-radius:4px'}">${esc(m.corps)}</div>
-      <div style="font-size:10.5px;color:#999;margin-top:3px;text-align:${m.auteur === 'resident' ? 'right' : 'left'}">${m.auteur === 'resident' ? 'Vous' : 'Le camping'} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-    </div>`).join('') : '<p class="note" style="margin:0">Aucun message. Une question ? Écrivez au camping ci-dessous.</p>';
-  fil.scrollTop = fil.scrollHeight;
+  const signature = list.map((m) => m.id + (m.lu ? 'l' : '')).join(',');
+  if (signature === _filSignature && fil.children.length) return;
+  const enBas = fil.scrollHeight - fil.scrollTop - fil.clientHeight < 80;
+  _filSignature = signature;
+  if (!list.length) {
+    fil.innerHTML = `<div class="msg-vide"><div class="msg-vide-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg></div>
+      <strong>Écrivez à votre camping</strong><span>Une question, une demande, un souci sur votre emplacement ? Le camping vous répond ici.</span></div>`;
+    return;
+  }
+  const jour = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const auj = jour(new Date());
+  const titreJour = (t) => {
+    if (t === auj) return "Aujourd'hui";
+    if (t === auj - 86400000) return 'Hier';
+    const d = new Date(t);
+    const s = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long',
+      year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+  const heure = (d) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const msgs = list.map((m) => ({ ...m, d: new Date(m.created_at), moi: m.auteur === 'resident' }));
+  const dernierMoi = [...msgs].reverse().find((m) => m.moi);
+  const meme = (a, b) => a && b && a.moi === b.moi && Math.abs(b.d - a.d) < 180000 && jour(a.d) === jour(b.d);
+  let html = '';
+  let jourPrec = null;
+  msgs.forEach((m, i) => {
+    const j = jour(m.d);
+    if (j !== jourPrec) { html += `<div class="msg-jour">${esc(titreJour(j))}</div>`; jourPrec = j; }
+    const debut = !meme(msgs[i - 1], m);
+    const fin = !meme(m, msgs[i + 1]);
+    const pied = !fin ? '' : (m === dernierMoi
+      ? `${m.lu ? 'Lu' : 'Distribué'} · ${heure(m.d)}`
+      : (m.moi ? heure(m.d) : `Le camping · ${heure(m.d)}`));
+    html += `<div class="msg-row ${m.moi ? 'me' : 'them'}${debut ? ' debut' : ''}${fin ? ' fin' : ''}">
+      <div class="msg-bubble">${esc(m.corps)}</div>${pied ? `<div class="msg-meta">${esc(pied)}</div>` : ''}</div>`;
+  });
+  fil.innerHTML = html;
+  if (enBas || !fil.dataset.vu) { fil.scrollTop = fil.scrollHeight; fil.dataset.vu = '1'; }
 }
+
+/* Onglet Messages ouvert : les reponses du camping arrivent seules, sans
+   recharger toute la page. Rien ne tourne quand l'onglet est ailleurs ou
+   la page cachee. */
+setInterval(async () => {
+  if (!RTOKEN || document.hidden || document.body.getAttribute('data-onglet') !== 'messages') return;
+  if ($('#espace').classList.contains('hidden')) return;
+  try { const { messages } = await api('/api/portail/messages'); renderMessages(messages || []); } catch (e) {}
+}, 8000);
 
 function libStatut(s) {
   return { emise: 'à régler', partielle: 'partiellement réglée', reglee: 'réglée', en_retard: 'en retard', avoir: 'avoir', annulee: 'annulée' }[s] || s;
@@ -455,6 +502,7 @@ $('#form-msg').addEventListener('submit', async (e) => {
     input.value = '';
     if (window._msgAjuster) window._msgAjuster();
     const { messages } = await api('/api/portail/messages');
+    const fil = $('#fil-messages'); delete fil.dataset.vu;   // on vient d'ecrire : on descend
     renderMessages(messages || []);
   } catch (err) { toast(err.message, true); }
   finally { btn.disabled = false; }

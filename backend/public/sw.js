@@ -35,7 +35,7 @@
    Changer CACHE_VERSION suffit a invalider tout l'ancien cache.
    ============================================================ */
 
-const CACHE_VERSION = 'locamp-v1';
+const CACHE_VERSION = 'locamp-v2';
 
 /* La coquille : ce qui doit s'ouvrir meme sans reseau. Volontairement
    court — chaque entree est un fichier qu'il faudra penser a invalider. */

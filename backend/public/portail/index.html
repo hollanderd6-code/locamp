@@ -14,8 +14,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/marque.css?v=1792915000">
-<link rel="stylesheet" href="/portail/portail.css?v=1792915000">
+<link rel="stylesheet" href="/marque.css?v=1793070000">
+<link rel="stylesheet" href="/portail/portail.css?v=1793090000">
+<link rel="stylesheet" href="/portail/natif-portail.css?v=1793110000">
 </head>
 <body>
 
@@ -171,7 +172,7 @@
           aria-label="Votre message"></textarea>
         <div class="msg-form-pied">
           <span class="msg-astuce">Entrée pour aller à la ligne</span>
-          <button class="btn btn-primary" id="btn-msg">Envoyer</button>
+          <button class="btn btn-primary" id="btn-msg" aria-label="Envoyer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg><span class="msg-envoyer-txt">Envoyer</span></button>
         </div>
       </form>
     </section>
@@ -297,7 +298,9 @@
 
 <div id="toast" class="toast hidden"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="/portail/portail.js?v=1792915000"></script>
+<script src="/portail/portail.js?v=1793090000"></script>
+<!-- Pont avec l'app iOS native : inerte dans un navigateur. -->
+<script src="/portail/natif-portail.js?v=1793100000"></script>
 
 <script>
 /* ---- Les onglets du portail ----

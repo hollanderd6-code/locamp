@@ -1,0 +1,58 @@
+/* ================================================================
+   Portail locataire — mode app iOS native
+   ================================================================
+   Ne s'applique que sous html.natif (posee par l'app iOS ou Android). L'app
+   dessine la barre d'onglets, la barre de titre, le menu du compte, les
+   alertes et les toasts en Liquid Glass ; le site ne garde que le contenu,
+   qui defile sous le verre. --natif-haut / --natif-bas : hauteur des
+   barres natives, fournie par l'app.
+   ================================================================ */
+html.natif{
+  /* Pas de rebond du site : c'est l'app qui gere « tirer pour rafraichir ».
+     Sur la RACINE seulement : pose sur body, il bloquait tout defilement
+     quand body devient lui-meme une zone de defilement (portail :
+     overflow-x:hidden sur html ET body). */
+  overscroll-behavior-y:none;
+  --natif-haut:env(safe-area-inset-top);
+  --natif-bas:env(safe-area-inset-bottom);
+  -webkit-text-size-adjust:100%;
+}
+html.natif body{
+  font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+html.natif h1,html.natif h2,html.natif .brand-name,html.natif .btn,
+html.natif .hero-solde .montant{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
+
+/* ---- Habillage web remplace par le natif ---- */
+html.natif .topbar,
+html.natif .onglets,
+html.natif .toast,
+html.natif #sig-retour{display:none!important}
+
+/* ---- Contenu sous les barres de verre ---- */
+html.natif .content,
+html.natif body[data-onglet] .content{
+  padding-top:calc(var(--natif-haut) + 12px);
+  padding-bottom:24px;
+}
+html.natif .footy,
+html.natif body[data-onglet] .footy{margin-bottom:0;padding-bottom:calc(var(--natif-bas) + 24px)}
+
+/* ---- Vitesse : fondu court, sans cascade ---- */
+html.natif .content > *{animation-duration:.16s!important;animation-delay:0s!important}
+
+/* ---- Touches iOS ---- */
+html.natif .btn{border-radius:999px}
+html.natif .card{border-radius:22px}
+html.natif input,html.natif select,html.natif textarea{font-size:16px} /* pas de zoom au focus */
+
+/* ---- Android : police du systeme ---- */
+html.natif-android body,html.natif-android h1,html.natif-android h2,html.natif-android .brand-name,
+html.natif-android .btn,html.natif-android .hero-solde .montant{font-family:system-ui,"Roboto",sans-serif}
+
+/* ---- Changement d'onglet au balayage : le contenu arrive du cote du geste ---- */
+@keyframes natifGlisseG{from{transform:translateX(36px);opacity:.3}to{transform:none;opacity:1}}
+@keyframes natifGlisseD{from{transform:translateX(-36px);opacity:.3}to{transform:none;opacity:1}}
+html.natif .content.glisse-g{animation:natifGlisseG .22s cubic-bezier(.2,.9,.25,1)}
+html.natif .content.glisse-d{animation:natifGlisseD .22s cubic-bezier(.2,.9,.25,1)}

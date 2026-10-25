@@ -1,0 +1,11 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+# Cles de signature : jamais dans le depot
+*.jks
+*.keystore
+keystore.properties
