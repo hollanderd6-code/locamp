@@ -8,6 +8,11 @@
    barres natives, fournie par l'app.
    ================================================================ */
 html.natif{
+  /* Pas de rebond du site : c'est l'app qui gere « tirer pour rafraichir ».
+     Sur la RACINE seulement : pose sur body, il bloquait tout defilement
+     quand body devient lui-meme une zone de defilement (portail :
+     overflow-x:hidden sur html ET body). */
+  overscroll-behavior-y:none;
   --natif-haut:env(safe-area-inset-top);
   --natif-bas:env(safe-area-inset-bottom);
   -webkit-text-size-adjust:100%;
@@ -15,7 +20,6 @@ html.natif{
 html.natif body{
   font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
   -webkit-tap-highlight-color:transparent;
-  overscroll-behavior-y:none;
 }
 html.natif h1,html.natif h2,html.natif .brand-name,html.natif .btn,
 html.natif .hero-solde .montant{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}

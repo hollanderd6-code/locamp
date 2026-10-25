@@ -15,6 +15,11 @@
    c'est ce qui donne l'effet Liquid Glass.
    ================================================================ */
 html.natif{
+  /* Pas de rebond du site : c'est l'app qui gere « tirer pour rafraichir ».
+     Sur la RACINE seulement : pose sur body, il bloquait tout defilement
+     quand body devient lui-meme une zone de defilement (portail :
+     overflow-x:hidden sur html ET body). */
+  overscroll-behavior-y:none;
   --natif-haut:env(safe-area-inset-top);
   --natif-bas:env(safe-area-inset-bottom);
   -webkit-text-size-adjust:100%;
@@ -23,7 +28,6 @@ html.natif body{
   font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
   -webkit-tap-highlight-color:transparent;
   -webkit-touch-callout:none;
-  overscroll-behavior-y:none;
 }
 html.natif h1,html.natif h2,html.natif h3{font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
 
