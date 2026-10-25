@@ -612,3 +612,66 @@ body .onglets button span{
 body #espace{
   padding-bottom:calc(70px + env(safe-area-inset-bottom));
 }
+
+/* ================================================================
+   REFONTE 2026 — le theme du portail (meme langage que la gestion)
+   ================================================================ */
+body{background:var(--ivoire)!important;font-size:14.5px}
+h1,h2,h3{font-family:"Inter",system-ui,sans-serif;letter-spacing:-.01em}
+.eyebrow{font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--brume)}
+.btn{font-weight:600;border-radius:var(--r-s);transition:background .15s,border-color .15s}
+.btn-primary,.btn-primary:hover{background:var(--sapin);color:#FFFFFF;box-shadow:none;transform:none}
+.btn-primary:hover{background:var(--sapin-hover)}
+.btn-ghost{background:var(--carte);border:1px solid #D5DBD5}
+.btn-ghost:hover{background:var(--creme, #FAFBF9);transform:none}
+.card{border-radius:var(--r);box-shadow:none;border-color:var(--hairline)}
+.topbar{background:var(--carte);border-bottom:1px solid var(--hairline);box-shadow:none}
+.topbar .brand-name{font-size:16px}
+.panel{border-radius:18px;box-shadow:0 2px 8px rgba(23,32,28,.06),0 8px 24px rgba(23,32,28,.06)}
+label{text-transform:none;letter-spacing:0;font-weight:500;font-size:13px;color:var(--encre)}
+
+/* Accueil : le solde, puis les raccourcis */
+.hero-solde.card{background:none;border:0;padding:0}
+.hero-solde::after{display:none}
+.solde{border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:4px}
+.solde.du{background:var(--sapin);color:#FFFFFF}
+.solde.ok{background:var(--carte);border:1px solid var(--hairline)}
+.solde-lib{font-size:13px;font-weight:500}
+.solde.du .solde-lib,.solde.du .solde-sous,.solde.du .solde-note{color:#CFE2D8}
+.solde.ok .solde-lib,.solde.ok .solde-sous{color:var(--brume)}
+.solde-montant{font-size:34px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15}
+.solde.ok .solde-montant{color:var(--sapin)}
+.solde-sous{font-size:13px}
+.solde-cta{margin-top:12px;min-height:48px;background:#FFFFFF;color:#143D30;font-size:15px;font-weight:700}
+.solde-cta:hover{background:#F1F6F3}
+.solde-note{font-size:12px;text-align:center;margin-top:4px}
+.raccourcis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.raccourcis button{min-height:80px;border-radius:14px;border:1px solid var(--hairline);background:var(--carte);color:var(--encre);
+  font:600 12.5px "Inter",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;padding:8px;text-align:center}
+.raccourcis button svg{color:var(--sapin)}
+.raccourcis button:hover{border-color:#C9D2CB}
+
+/* Factures : une carte par facture */
+#liste-factures{display:flex;flex-direction:column;gap:10px}
+#sec-factures .fac{display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px;border:1px solid var(--hairline);border-radius:14px;background:var(--carte)}
+#sec-factures .fac.retard{border-color:#F1C7B1}
+.fac-l1,.fac-l2{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.fac-l1 h3{margin:0;font-size:15px;font-weight:600}
+.fac-l1 .l2{font-size:12.5px;color:var(--brume)}
+.fac-l1 .m{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.fac-l2 .actions{display:flex;gap:8px}
+.etiq{display:inline-flex;font-size:12px;font-weight:600;padding:3px 9px;border-radius:6px;white-space:nowrap}
+.etiq.vert{background:var(--sapin-pale);color:#143D30}
+.etiq.ambre{background:var(--laiton-pale);color:#7A4E08}
+.etiq.rouge{background:var(--rouge-pale);color:var(--rouge)}
+.etiq.gris{background:#EEF0ED;color:var(--brume)}
+.badge{border-radius:6px}
+.badge::before{display:none}
+
+/* Barre d'onglets */
+.onglets{background:var(--carte);border-top:1px solid var(--hairline);box-shadow:none;backdrop-filter:none}
+.onglets button{color:var(--brume);font-weight:500}
+.onglets button.actif{color:var(--sapin);font-weight:700}
+.onglets button.actif::before{display:none}
+.onglets em{background:var(--rouge)}
+.btn-cloche{padding:8px 10px;display:flex;align-items:center}

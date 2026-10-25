@@ -235,14 +235,21 @@ async function chargerEspace() {
   const dues = factures.filter((f) => !['avoir', 'annulee'].includes(f.statut) && f.reste > 0.004);
   const du = dues.reduce((s, f) => s + f.reste, 0);
   const maxRetard = Math.max(0, ...dues.map((f) => f.jours_retard || 0));
-  $('#hero-solde').innerHTML = du > 0.004
-    ? `<div class="eyebrow">Votre situation</div>
-       <div class="montant du">${eur(du)}</div>
-       <div class="lib">reste à régler${maxRetard > 0 ? ` — <strong>retard de ${maxRetard} jour${maxRetard > 1 ? 's' : ''}</strong>` : ''}</div>
-       ${window._payok ? `<div class="pay-cta"><button class="btn btn-primary" onclick="payerPlusAncienne()">Régler en ligne</button></div>` : ''}`
-    : `<div class="eyebrow">Votre situation</div>
-       <div class="montant ok">À jour ✓</div>
-       <div class="lib">Aucun paiement en attente. Merci !</div>`;
+  $('#hero-solde').innerHTML = `
+    <div class="solde ${du > 0.004 ? 'du' : 'ok'}">
+      <div class="solde-lib">${du > 0.004 ? 'Reste à régler' : 'Votre situation'}</div>
+      <div class="solde-montant">${du > 0.004 ? eur(du) : 'À jour'}</div>
+      <div class="solde-sous">${du > 0.004
+    ? (maxRetard > 0 ? `En retard de ${maxRetard} jour${maxRetard > 1 ? 's' : ''}` : `${dues.length} facture${dues.length > 1 ? 's' : ''} à régler`)
+    : 'Aucun paiement en attente. Merci !'}</div>
+      ${du > 0.004 && window._payok ? `<button class="btn solde-cta" onclick="payerPlusAncienne()">Payer en ligne</button>
+        <div class="solde-note">Carte bancaire · paiement sécurisé</div>` : ''}
+    </div>
+    <div class="raccourcis">
+      <button type="button" onclick="allerOnglet('messages')"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg>Écrire au camping</button>
+      <button type="button" onclick="allerOnglet('documents')"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>Envoyer un document</button>
+      <button type="button" onclick="allerOnglet('factures')"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>Mes factures</button>
+    </div>`;
 
   window._factures = factures;
 
@@ -264,21 +271,33 @@ async function chargerEspace() {
   }
 
   // factures
-  $('#liste-factures').innerHTML = factures.length ? factures.map((f) => `
-    <div class="fac">
-      <div>
-        <div class="l1">${esc(f.numero)}</div>
-        <div class="l2">${esc(f.periode || dfr(f.date_emission))} · <span class="badge ${f.statut}">${libStatut(f.statut)}</span>
-          ${f.reste > 0.004 && f.date_echeance ? (f.jours_retard > 0
-            ? ` · <strong style="color:#B3492F">en retard de ${f.jours_retard} j</strong>`
-            : ` · à régler avant le ${dfr(f.date_echeance)}`) : ''}</div>
-      </div>
-      <div class="actions">
-        <span class="m">${eur(f.total_ttc)}</span>
-        <button class="btn btn-ghost btn-sm" onclick="voirPdf('${f.id}')">PDF</button>
-        ${window._payok && f.reste > 0.004 && !['avoir', 'annulee'].includes(f.statut) ? `<button class="btn btn-primary btn-sm" onclick="payer('${f.id}')">Payer ${eur(f.reste)}</button>` : ''}
-      </div>
-    </div>`).join('') : '<p class="note">Aucune facture pour le moment.</p>';
+  const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const titreFacture = (f) => {
+    const m = /^(\d{4})-(\d{2})$/.exec(f.periode || '');
+    if (m) { const t = MOIS[Number(m[2]) - 1]; return t.charAt(0).toUpperCase() + t.slice(1) + ' ' + m[1]; }
+    return f.statut === 'avoir' ? 'Avoir' : 'Facture du ' + dfr(f.date_emission);
+  };
+  const etatFacture = (f) => {
+    if (f.statut === 'avoir') return { cls: 'gris', txt: 'Avoir' };
+    if (f.statut === 'annulee') return { cls: 'gris', txt: 'Annulée' };
+    if (f.reste <= 0.004) return { cls: 'vert', txt: 'Payée' };
+    if (f.jours_retard > 0) return { cls: 'rouge', txt: `En retard · ${f.jours_retard} j` };
+    return { cls: 'ambre', txt: f.date_echeance ? `À payer avant le ${dfr(f.date_echeance)}` : 'À payer' };
+  };
+  $('#liste-factures').innerHTML = factures.length ? factures.map((f) => {
+    const e = etatFacture(f);
+    const payable = window._payok && f.reste > 0.004 && !['avoir', 'annulee'].includes(f.statut);
+    return `
+    <article class="fac${e.cls === 'rouge' ? ' retard' : ''}">
+      <div class="fac-l1"><div><h3>${esc(titreFacture(f))}</h3><div class="l2">${esc(f.numero)}</div></div>
+        <span class="m">${eur(f.total_ttc)}</span></div>
+      <div class="fac-l2"><span class="etiq ${e.cls}">${esc(e.txt)}</span>
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" onclick="voirPdf('${f.id}')">PDF</button>
+          ${payable ? `<button class="btn btn-primary btn-sm" onclick="payer('${f.id}')">Payer ${eur(f.reste)}</button>` : ''}
+        </div></div>
+    </article>`;
+  }).join('') : '<p class="note">Aucune facture pour le moment.</p>';
 
   // documents
   $('#liste-docs').innerHTML = documents.length ? documents.map((d) => `
@@ -689,9 +708,11 @@ $('#sig-signer').addEventListener('click', async () => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.title = 'Notifications';
-    btn.style.cssText = 'position:relative;background:none;border:none;cursor:pointer;padding:4px;line-height:1;font-size:20px;margin-right:8px';
-    btn.innerHTML = '🔔<span id="pnotif-badge" class="hidden" style="position:absolute;top:-2px;right:-2px;min-width:16px;'
-      + 'height:16px;padding:0 4px;border-radius:9px;background:#E5484D;color:#fff;font-size:10px;font-weight:700;'
+    btn.setAttribute('aria-label', 'Notifications');
+    btn.className = 'btn btn-ghost btn-sm btn-cloche';
+    btn.style.cssText = 'position:relative';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg><span id="pnotif-badge" class="hidden" style="position:absolute;top:-2px;right:-2px;min-width:16px;'
+      + 'height:16px;padding:0 4px;border-radius:9px;background:#C2410C;color:#fff;font-size:10px;font-weight:700;'
       + 'display:flex;align-items:center;justify-content:center">0</span>';
     anchor.parentNode.insertBefore(btn, anchor);
 
