@@ -35,13 +35,9 @@
 --     Les paiements Stripe (webhook) sont donc chaînés eux aussi.
 --
 --  5. Les fonctions fiscal_append / fiscal_verifier / fiscal_cloture
---     sont créées SEULEMENT SI ELLES N'EXISTENT PAS (installation
---     neuve). En production elles existent déjà : on n'y touche pas,
---     car changer la formule de hachage invaliderait toute la chaîne
---     existante (cf. 00_diagnostic_chaine_fiscale.sql, cas A).
---     → Penser à versionner leur VRAIE définition : bloc 5 de
---       00_diagnostic_chaine_fiscale.sql, à coller dans
---       db/10b_fonctions_fiscales_production.sql.
+--     ne sont pas touchées : elles viennent de 10b (relevé de la
+--     production). Changer la formule de hachage invaliderait toute la
+--     chaîne existante (cf. 00_diagnostic_chaine_fiscale.sql, cas A).
 -- ============================================================
 
 begin;
@@ -50,105 +46,15 @@ begin;
 create or replace function public.locamp_schema_version()
 returns integer language sql immutable as $$ select 16 $$;
 
--- ── 1. Fonctions fiscales (installation neuve uniquement) ───
+-- ── 1. Fonctions fiscales : prérequis ────────────────────────
+-- Elles sont versionnées dans 10b_fonctions_fiscales_production.sql
+-- (relevé de la production). Les triggers ci-dessous les appellent :
+-- sans elles, plus aucune facture ni aucun encaissement ne passerait.
 do $do$
 begin
   if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                  where n.nspname = 'public' and p.proname = 'fiscal_append') then
-    execute $f$
-      create function public.fiscal_append(
-        p_camping uuid, p_type text, p_entite text, p_entite_id uuid,
-        p_donnees jsonb, p_montant numeric, p_auteur uuid, p_auteur_email text)
-      returns setof public.journal_fiscal
-      language plpgsql security definer set search_path = public as $body$
-      declare
-        v_prec text; v_seq bigint; v_h timestamptz := now(); v_hash text;
-      begin
-        -- verrou par camping : deux écritures simultanées ne peuvent pas
-        -- lire le même « précédent »
-        perform pg_advisory_xact_lock(hashtext('journal_fiscal:' || p_camping::text));
-        select seq, hash into v_seq, v_prec from journal_fiscal
-          where camping_id = p_camping order by seq desc limit 1;
-        v_seq := coalesce(v_seq, 0) + 1;
-        v_prec := coalesce(v_prec, repeat('0', 64));
-        v_hash := encode(sha256(convert_to(concat_ws('|',
-          v_prec, v_seq::text, p_camping::text, p_type, coalesce(p_entite, ''),
-          coalesce(p_entite_id::text, ''), coalesce(p_donnees, '{}'::jsonb)::text,
-          -- au format de la colonne numeric(14,2) : « 24 » et « 24.00 » doivent hacher pareil
-          coalesce(p_montant::numeric(14,2)::text, ''),
-          to_char(v_h at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')), 'UTF8')), 'hex');
-        return query insert into journal_fiscal
-          (camping_id, seq, type, entite, entite_id, donnees, montant,
-           hash_precedent, hash, auteur_id, auteur_email, horodatage)
-        values (p_camping, v_seq, p_type, p_entite, p_entite_id, coalesce(p_donnees, '{}'::jsonb),
-                p_montant, v_prec, v_hash, p_auteur, p_auteur_email, v_h)
-        returning *;
-      end $body$;
-    $f$;
-
-    execute $f$
-      create function public.fiscal_verifier(p_camping uuid)
-      returns table(seq bigint, anomalie text, detail text)
-      language plpgsql stable security definer set search_path = public as $body$
-      declare
-        r record; v_prec text := repeat('0', 64); v_attendu bigint := 1; v_calc text;
-      begin
-        for r in select * from journal_fiscal j where j.camping_id = p_camping order by j.seq loop
-          if r.seq <> v_attendu then
-            seq := r.seq; anomalie := 'trou';
-            detail := format('seq %s attendu, %s trouvé', v_attendu, r.seq); return next;
-          end if;
-          if r.hash_precedent <> v_prec then
-            seq := r.seq; anomalie := 'rupture';
-            detail := 'hash_precedent ne correspond pas au hash de l''enregistrement précédent'; return next;
-          end if;
-          v_calc := encode(sha256(convert_to(concat_ws('|',
-            r.hash_precedent, r.seq::text, r.camping_id::text, r.type, coalesce(r.entite, ''),
-            coalesce(r.entite_id::text, ''), r.donnees::text, coalesce(r.montant::numeric(14,2)::text, ''),
-            to_char(r.horodatage at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')), 'UTF8')), 'hex');
-          if v_calc <> r.hash then
-            seq := r.seq; anomalie := 'alteration';
-            detail := 'le contenu ne correspond plus à son empreinte'; return next;
-          end if;
-          v_prec := r.hash; v_attendu := r.seq + 1;
-        end loop;
-      end $body$;
-    $f$;
-  end if;
-
-  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                 where n.nspname = 'public' and p.proname = 'fiscal_cloture') then
-    execute $f$
-      create function public.fiscal_cloture(
-        p_camping uuid, p_type text, p_periode text, p_seq_debut bigint, p_seq_fin bigint,
-        p_nb_fact integer, p_nb_regl integer, p_ht numeric, p_tva numeric, p_ttc numeric,
-        p_encaisse numeric, p_detail jsonb, p_auteur uuid)
-      returns setof public.clotures_fiscales
-      language plpgsql security definer set search_path = public as $body$
-      declare
-        v_prec text; v_cumul numeric; v_h timestamptz := now(); v_hash text;
-      begin
-        perform pg_advisory_xact_lock(hashtext('clotures_fiscales:' || p_camping::text));
-        select hash into v_prec from clotures_fiscales
-          where camping_id = p_camping order by horodatage desc limit 1;
-        select cumul_perpetuel into v_cumul from clotures_fiscales
-          where camping_id = p_camping and type = p_type order by horodatage desc limit 1;
-        v_prec := coalesce(v_prec, repeat('0', 64));
-        v_cumul := coalesce(v_cumul, 0) + coalesce(p_ttc, 0);
-        v_hash := encode(sha256(convert_to(concat_ws('|',
-          v_prec, p_camping::text, p_type, p_periode, coalesce(p_seq_fin::text, ''),
-          p_nb_fact::text, p_nb_regl::text, p_ht::numeric(14,2)::text, p_tva::numeric(14,2)::text,
-          p_ttc::numeric(14,2)::text, p_encaisse::numeric(14,2)::text, v_cumul::numeric(16,2)::text,
-          to_char(v_h at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')), 'UTF8')), 'hex');
-        return query insert into clotures_fiscales
-          (camping_id, type, periode, seq_debut, seq_fin, nb_factures, nb_reglements,
-           total_ht, total_tva, total_ttc, total_encaisse, cumul_perpetuel, detail,
-           hash_precedent, hash, auteur_id, horodatage)
-        values (p_camping, p_type, p_periode, p_seq_debut, p_seq_fin, p_nb_fact, p_nb_regl,
-                p_ht, p_tva, p_ttc, p_encaisse, v_cumul, p_detail, v_prec, v_hash, p_auteur, v_h)
-        returning *;
-      end $body$;
-    $f$;
+    raise exception 'fiscal_append absente : exécuter d''abord 10b_fonctions_fiscales_production.sql';
   end if;
 end
 $do$;

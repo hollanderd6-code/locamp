@@ -14,6 +14,7 @@ Exécuter dans l'ordre numérique, dans Supabase → SQL Editor.
 | **`08_releves_compteurs`** | **relevés électricité et eau** |
 | **`09_signature_electronique`** | **documents à signer, preuves eIDAS** |
 | **`10_fiscal_exercices`** | **journal fiscal, clôtures, soldes d'exercice** |
+| `10b_fonctions_fiscales_production` | fonctions de la chaîne (empreinte, ajout, vérification, clôture), relevées en production |
 | **`11_echanges_carte_suivi`** | **messagerie, push, RGPD, carte, échéances, indexation** |
 | `12_remises_banque` | remises de chèques |
 | `13_comptes_clients` | comptes comptables résidents |
@@ -21,6 +22,7 @@ Exécuter dans l'ordre numérique, dans Supabase → SQL Editor.
 | **`15_efacture`** | **Factur-X, factures reçues, e-reporting** |
 | `16_inalterabilite` | journal fiscal protégé en base, factures émises figées, annulation des encaissements, chaînage par triggers |
 | `17_ecarts_schema` | colonnes lues par le code et absentes des migrations |
+| `18_cloture_cumul` | cumul perpétuel par type de clôture, search_path figé des fonctions fiscales |
 
 En gras : reconstitués le 23 août 2026 depuis le schéma réel de la base.
 
@@ -86,15 +88,13 @@ inscrirait chaque opération deux fois au journal jusqu'à son remplacement.
   `alter table reglements_registre add column …`, recréer la vue
   (`create or replace view reglements … select * …`), sinon la nouvelle
   colonne reste invisible au code.
-- Les fonctions `fiscal_append`, `fiscal_verifier`, `fiscal_cloture` ne sont
-  créées que si elles n'existent pas. Celles de la production **ne sont
-  toujours pas versionnées** : coller le résultat du bloc 5 de
-  `00_diagnostic_chaine_fiscale.sql` dans un fichier
-  `10b_fonctions_fiscales_production.sql`.
+- Elle exige les fonctions fiscales de `10b` (elle s'arrête sinon). `10b`
+  est la copie exacte de la production du 25/10/2026 : **ne jamais modifier
+  la formule de `fiscal_empreinte`**, toute la chaîne existante en dépend.
 
 ## Écarts connus entre ce dépôt et la production
 
-Relevés en rejouant 01 → 16 sur une base vierge :
+Relevés en rejouant toutes les migrations sur une base vierge :
 
 - `user_campings.permissions` (jsonb) était lue par le code sans être créée
   par aucune migration — corrigé par `17_ecarts_schema.sql` ;
