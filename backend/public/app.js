@@ -277,6 +277,9 @@ const STATUT_LIB = {
   libre: 'libre', occupe: 'occupé', reserve: 'réservé', indisponible: 'indisponible',
   actif: 'actif', inactif: 'inactif', signe: 'signé', emis: 'émis',
   remise: 'remise', encaissee: 'encaissée',
+  // moyens de paiement, quand le camping n'a pas renseigne leur libelle
+  espece: 'Espèces', cheque: 'Chèque', virement: 'Virement', tpe: 'Carte bancaire',
+  carte: 'Carte bancaire', stripe: 'Paiement en ligne', ancv: 'Chèques-vacances', autre: 'Autre',
 };
 const lib = (s) => STATUT_LIB[s] || String(s || '').replace(/_/g, ' ');
 
@@ -760,107 +763,95 @@ async function vueDashboard() {
   }
   const parSecteur = [...secteurs.values()].sort((a, b) => b.total - a.total).slice(0, 6);
 
-  const chiffres = [
-    { k: 'Occupation', v: `${d.occupation.occupes} / ${d.occupation.total}`,
-      n: `${d.occupation.taux} %${d.occupation.total - d.occupation.occupes ? ' · ' + (d.occupation.total - d.occupation.occupes) + ' libre' + (d.occupation.total - d.occupation.occupes > 1 ? 's' : '') : ' · complet'}`, col: '' },
-    { k: 'Facturé ce mois', v: dshEur(facture), n: `${d.factures_mois.total} facture${d.factures_mois.total > 1 ? 's' : ''} émise${d.factures_mois.total > 1 ? 's' : ''}`, col: '' },
-    { k: 'Impayés', v: dshEur(d.impayes.total_du),
-      n: d.impayes.nombre ? `${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}${montantRetard > 0.005 ? ' · dont ' + eur(montantRetard) + ' en retard' : ''}` : 'rien à recouvrer',
-      col: Number(d.impayes.total_du || 0) > 0.005 ? 'var(--rouge)' : '' },
-    { k: 'À facturer', v: dshEur(aFacturer),
-      n: nbAFacturer ? `${nbAFacturer} prestation${nbAFacturer > 1 ? 's' : ''} en cours` : 'rien en attente',
-      col: aFacturer > 0.005 ? DSH_AMBRE : '' },
-  ];
+  const o = d.occupation;
+  const pcOcc = o.total ? Math.round((o.occupes / o.total) * 100) : 0;
+  const detailOcc = [o.libres ? `${o.libres} libre${o.libres > 1 ? 's' : ''}` : '',
+    o.reserves ? `${o.reserves} réservé${o.reserves > 1 ? 's' : ''}` : '',
+    o.hors_service ? `${o.hors_service} hors service` : ''].filter(Boolean).join(' · ');
+  const du = Number(d.impayes.total_du || 0);
+  const barre = (pct) => `<div class="dsh-barre"><div style="width:${Math.max(0, Math.min(100, pct))}%"></div></div>`;
 
+  const prenom = (typeof USER !== 'undefined' && USER && USER.prenom) ? USER.prenom : '';
   const dateStr = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const modes = Object.entries(d.encaissements_mois || {}).sort((a, b) => b[1] - a[1]);
 
   $('#main').innerHTML = `
     <div class="page-head">
-      <div><h1>${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</h1>
-        <div class="muted" style="font-size:13.5px;margin-top:4px">
-          ${aTraiter.length ? `${aTraiter.length} point${aTraiter.length > 1 ? 's' : ''} à traiter` : 'rien à traiter aujourd\u2019hui'}
-        </div></div>
+      <div>
+        <div class="eyebrow">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
+        <h1>${prenom ? 'Bonjour ' + esc(prenom) : 'Accueil'}</h1>
+      </div>
       <div class="toolbar">
-        <button class="btn btn-ghost btn-sm" data-act="messageGroupe">Message à tous</button>
-        <button class="btn btn-ghost btn-sm" data-act="messageRapide">Message à un résident</button>
+        <button class="btn btn-ghost" data-act="messageGroupe">Message à tous</button>
+        <button class="btn btn-ghost" data-act="messageRapide">Message à un résident</button>
+        <button class="btn btn-primary" data-act="allerEncaisser">Encaisser un paiement</button>
       </div>
     </div>
 
-    <div class="card bandeau" style="display:flex;padding:0;margin-bottom:16px">
-      ${chiffres.map((c, i) => `
-        <div style="flex:1;padding:14px 18px;${i ? 'border-left:1px solid var(--hairline)' : ''}">
-          <div style="font-size:13px;font-weight:500;color:var(--brume)">${c.k}</div>
-          <div style="font-size:24px;margin-top:5px;font-variant-numeric:tabular-nums;${c.col ? 'color:' + c.col + ';font-weight:600' : ''}">${c.v}</div>
-          <div class="muted" style="font-size:12px;margin-top:2px">${c.n}</div>
-        </div>`).join('')}
+    <div class="dsh-kpis">
+      <a class="dsh-kpi" href="#/carte">
+        <span class="k">Occupation</span>
+        <span class="v">${o.occupes} <small>/ ${o.total}</small></span>
+        ${barre(pcOcc)}
+        <span class="n">${pcOcc} %${detailOcc ? ' · ' + detailOcc : ''}</span>
+      </a>
+      <a class="dsh-kpi" href="#/reglements">
+        <span class="k">${d.scoped ? 'Encaissé sur l’exercice' : 'Encaissé ce mois-ci'}</span>
+        <span class="v">${dshEur(encaisse)}</span>
+        ${facture > 0.005 ? barre(pc) : ''}
+        <span class="n">${facture > 0.005 ? `${pc} % des ${eur(facture)} facturés` : 'rien de facturé sur la période'}</span>
+      </a>
+      <a class="dsh-kpi" href="#/impayes">
+        <span class="k">Impayés</span>
+        <span class="v"${du > 0.005 ? ' style="color:var(--rouge)"' : ''}>${dshEur(du)}</span>
+        <span class="n">${d.impayes.nombre ? `${d.impayes.nombre} facture${d.impayes.nombre > 1 ? 's' : ''}${montantRetard > 0.005 ? ' · dont ' + eur(montantRetard) + ' en retard' : ''}` : 'rien à recouvrer'}</span>
+      </a>
+      <a class="dsh-kpi" href="#/factures">
+        <span class="k">À facturer</span>
+        <span class="v">${dshEur(aFacturer)}</span>
+        <span class="n">${nbAFacturer ? `${nbAFacturer} prestation${nbAFacturer > 1 ? 's' : ''} en cours` : 'rien en attente'}</span>
+      </a>
     </div>
 
-    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <div class="card duo-col" style="flex:1.35;min-width:420px;padding:0;overflow:hidden">
-        <div style="padding:14px 18px;border-bottom:1px solid var(--hairline);display:flex;
-                    align-items:center;justify-content:space-between;gap:12px">
-          <h2 style="margin:0;font-size:16px">À traiter</h2>
-          ${echeances.length > 6 ? `<span class="muted" style="font-size:12.5px">${echeances.length - 6} autre${echeances.length - 6 > 1 ? 's' : ''} échéance${echeances.length - 6 > 1 ? 's' : ''} sous 60 j</span>` : ''}
+    <div class="dsh-grille">
+      <section class="card dsh-large" style="padding:0;overflow:hidden" aria-labelledby="dsh-todo">
+        <div class="dsh-tete">
+          <h2 id="dsh-todo">À faire</h2>
+          <span class="muted">${aTraiter.length ? `${aTraiter.length} action${aTraiter.length > 1 ? 's' : ''}` : ''}</span>
         </div>
         ${aTraiter.length ? aTraiter.map((t) => `
-          <div class="ligne-act" style="display:flex;align-items:center;gap:12px;padding:0 18px;height:66px;
-                      border-bottom:1px solid var(--hairline)">
-            <span style="width:7px;height:7px;border-radius:50%;flex:none;background:${t.pt}"></span>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.titre}</div>
-              <div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.sous}</div>
-            </div>
-            <div style="flex:none;display:flex;gap:6px">${t.act}</div>
+          <div class="dsh-ligne">
+            <span class="dsh-pt" style="background:${t.pt}"></span>
+            <div class="dsh-txt"><div class="t">${t.titre}</div><div class="s">${t.sous}</div></div>
+            <div class="dsh-act">${t.act}</div>
           </div>`).join('')
-  : `<p class="muted" style="padding:22px 18px;margin:0">Rien à traiter : les loyers sont encaissés, les contrats à jour, les messages lus.</p>`}
-      </div>
+    : `<div class="vide" style="padding:28px 20px"><h3>Rien à faire pour l’instant</h3><p class="muted" style="margin:0">Les loyers sont encaissés, les contrats à jour et les messages lus.</p></div>`}
+      </section>
 
-      <div class="duo-col" style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:16px">
-        <div class="card">
-          <h2 style="margin:0;font-size:16px">Encaissements du mois</h2>
-          <div style="display:flex;align-items:baseline;gap:9px;margin-top:9px">
-            <div style="font-size:26px;font-variant-numeric:tabular-nums">${dshEur(encaisse)}</div>
-            <div class="muted" style="font-size:12.5px">${facture > 0.005 ? 'sur ' + eur(facture) + ' facturés' : 'rien facturé ce mois'}</div>
-          </div>
-          ${facture > 0.005 ? `
-            <div style="height:7px;border-radius:5px;background:var(--hairline);margin-top:11px;overflow:hidden;display:flex">
-              <div style="width:${pc}%;background:var(--sapin)"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:7px">
-              <span class="muted">${pc} % encaissé</span>
-              ${facture - encaisse > 0.005 ? `<span style="color:var(--rouge);font-weight:600">${eur(facture - encaisse)} restant</span>` : '<span style="color:var(--sapin);font-weight:600">tout est encaissé</span>'}
-            </div>` : ''}
-          ${Object.keys(d.encaissements_mois || {}).length ? `
-            <div style="margin-top:14px;display:flex;flex-direction:column;gap:7px">
-              ${Object.entries(d.encaissements_mois).map(([k, v]) => `
-                <div style="display:flex;justify-content:space-between;font-size:13px">
-                  <span class="muted">${esc(lib(k))}</span>
-                  <span style="font-variant-numeric:tabular-nums">${eur(v)}</span>
-                </div>`).join('')}
-            </div>` : ''}
+      <div class="dsh-cote">
+      ${parSecteur.length ? `
+      <section class="card" aria-labelledby="dsh-sect">
+        <h2 id="dsh-sect" style="margin-bottom:14px">Occupation par secteur</h2>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          ${parSecteur.map((x) => `
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:13px">
+                <span style="font-weight:500">${esc(x.nom)}</span>
+                <span class="muted" style="font-variant-numeric:tabular-nums">${x.occ} / ${x.total}</span>
+              </div>
+              ${barre(x.total ? Math.round((x.occ / x.total) * 100) : 0)}
+            </div>`).join('')}
         </div>
+      </section>` : ''}
 
-        ${parSecteur.length ? `
-        <div class="card" style="padding:0;overflow:hidden">
-          <div style="padding:14px 18px;border-bottom:1px solid var(--hairline)">
-            <h2 style="margin:0;font-size:16px">Occupation par secteur</h2>
-          </div>
-          <div style="padding:14px 18px;display:flex;flex-direction:column;gap:13px">
-            ${parSecteur.map((s) => {
-  const p = s.total ? Math.round((s.occ / s.total) * 100) : 0;
-  return `
-              <div>
-                <div style="display:flex;justify-content:space-between;font-size:13px">
-                  <span>${esc(s.nom)}</span>
-                  <span class="muted" style="font-variant-numeric:tabular-nums">${s.occ} / ${s.total}</span>
-                </div>
-                <div style="height:6px;border-radius:4px;background:var(--hairline);margin-top:6px;overflow:hidden;display:flex">
-                  <div style="width:${p}%;background:${p === 100 ? 'var(--sapin)' : DSH_AMBRE}"></div>
-                </div>
-              </div>`;
-}).join('')}
-          </div>
-        </div>` : ''}
+      ${modes.length ? `
+      <section class="card" aria-labelledby="dsh-modes">
+        <h2 id="dsh-modes" style="margin-bottom:10px">Par moyen de paiement</h2>
+        ${modes.map(([k, v]) => `
+          <div style="display:flex;justify-content:space-between;font-size:13.5px;padding:6px 0">
+            <span>${esc(lib(k))}</span><span style="font-weight:600;font-variant-numeric:tabular-nums">${eur(v)}</span>
+          </div>`).join('')}
+      </section>` : ''}
       </div>
     </div>`;
 }
@@ -980,24 +971,40 @@ window.messageRapide = async (presetResidentId) => {
 };
 
 /* ---------- Carte du camping (plan réel : emplacements + décor) ---------- */
-const STATUT_COLOR = { libre: '#1E5C4A', occupe: '#2C5282', reserve: '#C98B2D', indisponible: '#8A8A8A', impaye: '#B3492F' };
+/* Refonte 2026 : chaque etat differe aussi par la CLARTE, pas seulement par
+   la teinte (lisible par un daltonien, et a l'impression en gris) :
+   occupe = aplat fonce, impaye = aplat orange, libre = blanc en pointille,
+   reserve = bleu pale cerne, hors service = gris. */
+const STATUT_STYLE = {
+  occupe:       { fill: '#2F6B57', stroke: '#2F6B57', texte: '#FFFFFF', dash: '' },
+  impaye:       { fill: '#C2410C', stroke: '#C2410C', texte: '#FFFFFF', dash: '' },
+  libre:        { fill: '#FFFFFF', stroke: '#8FA699', texte: '#3A4640', dash: '4 3' },
+  reserve:      { fill: '#DCE6FB', stroke: '#3B6FD8', texte: '#1E3F94', dash: '' },
+  indisponible: { fill: '#E4E6E3', stroke: '#C9CDC8', texte: '#5B665F', dash: '' },
+};
+// conserve pour l'impression et les legendes qui ne lisent qu'une couleur
+const STATUT_COLOR = { libre: '#FFFFFF', occupe: '#2F6B57', reserve: '#DCE6FB', indisponible: '#E4E6E3', impaye: '#C2410C' };
+const ETATS_CARTE = [
+  ['occupe', 'Occupés'], ['impaye', 'Impayés'], ['libre', 'Libres'],
+  ['reserve', 'Réservés'], ['indisponible', 'Hors service'],
+];
 const CARTE_W = 1000, CARTE_H = 620, CARTE_PAD = 20;
 const SNAP = 10;                       // aimantation à la grille
 let carteState = null;
 
 const ELEM_DEFS = {
-  accueil:    { lib: 'Accueil',      grp: 'Bâtiments', forme: 'bati', w: 120, h: 76, fill: '#1F5A49', fg: '#F4EFE4', icone: 'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
-  sanitaires: { lib: 'Sanitaires',   grp: 'Bâtiments', forme: 'bati', w: 96,  h: 64, fill: '#3D5A99', fg: '#EEF2FA', icone: 'M7 3v6m0 0a3 3 0 0 0 6 0M7 9H4m13-6v18M4 9v12' },
-  piscine:    { lib: 'Piscine',      grp: 'Bâtiments', forme: 'bati', w: 140, h: 86, fill: '#2E86A8', fg: '#EAF6FA', icone: 'M2 16c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M2 20c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' },
-  restaurant: { lib: 'Restaurant',   grp: 'Bâtiments', forme: 'bati', w: 106, h: 70, fill: '#A0522D', fg: '#FBF0E6', icone: 'M5 3v8m0 0v10M3 3v5a2 2 0 0 0 4 0V3M15 3c-1 3-1 5 0 7v11' },
-  laverie:    { lib: 'Laverie',      grp: 'Bâtiments', forme: 'bati', w: 90,  h: 62, fill: '#6B5B95', fg: '#F2EDF8', icone: 'M4 3h16v18H4zM12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8' },
-  aire_jeux:  { lib: 'Aire de jeux', grp: 'Bâtiments', forme: 'bati', w: 106, h: 70, fill: '#C98B2D', fg: '#FDF6E7', icone: 'M4 20V6l16 14V6M4 6h16' },
-  local:      { lib: 'Local',        grp: 'Bâtiments', forme: 'bati', w: 86,  h: 60, fill: '#6E6E66', fg: '#F2F2EE', icone: 'M4 8h16v12H4zM4 8l8-5 8 5' },
-  parking:    { lib: 'Parking',      grp: 'Bâtiments', forme: 'bati', w: 116, h: 76, fill: '#4A5A55', fg: '#EEF2F0', icone: 'M8 20V5h4a4 4 0 0 1 0 8H8' },
+  accueil:    { lib: 'Accueil',      grp: 'Bâtiments', forme: 'bati', w: 120, h: 76, fill: '#FFFFFF', fg: '#17201C', icone: 'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
+  sanitaires: { lib: 'Sanitaires',   grp: 'Bâtiments', forme: 'bati', w: 96,  h: 64, fill: '#E5ECFB', fg: '#2347A3', icone: 'M7 3v6m0 0a3 3 0 0 0 6 0M7 9H4m13-6v18M4 9v12' },
+  piscine:    { lib: 'Piscine',      grp: 'Bâtiments', forme: 'bati', w: 140, h: 86, fill: '#D6ECF3', fg: '#1D5A70', icone: 'M2 16c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M2 20c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' },
+  restaurant: { lib: 'Restaurant',   grp: 'Bâtiments', forme: 'bati', w: 106, h: 70, fill: '#FBE7DC', fg: '#8A3010', icone: 'M5 3v8m0 0v10M3 3v5a2 2 0 0 0 4 0V3M15 3c-1 3-1 5 0 7v11' },
+  laverie:    { lib: 'Laverie',      grp: 'Bâtiments', forme: 'bati', w: 90,  h: 62, fill: '#EFEAF8', fg: '#5B3FA0', icone: 'M4 3h16v18H4zM12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8' },
+  aire_jeux:  { lib: 'Aire de jeux', grp: 'Bâtiments', forme: 'bati', w: 106, h: 70, fill: '#FDF1D8', fg: '#7A4E08', icone: 'M4 20V6l16 14V6M4 6h16' },
+  local:      { lib: 'Local',        grp: 'Bâtiments', forme: 'bati', w: 86,  h: 60, fill: '#EEF0ED', fg: '#3A4640', icone: 'M4 8h16v12H4zM4 8l8-5 8 5' },
+  parking:    { lib: 'Parking',      grp: 'Bâtiments', forme: 'bati', w: 116, h: 76, fill: '#EEF0ED', fg: '#3A4640', icone: 'M8 20V5h4a4 4 0 0 1 0 8H8' },
   allee:      { lib: 'Allée',        grp: 'Tracés',    forme: 'ligne', long: 260 },
   barriere:   { lib: 'Barrière',     grp: 'Tracés',    forme: 'ligne', long: 180 },
-  zone:       { lib: 'Zone',         grp: 'Surfaces',  forme: 'zone', w: 210, h: 150, fill: '#CFE0D5' },
-  eau:        { lib: 'Plan d’eau',   grp: 'Surfaces',  forme: 'zone', w: 180, h: 120, fill: '#AFD4E4' },
+  zone:       { lib: 'Zone',         grp: 'Surfaces',  forme: 'zone', w: 210, h: 150, fill: '#DCE8DF' },
+  eau:        { lib: 'Plan d’eau',   grp: 'Surfaces',  forme: 'zone', w: 180, h: 120, fill: '#CFE6EF' },
   arbre:      { lib: 'Arbre',        grp: 'Décor',     forme: 'arbre' },
   texte:      { lib: 'Texte',        grp: 'Décor',     forme: 'texte' },
 };
@@ -1086,9 +1093,36 @@ function statutReel(e) {
   return 'libre';
 }
 
+function etatCarte(e) {
+  if (e.resident && carteState.enRetard.has(e.resident.id)) return 'impaye';
+  return statutReel(e);
+}
 function carteColor(e) {
-  if (e.resident && carteState.enRetard.has(e.resident.id)) return STATUT_COLOR.impaye;
-  return STATUT_COLOR[statutReel(e)] || '#999';
+  return STATUT_COLOR[etatCarte(e)] || '#999';
+}
+const initiales = (r) => r ? `${(r.prenom || '').trim().charAt(0)}${(r.nom || '').trim().charAt(0)}`.toUpperCase() : '';
+
+/* Les secteurs se dessinent tout seuls : un cadre autour des emplacements
+   qui le partagent, nomme et compte. Rien a saisir dans l'editeur. */
+function zonesSecteurs(placed) {
+  const par = new Map();
+  for (const e of placed) {
+    if (!e.secteur) continue;
+    const c = carteCoords(e);
+    const z = par.get(e.secteur) || { nom: e.secteur, x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity, n: 0, occ: 0 };
+    z.x1 = Math.min(z.x1, c.coord_x); z.y1 = Math.min(z.y1, c.coord_y);
+    z.x2 = Math.max(z.x2, c.coord_x); z.y2 = Math.max(z.y2, c.coord_y);
+    z.n += 1; if (statutReel(e) === 'occupe') z.occ += 1;
+    par.set(e.secteur, z);
+  }
+  return [...par.values()].filter((z) => z.n > 1).map((z) => {
+    const x = Math.max(4, z.x1 - 34), y = Math.max(4, z.y1 - 46);
+    const w = Math.min(CARTE_W - 4, z.x2 + 34) - x, h = Math.min(CARTE_H - 4, z.y2 + 30) - y;
+    return `<g class="zone-secteur" aria-hidden="true">
+      <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14"></rect>
+      <text x="${x + 14}" y="${y + 19}">${esc(z.nom.toUpperCase())}<tspan dx="6" class="zs-n">${z.occ} / ${z.n}</tspan></text>
+    </g>`;
+  }).join('');
 }
 function carteCoords(e) {
   if (carteState.dirty.has(e.id)) return carteState.dirty.get(e.id);
@@ -1138,9 +1172,8 @@ function dessinerElement(el, edit) {
     const larg = lib.length * 6.6 + 18;
     return `<g class="${cls}" data-id="${v.id}" data-kind="elem">
       <line class="hit" x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="26"></line>
-      <line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="${allee ? '#E4DCC8' : '#8A8A7E'}"
-        stroke-width="${allee ? 22 : 4}" stroke-linecap="round" ${allee ? '' : 'stroke-dasharray="9 7"'}></line>
-      ${allee ? `<line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="#F7F2E4" stroke-width="16" stroke-linecap="round"></line>` : ''}
+      <line x1="${v.x}" y1="${v.y}" x2="${x2}" y2="${y2}" stroke="${allee ? '#FFFFFF' : '#8A948E'}"
+        stroke-width="${allee ? 20 : 3}" stroke-linecap="round" ${allee ? '' : 'stroke-dasharray="8 6"'}></line>
       ${/* le libelle est dessine par dessinerLibelleAllee, dans une couche
             posee APRES les pastilles — sinon elles le recouvrent */ ''}
       ${edit && sel ? `<circle class="handle" data-h="a" cx="${v.x}" cy="${v.y}" r="7"></circle>
@@ -1169,12 +1202,23 @@ function dessinerElement(el, edit) {
   const fill = v.couleur || def.fill || '#ccc';
   return `<g class="${cls}" data-id="${v.id}" data-kind="elem" transform="translate(${v.x},${v.y})">
     <rect x="0" y="0" width="${w}" height="${h}" rx="${zone ? 22 : 10}" fill="${fill}"
-      ${zone ? 'opacity=".55" stroke="#9FB8A8" stroke-dasharray="7 6"' : 'stroke="rgba(255,255,255,.35)"'} stroke-width="1.5"></rect>
+      ${zone ? 'opacity=".7" stroke="#B9CDBF" stroke-dasharray="7 6"' : 'stroke="rgba(23,32,28,.14)"'} stroke-width="1"></rect>
     ${!zone && def.icone ? `<path d="${def.icone}" transform="translate(${w / 2 - 12}, ${h / 2 - 21})"
       fill="none" stroke="${def.fg}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".9"></path>` : ''}
-    <text class="celem-lib" x="${w / 2}" y="${zone ? h / 2 : h / 2 + 20}" fill="${zone ? '#3E5A4B' : def.fg}">${esc(lib)}</text>
+    <text class="celem-lib" x="${w / 2}" y="${zone ? h / 2 : h / 2 + 20}" fill="${zone ? '#3A4640' : def.fg}">${esc(lib)}</text>
     ${edit && sel ? `<circle class="handle" data-h="size" cx="${w}" cy="${h}" r="7"></circle>` : ''}
   </g>`;
+}
+
+/* Une parcelle : rectangle arrondi, numero, et les initiales de l'occupant
+   (l'infobulle et le panneau donnent le nom entier). */
+function pastille(e) {
+  const S = STATUT_STYLE[etatCarte(e)] || STATUT_STYLE.libre;
+  const ini = initiales(e.resident);
+  return `<rect x="-21" y="-15" width="42" height="30" rx="7" fill="${S.fill}" stroke="${S.stroke}"
+      stroke-width="${S.dash ? 1.5 : 1}"${S.dash ? ` stroke-dasharray="${S.dash}"` : ''}></rect>
+    <text y="${ini ? -3 : 0}" style="fill:${S.texte}">${esc(e.numero)}</text>
+    ${ini ? `<text class="pin-ini" y="8" style="fill:${S.texte}">${esc(ini)}</text>` : ''}`;
 }
 
 function renderCarte() {
@@ -1196,67 +1240,93 @@ function renderCarte() {
     return `<g class="pin${sel}" data-id="${e.id}" data-kind="emp" transform="translate(${x},${y})"
       data-cherche="${esc(sansAccents(`${e.numero} ${occ}`))}"
       data-num="${esc(e.numero)}" data-occ="${esc(occ.trim())}"
-      data-etat="${esc(libelleEtat(e))}">
-      <circle r="13" fill="${carteColor(e)}"></circle><text>${esc(e.numero)}</text></g>`;
+      data-etat="${esc(libelleEtat(e))}" data-code="${etatCarte(e)}">
+      ${pastille(e)}</g>`;
   }).join('');
 
   const n = nbModifs();
   const groupes = {};
   Object.entries(ELEM_DEFS).forEach(([k, d]) => { (groupes[d.grp] ||= []).push([k, d]); });
 
+  if (!edit) {
+    const compte = {}; st.emplacements.forEach((e) => { const c = etatCarte(e); compte[c] = (compte[c] || 0) + 1; });
+    const filtre = st.filtre || '';
+    const puce = (code) => { const S = STATUT_STYLE[code]; return `<span class="cf-puce" style="background:${S.fill};border:${S.dash ? '1.5px dashed' : '1px solid'} ${S.stroke}"></span>`; };
+    const parSecteur = new Map();
+    st.emplacements.slice().sort((a, b) => String(a.numero).localeCompare(String(b.numero), 'fr', { numeric: true }))
+      .forEach((e) => { const k = e.secteur || 'Sans secteur'; (parSecteur.get(k) || parSecteur.set(k, []).get(k)).push(e); });
+    $('#main').innerHTML = `
+    <div class="page-head">
+      <div><h1>Carte du camping</h1>
+        <div class="muted">${st.emplacements.length} emplacements · ${(compte.occupe || 0) + (compte.impaye || 0)} occupés</div></div>
+      <div class="toolbar">
+        <button class="btn btn-ghost" data-act="imprimerCarte">Imprimer</button>
+        <button class="btn btn-ghost" data-act="toggleCarteEdit">Modifier le plan</button>
+      </div>
+    </div>
+    <div class="carte-outils">
+      <input id="map-q" class="search" type="search" placeholder="Emplacement ou résident" autocomplete="off" aria-label="Rechercher un emplacement">
+      <div class="carte-filtres" role="group" aria-label="Filtrer par état">
+        <button class="cf${filtre ? '' : ' actif'}" data-act="filtrerEtatCarte" data-a1="" aria-pressed="${!filtre}">Tous <span>${st.emplacements.length}</span></button>
+        ${ETATS_CARTE.filter(([c]) => compte[c]).map(([c, l]) => `
+          <button class="cf${filtre === c ? ' actif' : ''}" data-act="filtrerEtatCarte" data-a1="${c}" aria-pressed="${filtre === c}">${puce(c)}${l} <span>${compte[c]}</span></button>`).join('')}
+      </div>
+      <span class="muted" id="map-q-info"></span>
+      ${unplaced.length ? `<button class="btn btn-ghost btn-sm" data-act="toggleCarteEdit" title="${esc(unplaced.map((e) => e.numero).join(', '))}">${unplaced.length} sans position — les placer</button>` : ''}
+    </div>
+    <div class="carte-bascule" role="tablist" aria-label="Affichage">
+      <button role="tab" class="${st.vueMobile === 'plan' ? '' : 'actif'}" aria-selected="${st.vueMobile !== 'plan'}" data-act="basculeCarte" data-a1="secteurs">Par secteur</button>
+      <button role="tab" class="${st.vueMobile === 'plan' ? 'actif' : ''}" aria-selected="${st.vueMobile === 'plan'}" data-act="basculeCarte" data-a1="plan">Plan</button>
+    </div>
+    <div class="carte-vue ${st.vueMobile === 'plan' ? 'mob-plan' : 'mob-secteurs'}">
+      <div class="map-wrap">
+        <svg class="map-svg${filtre ? ' filtre' : ''}" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
+          <g class="layer-zones">${zonesSecteurs(placed)}</g>
+          <g class="layer-decor">${decor}</g>
+          <g class="layer-pins">${pins}</g>
+          <g class="layer-allees">${alleeLibelles}</g>
+        </svg>
+        <div class="map-tip" id="map-tip" aria-hidden="true"></div>
+      </div>
+      <div class="carte-secteurs">
+        ${[...parSecteur.entries()].map(([nom, liste]) => `
+          <section>
+            <div class="cs-tete"><h2>${esc(nom)}</h2><span class="muted">${liste.filter((e) => statutReel(e) === 'occupe').length} occupés sur ${liste.length}</span></div>
+            <div class="cs-grille">${liste.map((e) => {
+    const S = STATUT_STYLE[etatCarte(e)];
+    return `<button class="cs-tuile${filtre && etatCarte(e) !== filtre ? ' estompe' : ''}" data-act="ficheEmplacement" data-a1="${e.id}"
+                aria-label="${esc(e.numero)}, ${esc(libelleEtat(e))}" data-cherche="${esc(sansAccents(`${e.numero} ${e.resident ? (e.resident.prenom || '') + ' ' + (e.resident.nom || '') : ''}`))}"
+                style="background:${S.fill};color:${S.texte};border:${S.dash ? '1.5px dashed' : '1px solid'} ${S.stroke}">${esc(e.numero)}</button>`;
+  }).join('')}</div>
+          </section>`).join('')}
+      </div>
+      <aside class="carte-panneau" id="carte-panneau" aria-label="Emplacement sélectionné" aria-live="polite"></aside>
+    </div>`;
+  } else {
   $('#main').innerHTML = `
     <div class="page-head">
-      <div><div class="eyebrow">Plan interactif</div><h1>Carte du camping</h1></div>
-      ${edit ? `<div class="map-tools">
+      <div><div class="eyebrow">Modification du plan</div><h1>Carte du camping</h1></div>
+      <div class="map-tools">
           <span class="map-dirty ${n ? '' : 'hidden'}">${n} modif.</span>
           <button class="btn btn-ghost btn-sm" data-act="imprimerCarte">Imprimer</button>
           <button class="btn btn-ghost btn-sm" data-act="cancelCarteEdit">Annuler</button>
           <button class="btn btn-primary btn-sm" data-act="saveCarte" ${n ? '' : 'disabled'}>Enregistrer le plan</button>
-        </div>`
-        : `<div class="map-tools">
-          <button class="btn btn-ghost btn-sm" data-act="imprimerCarte">Imprimer</button>
-          <button class="btn btn-primary btn-sm" data-act="toggleCarteEdit">Éditer le plan</button>
-        </div>`}
+        </div>
     </div>
-    ${st.migrationManquante && edit ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécutez la migration db/11_echanges_carte_suivi.sql.</p>' : ''}
-    ${edit ? '' : `<div class="map-search">
-      <input id="map-q" type="search" placeholder="Numéro ou nom de l'occupant" autocomplete="off"
-        aria-label="Rechercher un emplacement">
-      <span class="muted" id="map-q-info">${st.emplacements.length} emplacements — cliquer une pastille pour ouvrir la fiche</span>
-    </div>
-    <div class="map-bar">
-      <div class="map-legend">
-        <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.impaye}"></span>Impayé</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.reserve}"></span>Réservé</span>
-        <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
-      </div>
-      ${unplaced.length ? `<button class="btn btn-ghost btn-sm" data-act="toggleCarteEdit"
-        title="${esc(unplaced.map((e) => e.numero).join(', '))}">
-        ${unplaced.length} sans position — les placer</button>` : ''}
-    </div>`}
-
-    <div class="${edit ? 'map-edit-layout' : ''}">
+    ${st.migrationManquante ? '<p class="form-error" style="margin-bottom:12px">Table « carte_elements » absente — exécutez la migration db/11_echanges_carte_suivi.sql.</p>' : ''}
+    <div class="map-edit-layout">
       <div>
-        <div class="map-wrap${edit ? ' editing' : ''}">
+        <div class="map-wrap editing">
           <svg class="map-svg" viewBox="0 0 ${CARTE_W} ${CARTE_H}" role="img" aria-label="Plan du camping">
+            <g class="layer-zones">${zonesSecteurs(placed)}</g>
             <g class="layer-decor">${decor}</g>
             <g class="layer-pins">${pins}</g>
             <g class="layer-allees">${alleeLibelles}</g>
           </svg>
-          ${edit ? `<div class="map-legend">
-            <span><span class="dot" style="background:${STATUT_COLOR.libre}"></span>Libre</span>
-            <span><span class="dot" style="background:${STATUT_COLOR.occupe}"></span>Occupé</span>
-            <span><span class="dot" style="background:${STATUT_COLOR.impaye}"></span>Impayé</span>
-            <span><span class="dot" style="background:${STATUT_COLOR.reserve}"></span>Réservé</span>
-            <span><span class="dot" style="background:${STATUT_COLOR.indisponible}"></span>Indisponible</span>
-          </div>` : ''}
           <div class="map-tip" id="map-tip" aria-hidden="true"></div>
         </div>
       </div>
-
-      ${edit ? `<aside class="map-panel">
+      <aside class="map-panel">
         <div id="map-props"></div>
         <div class="map-panel-sec">
           <h3>Ajouter</h3>
@@ -1268,15 +1338,18 @@ function renderCarte() {
           <h3>Emplacements à placer <span class="map-count">${unplaced.length}</span></h3>
           <div class="map-chips">${unplaced.map((e) => `<button class="map-chip" data-act="placeEmplacement" data-a1="${e.id}">${esc(e.numero)}</button>`).join('')}</div>
         </div>` : ''}
-        <p class="map-aide">Glissez pour déplacer · poignée dorée pour redimensionner · <kbd>Suppr</kbd> pour retirer · <kbd>Échap</kbd> pour désélectionner. Aimantation automatique.</p>
-      </aside>` : ''}
+        <p class="map-aide">Glissez pour déplacer · poignée pour redimensionner · <kbd>Suppr</kbd> pour retirer · <kbd>Échap</kbd> pour désélectionner. Aimantation automatique.</p>
+      </aside>
     </div>`;
+  }
 
   wireCarte();
   renderProps();
+  if (!edit) panneauCarte(st.selected?.kind === 'emp' ? st.selected.id : null);
 
   carteInfobulle();
 
+  if (!edit) filtrerCarte('');
   const champ = $('#map-q');
   if (champ) {
     champ.addEventListener('input', () => filtrerCarte(champ.value));
@@ -1285,6 +1358,79 @@ function renderCarte() {
     });
   }
 }
+
+window.filtrerEtatCarte = (code) => { carteState.filtre = code || ''; renderCarte(); };
+window.basculeCarte = (v) => { carteState.vueMobile = v; renderCarte(); };
+
+/* Le panneau de droite : ce qu'on vient chercher en cliquant une parcelle,
+   sans quitter le plan. Les montants viennent des factures (une requete),
+   le reste est deja charge avec la carte. */
+async function panneauCarte(id) {
+  const box = $('#carte-panneau');
+  if (!box) return;
+  if (!id) {
+    const st = carteState;
+    const dus = st.emplacements.filter((e) => etatCarte(e) === 'impaye');
+    box.innerHTML = `<div class="cp-vide">
+      <h2>Choisissez un emplacement</h2>
+      <p class="muted">Cliquez une parcelle pour voir son occupant, ce qu’il reste à payer et agir.</p>
+      ${dus.length ? `<h3>Impayés</h3><div class="cp-liste">${dus.map((e) => `
+        <button data-act="choisirSurCarte" data-a1="${e.id}"><strong>${esc(e.numero)}</strong><span>${esc(`${e.resident?.prenom || ''} ${e.resident?.nom || ''}`.trim())}</span></button>`).join('')}</div>` : ''}
+    </div>`;
+    return;
+  }
+  const e = carteState.emplacements.find((x) => x.id === id);
+  if (!e) return;
+  const code = etatCarte(e);
+  const S = STATUT_STYLE[code];
+  const r = e.resident;
+  box.innerHTML = `<div class="cp-tete">
+      <div class="cp-ligne"><span class="muted">Emplacement${e.secteur ? ' · ' + esc(e.secteur) : ''}</span>
+        <span class="cp-etat" style="background:${code === 'occupe' ? 'var(--sapin-pale)' : code === 'impaye' ? 'var(--rouge-pale)' : S.fill};color:${code === 'occupe' ? '#143D30' : code === 'impaye' ? 'var(--rouge)' : S.texte}">${esc(libelleEtat(e))}</span></div>
+      <div class="cp-num">${esc(e.numero)}</div>
+      <div class="muted">${esc(e.type || 'Emplacement')}</div>
+    </div>
+    ${r ? `<div class="cp-res">
+        <span class="cp-av">${esc(initiales(r))}</span>
+        <div><strong>${esc(`${r.prenom || ''} ${r.nom || ''}`.trim())}</strong><div class="muted" id="cp-contact">…</div></div>
+      </div>
+      <dl class="cp-dl" id="cp-chiffres"><div><dt>Reste à payer</dt><dd>…</dd></div></dl>
+      <div class="cp-actions">
+        <button class="btn btn-primary btn-block" id="cp-encaisser" data-act="encaisserClient" data-a1="${r.id}">Encaisser</button>
+        <div class="cp-2">
+          <button class="btn btn-ghost" data-act="allerA" data-a1="#/residents/${r.id}">Ouvrir la fiche</button>
+          <button class="btn btn-ghost" data-act="messageRapide" data-a1="${r.id}">Message</button>
+        </div>
+      </div>`
+    : `<p class="muted cp-libre">${code === 'indisponible' ? 'Emplacement hors service.' : code === 'reserve' ? 'Emplacement réservé, sans résident pour l’instant.' : 'Aucun résident : l’emplacement est libre.'}</p>
+      <div class="cp-actions">
+        <button class="btn btn-ghost btn-block" data-act="modifierEmplacement" data-a1="${e.id}">Modifier l’emplacement</button>
+      </div>`}`;
+  if (!r) return;
+  try {
+    const [{ residents }, { factures }] = await Promise.all([
+      api('/api/emplacements/' + id),
+      api('/api/factures?resident_id=' + r.id + exQSand()),
+    ]);
+    if (carteState?.selected?.id !== id && $('#carte-panneau') !== box) return;
+    const fiche = (residents || [])[0] || {};
+    const dues = (factures || []).filter((f) => ['emise', 'partielle', 'en_retard'].includes(f.statut));
+    const reste = dues.reduce((t, f) => t + Number(f.total_ttc || 0) - Number(f.montant_regle || 0), 0);
+    const retard = dues.filter((f) => f.statut === 'en_retard');
+    const contact = [fiche.telephone, fiche.email].filter(Boolean).map(esc).join(' · ');
+    const c = $('#cp-contact'); if (c) c.innerHTML = contact || 'aucun contact renseigné';
+    const d = $('#cp-chiffres');
+    if (d) d.innerHTML = `
+      <div><dt>Reste à payer</dt><dd style="${reste > 0.005 ? 'color:var(--rouge);font-weight:700' : ''}">${reste > 0.005 ? eur(reste) : 'À jour'}</dd></div>
+      <div><dt>Factures en attente</dt><dd>${dues.length || 'aucune'}${retard.length ? ` · ${retard.length} en retard` : ''}</dd></div>
+      ${fiche.assurance_expire_le !== undefined ? `<div><dt>Assurance</dt><dd>${fiche.assurance_expire_le ? 'jusqu’au ' + dfr(fiche.assurance_expire_le) : 'non renseignée'}</dd></div>` : ''}`;
+    const b = $('#cp-encaisser'); if (b && reste > 0.005) b.textContent = `Encaisser ${eur(reste)}`;
+  } catch (err) { /* le panneau garde l'essentiel */ }
+}
+window.choisirSurCarte = (id) => {
+  const g = document.querySelector(`.pin[data-id="${CSS.escape(id)}"]`);
+  if (g) g.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+};
 
 /* Le mot qui accompagne la couleur. Meme deduction que carteColor : les
    deux doivent dire la meme chose, sinon l'infobulle contredit la pastille. */
@@ -1312,28 +1458,37 @@ function filtrerCarte(q) {
   const info = $('#map-q-info');
   if (!svg) return;
 
+  // deux filtres se combinent : l'etat choisi (puces) et le texte saisi
+  const etat = carteState?.mode === 'edit' ? '' : (carteState?.filtre || '');
   const terme = sansAccents(q);
   const pins = svg.querySelectorAll('.pin');
+  const tuiles = document.querySelectorAll('.cs-tuile');
 
-  if (!terme) {
+  if (!terme && !etat) {
     svg.classList.remove('filtre');
     pins.forEach((p) => p.classList.remove('trouve'));
-    if (info) info.textContent = `${pins.length} emplacements — cliquer une pastille pour ouvrir la fiche`;
+    tuiles.forEach((t) => t.classList.remove('estompe'));
+    if (info) info.textContent = '';
     return;
   }
 
   let n = 0;
   pins.forEach((p) => {
-    const ok = (p.dataset.cherche || '').includes(terme);
+    const ok = (!etat || p.dataset.code === etat) && (!terme || (p.dataset.cherche || '').includes(terme));
     p.classList.toggle('trouve', ok);
     if (ok) n += 1;
+  });
+  tuiles.forEach((t) => {
+    const pin = svg.querySelector(`.pin[data-cherche="${CSS.escape(t.dataset.cherche || '')}"]`);
+    const okEtat = !etat || !pin || pin.dataset.code === etat;
+    t.classList.toggle('estompe', !(okEtat && (!terme || (t.dataset.cherche || '').includes(terme))));
   });
   svg.classList.add('filtre');
 
   if (info) {
-    info.textContent = n === 0
-      ? `Aucun emplacement ne correspond à « ${q.trim()} »`
-      : n === 1 ? '1 emplacement trouvé' : `${n} emplacements trouvés`;
+    info.textContent = !terme ? ''
+      : n === 0 ? `Aucun emplacement ne correspond à « ${q.trim()} »`
+        : n === 1 ? '1 emplacement trouvé' : `${n} emplacements trouvés`;
   }
 }
 
@@ -1456,7 +1611,13 @@ function wireCarte() {
   if (!svg) return;
 
   if (st.mode !== 'edit') {
-    svg.querySelectorAll('.pin').forEach((g) => g.addEventListener('click', () => ficheEmplacement(g.dataset.id)));
+    svg.querySelectorAll('.pin').forEach((g) => g.addEventListener('click', () => {
+      if (window.matchMedia('(max-width:880px)').matches) { ficheEmplacement(g.dataset.id); return; }
+      st.selected = { kind: 'emp', id: g.dataset.id };
+      svg.querySelectorAll('.pin.selected').forEach((x) => x.classList.remove('selected'));
+      g.classList.add('selected');
+      panneauCarte(g.dataset.id);
+    }));
     return;
   }
 
@@ -5824,7 +5985,7 @@ function regVisibles() {
   return REG_CACHE.reglements.filter((g) => {
     if (!f(g)) return false;
     if (!q) return true;
-    return `${REG_CACHE.rmap[g.resident_id] || ''} ${g.reference || ''} ${REG_CACHE.mlib[g.mode] || g.mode || ''}`
+    return `${REG_CACHE.rmap[g.resident_id] || ''} ${g.reference || ''} ${REG_CACHE.mlib[g.mode] || lib(g.mode) || ''}`
       .toLowerCase().includes(q);
   });
 }
@@ -5842,7 +6003,7 @@ function regLigneListe(g) {
         <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           ${esc(REG_CACHE.rmap[g.resident_id] || 'Résident supprimé')}</div>
         <div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-          ${dfr(g.date_reglement)} · ${esc(REG_CACHE.mlib[g.mode] || g.mode || '—')}${g.reference ? ' · ' + esc(g.reference) : ''}</div>
+          ${dfr(g.date_reglement)} · ${esc(REG_CACHE.mlib[g.mode] || lib(g.mode) || '—')}${g.reference ? ' · ' + esc(g.reference) : ''}</div>
       </div>
       <div style="text-align:right;flex:none">
         <div style="font-size:14px;font-weight:600;font-variant-numeric:tabular-nums">${eur(g.montant)}</div>
@@ -5896,7 +6057,7 @@ function regFiche(g) {
   const aff = (g.affectations || []).filter((a) => a && a.facture_id);
   const infos = [
     ['Date du règlement', dfr(g.date_reglement)],
-    ['Moyen', esc(REG_CACHE.mlib[g.mode] || g.mode || '—')],
+    ['Moyen', esc(REG_CACHE.mlib[g.mode] || lib(g.mode) || '—')],
     ['Référence', g.reference ? esc(g.reference) : '<span class="muted">aucune</span>'],
     ['Saisi le', g.created_at
       ? new Date(g.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -6022,7 +6183,7 @@ window.formReglement = () => {
        au rapprochement bancaire. */
     const regle = regleRef(typeParCode[body.mode]);
     if (regle.requis && !String(body.reference || '').trim()) {
-      const nom = (mlib[body.mode] || body.mode || 'ce moyen').toLowerCase();
+      const nom = (mlib[body.mode] || lib(body.mode) || 'ce moyen').toLowerCase();
       toast(regle.aide + ' obligatoire pour un paiement par ' + nom
         + ' : sans elle, l\u2019encaissement ne pourra pas être retrouvé au rapprochement bancaire.', true);
       $('#reg-ref')?.focus();
@@ -6118,7 +6279,16 @@ async function vueReglements() {
   majListeReglements();
   majFicheReglement();
   chargerRemises();
+  if (_ouvrirEncaissement) { _ouvrirEncaissement = false; formReglement(); }
 }
+
+/* « Encaisser un paiement » depuis l'accueil : le formulaire a besoin des
+   listes chargees par l'ecran Reglements, on y passe donc d'abord. */
+let _ouvrirEncaissement = false;
+window.allerEncaisser = () => {
+  _ouvrirEncaissement = true;
+  if (location.hash === '#/reglements') route(); else location.hash = '#/reglements';
+};
 
 // Remises en banque : un bordereau par moyen de paiement (chèques ≠ ANCV).
 async function chargerRemises() {
