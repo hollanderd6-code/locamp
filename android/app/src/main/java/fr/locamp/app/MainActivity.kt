@@ -73,6 +73,9 @@ class MainActivity : ComponentActivity() {
     /** Notification touchee : on ouvre l'ecran concerne, une fois le site pret. */
     private fun traiterNotification(intent: Intent?) {
         val extras = intent?.extras ?: return
+        // Seule une vraie notification ouvre un ecran : le lancement normal
+        // de l'app porte parfois des extras sans rapport.
+        if (!extras.containsKey("type") && !extras.containsKey("entite")) return
         val ecran = Configuration.ecranPourNotification(extras.getString("type"), extras.getString("entite")) ?: return
         window.decorView.postDelayed({ Pont.naviguer(ecran) }, if (Pont.pret) 0L else 1_500L)
     }

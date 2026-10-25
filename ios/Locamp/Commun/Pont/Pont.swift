@@ -37,6 +37,7 @@ final class Pont: NSObject {
     @ObservationIgnored private var margesSwiftUI = UIEdgeInsets.zero
     @ObservationIgnored private var margesUIKit = UIEdgeInsets.zero
     @ObservationIgnored private var jetonPush: String?
+    @ObservationIgnored private var accueilAuDemarrage = true
 
     @ObservationIgnored let adresse: URL = {
         let brut = Bundle.main.object(forInfoDictionaryKey: "LocampURL") as? String
@@ -230,6 +231,13 @@ final class Pont: NSObject {
         allerSiBesoin(groupes: [e.id], ecran: e.id)
     }
 
+    /// Balayage : onglet voisin dans la barre (-1 a gauche, +1 a droite).
+    func ongletVoisin(_ sens: Int) {
+        let liste = Configuration.onglets
+        guard let i = liste.firstIndex(of: onglet), liste.indices.contains(i + sens) else { return }
+        onglet = liste[i + sens]
+    }
+
     func sousOngletChoisi(_ id: String) {
         guard id != etat?.ecran else { return }
         UISelectionFeedbackGenerator().selectionChanged()
@@ -293,7 +301,7 @@ extension Pont: WKScriptMessageHandler {
         case "session":
             let c = corps["connecte"] as? Bool ?? false
             withAnimation(.smooth) { connecte = c }
-            if !c { etat = nil; memoire = [:]; cheminPlus = []; onglet = .premier }
+            if !c { etat = nil; memoire = [:]; cheminPlus = []; onglet = .premier; accueilAuDemarrage = true }
 
         case "etat":
             guard let brut = corps["etat"],
@@ -301,6 +309,13 @@ extension Pont: WKScriptMessageHandler {
                   let e = try? JSONDecoder().decode(EtatWeb.self, from: data) else { return }
             etat = e
             synchroniserOnglet(e)
+            // Au lancement (et apres chaque connexion), l'app s'ouvre sur
+            // son premier onglet, meme si le site a rouvert un autre ecran.
+            if accueilAuDemarrage {
+                accueilAuDemarrage = false
+                let accueil = OngletApp.premier.groupes
+                if !accueil.contains(e.groupe), let g = accueil.first { naviguer(g) }
+            }
 
         case "auth":
             // Session du site, pour les ecrans natifs (messagerie).

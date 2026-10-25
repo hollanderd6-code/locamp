@@ -65,6 +65,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import android.text.format.DateUtils
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.abs
 
 /** Conversation ouverte cote gestion : un resident. */
 data class ConversationOuverte(val residentId: String, val nom: String)
@@ -345,8 +348,17 @@ private fun MessageATous(fermer: () -> Unit) {
 @Composable
 fun MessagerieLocataire() {
     val etat = Pont.etat
+    // Comme sur les autres onglets : balayer change d'onglet.
+    var cumul by remember { mutableStateOf(0f) }
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        modifier = Modifier.pointerInput(Unit) {
+            detectHorizontalDragGestures(
+                onDragStart = { cumul = 0f },
+                onDragEnd = { if (abs(cumul) > 70.dp.toPx()) Pont.ongletVoisin(if (cumul < 0) 1 else -1) },
+                onHorizontalDrag = { _, d -> cumul += d },
+            )
+        },
         topBar = {
             TopAppBar(
                 title = {

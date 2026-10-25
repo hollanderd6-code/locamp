@@ -27,6 +27,11 @@
   }
 
   const TITRES = { solde: 'Accueil', factures: 'Factures', messages: 'Messages', documents: 'Documents' };
+
+  /* L'app s'ouvre toujours sur l'Accueil. Le site, lui, rouvre le dernier
+     onglet consulte (utile dans un navigateur) : dans l'app, on efface ce
+     souvenir avant que la page ne le lise. */
+  try { localStorage.removeItem('locamp_portail_onglet'); } catch (e) { /* stockage indisponible */ }
   const $id = (id) => document.getElementById(id);
   const texte = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
   const pastille = (id) => {
@@ -209,6 +214,50 @@
     childList: true, subtree: true,
     attributes: true, attributeFilter: ['class', 'data-onglet', 'style'],
   });
+
+  /* ---------- Balayer pour changer d'onglet ----------
+     Un geste franc a gauche ou a droite passe a l'onglet voisin, comme
+     dans les apps de telephone. Ignore : les gestes surtout verticaux,
+     lents ou courts, et ceux qui commencent dans un element qui defile
+     lui-meme a l'horizontale (tableau), un champ ou la zone de signature. */
+  const ORDRE = ['solde', 'factures', 'messages', 'documents'];
+  function defileHorizontal(el) {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      if (n.scrollWidth > n.clientWidth + 2) {
+        const ox = getComputedStyle(n).overflowX;
+        if (ox === 'auto' || ox === 'scroll') return true;
+      }
+    }
+    return false;
+  }
+  let geste = null;
+  document.addEventListener('touchstart', (e) => {
+    geste = null;
+    if (e.touches.length !== 1 || !estConnecte() || document.body.classList.contains('en-signature')) return;
+    const c = e.target;
+    if (c.closest && c.closest('input, textarea, select, canvas, [contenteditable]')) return;
+    if (defileHorizontal(c)) return;
+    const t = e.touches[0];
+    geste = { x: t.clientX, y: t.clientY, t: Date.now() };
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const g = geste; geste = null;
+    if (!g) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - g.x, dy = t.clientY - g.y;
+    if (Date.now() - g.t > 700 || Math.abs(dx) < 70 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+    const i = ORDRE.indexOf(document.body.getAttribute('data-onglet') || 'solde');
+    const j = i + (dx < 0 ? 1 : -1);
+    if (i < 0 || j < 0 || j >= ORDRE.length || typeof window.allerOnglet !== 'function') return;
+    const contenu = document.querySelector('#espace .content');
+    window.allerOnglet(ORDRE[j]);
+    if (contenu) {
+      contenu.classList.remove('glisse-g', 'glisse-d');
+      void contenu.offsetWidth;               // relance l'animation
+      contenu.classList.add(dx < 0 ? 'glisse-g' : 'glisse-d');
+    }
+    publier();
+  }, { passive: true });
 
   envoyer('pret', { version: VERSION_PONT });
   publierSession();

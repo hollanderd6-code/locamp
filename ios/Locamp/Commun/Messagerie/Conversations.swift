@@ -292,5 +292,13 @@ struct MessagerieLocataireView: View {
                     if let etat = pont.etat { MenuCompte(etat: etat) }
                 }
             }
+            // Comme sur les autres onglets : balayer change d'onglet.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30).onEnded { v in
+                    let dx = v.translation.width, dy = v.translation.height
+                    guard abs(dx) > 70, abs(dx) > 2 * abs(dy) else { return }
+                    pont.ongletVoisin(dx < 0 ? 1 : -1)
+                }
+            )
     }
 }

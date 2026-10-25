@@ -70,6 +70,8 @@ object Pont {
     /** Dernier ecran vu dans chaque onglet : revenir sur « Facturation » rouvre « Reglements ». */
     private val memoire = mutableMapOf<String, String>()
     private var jetonPush: String? = null
+    /** Au lancement, l'app s'ouvre sur son premier onglet (Accueil). */
+    private var accueilAuDemarrage = true
 
     val adresse: String = BuildConfig.LOCAMP_URL
     private val hote: String? = Uri.parse(adresse).host
@@ -240,6 +242,15 @@ object Pont {
         if (id != null) allerSiBesoin(listOf(id), id)
     }
 
+    /** Balayage : onglet voisin dans la barre (-1 a gauche, +1 a droite). */
+    fun ongletVoisin(sens: Int) {
+        val ids = Configuration.onglets.map { it.id }
+        val j = ids.indexOf(onglet) + sens
+        if (j !in ids.indices) return
+        onglet = ids[j]
+        ongletChoisi(ids[j])
+    }
+
     fun sousOngletChoisi(id: String) {
         if (id != etat?.ecran) naviguer(id)
     }
@@ -288,6 +299,7 @@ object Pont {
                 connecte = c
                 if (!c) {
                     etat = null; memoire.clear(); ecranPlus = null
+                    accueilAuDemarrage = true
                     onglet = Configuration.onglets.first().id
                 }
             }
@@ -295,6 +307,11 @@ object Pont {
                 val e = EtatWeb.lire(it)
                 etat = e
                 synchroniser(e)
+                if (accueilAuDemarrage) {
+                    accueilAuDemarrage = false
+                    val accueil = Configuration.onglets.first().groupes
+                    if (e.groupe !in accueil) naviguer(accueil.first())
+                }
             }
             "auth" -> {
                 val jeton = m.optStringOuNull("jeton")

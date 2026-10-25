@@ -46,3 +46,9 @@ html.natif input,html.natif select,html.natif textarea{font-size:16px} /* pas de
 /* ---- Android : police du systeme ---- */
 html.natif-android body,html.natif-android h1,html.natif-android h2,html.natif-android .brand-name,
 html.natif-android .btn,html.natif-android .hero-solde .montant{font-family:system-ui,"Roboto",sans-serif}
+
+/* ---- Changement d'onglet au balayage : le contenu arrive du cote du geste ---- */
+@keyframes natifGlisseG{from{transform:translateX(36px);opacity:.3}to{transform:none;opacity:1}}
+@keyframes natifGlisseD{from{transform:translateX(-36px);opacity:.3}to{transform:none;opacity:1}}
+html.natif .content.glisse-g{animation:natifGlisseG .22s cubic-bezier(.2,.9,.25,1)}
+html.natif .content.glisse-d{animation:natifGlisseD .22s cubic-bezier(.2,.9,.25,1)}
