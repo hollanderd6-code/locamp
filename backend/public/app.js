@@ -5783,6 +5783,29 @@ async function vueParametres() {
     try { await api('/api/camping/parametres', { method: 'PUT', body: { relances } }); toast('Relances enregistrées'); }
     catch (err) { toast(err.message, true); }
   });
+
+  sommaireSections();
+}
+
+/* Sommaire d'une longue page de reglages : une puce par section (titre
+   h2 d'une carte), qui y fait defiler. Construit apres coup : les sections
+   ajoutees plus tard y figurent sans rien changer ici. */
+function sommaireSections() {
+  const main = $('#main');
+  const titres = [...main.querySelectorAll('.card h2')].filter((h) => h.textContent.trim());
+  if (titres.length < 4 || main.querySelector('.sommaire')) return;
+  titres.forEach((h, i) => { h.closest('.card').id ||= 'section-' + i; });
+  const nav = document.createElement('nav');
+  nav.className = 'sommaire';
+  nav.setAttribute('aria-label', 'Sections de la page');
+  nav.innerHTML = titres.map((h) => `<a href="#" data-cible="${h.closest('.card').id}">${esc(h.textContent.trim())}</a>`).join('');
+  nav.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-cible]');
+    if (!a) return;
+    e.preventDefault();
+    document.getElementById(a.dataset.cible)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  main.querySelector('.page-head')?.after(nav);
 }
 
 window.uploadLogo = async () => {
