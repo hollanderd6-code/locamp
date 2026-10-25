@@ -12,7 +12,7 @@ router.use(auth, campingScope);
 router.get('/', async (req, res) => {
   try {
     let q = supabase.from('factures')
-      .select('id,numero,resident_id,contrat_id,periode,date_emission,total_ttc,montant_regle,statut,efacture_statut,efacture_pa_id')
+      .select('id,numero,resident_id,contrat_id,periode,date_emission,total_ttc,montant_regle,statut,avoir_de,efacture_statut,efacture_pa_id')
       .eq('camping_id', req.activeCampingId);
     for (const f of ['resident_id', 'contrat_id', 'statut', 'periode']) {
       if (req.query[f]) q = q.eq(f, req.query[f]);

@@ -184,9 +184,14 @@ async function genererProformaPdf(campingId, residentId, lignes) {
   const t = computeTotals(lignes);
   const [camping, resident] = await Promise.all([
     supabase.from('campings').select('nom,raison_sociale,adresse,email,telephone,siret,tva,parametres,logo_path').eq('id', campingId).maybeSingle(),
-    supabase.from('residents').select('civilite,nom,prenom,adresse,email').eq('id', residentId).maybeSingle(),
+    supabase.from('residents').select('*').eq('id', residentId).maybeSingle(),
   ]);
   const campData = camping.data || {};
+  const resData = resident.data || {};
+  if (resData.emplacement_id) {
+    const { data: emp } = await supabase.from('emplacements').select('numero').eq('id', resData.emplacement_id).maybeSingle();
+    if (emp) resData.emplacement = emp.numero;
+  }
   if (campData.logo_path) {
     try { campData.logo = await downloadDocument(campData.logo_path); }
     catch (e) { console.error('[pdf logo]', e.message); }
@@ -195,7 +200,7 @@ async function genererProformaPdf(campingId, residentId, lignes) {
     proforma: true, numero: null, date_emission: new Date().toISOString().slice(0, 10),
     lignes: t.lignes, total_ht: t.total_ht, total_tva: t.total_tva, total_ttc: t.total_ttc, statut: 'emise',
   };
-  const pdf = await buildFacturePdf({ camping: campData, resident: resident.data || {}, facture });
+  const pdf = await buildFacturePdf({ camping: campData, resident: resData, facture });
   const path = `proformas/${campingId}/${residentId}.pdf`;
   const { error: upErr } = await supabase.storage.from(BUCKET)
     .upload(path, pdf, { contentType: 'application/pdf', upsert: true });
@@ -241,10 +246,16 @@ async function genererPdfFacture(campingId, facture) {
   const [camping, resident] = await Promise.all([
     supabase.from('campings').select('nom,raison_sociale,adresse,email,telephone,siret,tva,parametres,logo_path').eq('id', campingId).maybeSingle(),
     facture.resident_id
-      ? supabase.from('residents').select('civilite,nom,prenom,adresse,email').eq('id', facture.resident_id).maybeSingle()
+      // '*' : les champs entreprise (raison sociale, SIRET, TVA, ville) changent la facture
+      ? supabase.from('residents').select('*').eq('id', facture.resident_id).maybeSingle()
       : Promise.resolve({ data: {} }),
   ]);
   const campData = camping.data || {};
+  const resData = resident.data || {};
+  if (resData.emplacement_id) {
+    const { data: emp } = await supabase.from('emplacements').select('numero').eq('id', resData.emplacement_id).maybeSingle();
+    if (emp) resData.emplacement = emp.numero;
+  }
   if (campData.logo_path) {
     try { campData.logo = await downloadDocument(campData.logo_path); }
     catch (e) { console.error('[pdf logo]', e.message); }
@@ -252,7 +263,7 @@ async function genererPdfFacture(campingId, facture) {
   const paiement = await construirePaiement(campingId, facture);
   // Un brouillon s'imprime en PROFORMA (pas de n° comptable, mention « ne vaut pas facture »).
   const pdf = await buildFacturePdf({
-    camping: campData, resident: resident.data || {},
+    camping: campData, resident: resData,
     facture: { ...facture, paiement, proforma: facture.statut === 'brouillon' },
   });
   const path = `factures/${campingId}/${facture.id}.pdf`;

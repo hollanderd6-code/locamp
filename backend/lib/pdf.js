@@ -1,12 +1,12 @@
 const PDFDocument = require('pdfkit');
 
 const GREEN = '#0E6E63';
-const INK = '#14302E';
-const SAPIN = '#175243';
-const LAITON = '#B98A3C';
-const IVOIRE = '#F6F3EC';
-const GRIS = '#6B7A74';
-const HAIR = '#E4DFD3';
+const INK = '#17201C';
+const SAPIN = '#1E5A46';
+const LAITON = '#5B665F';   // ancien accent dore : neutre depuis la refonte 2026
+const IVOIRE = '#F5F6F4';
+const GRIS = '#5B665F';
+const HAIR = '#E3E7E2';
 
 // Détecte le motif d'index compteur "[ancien→nouveau|conso]" dans une désignation.
 // Renvoie { titre, sous } — sous = 'Index : ancien → nouveau · conso' ou null.
@@ -147,6 +147,13 @@ function buildContratPdf({ camping = {}, resident = {}, emplacement = {}, contra
 }
 
 // Construit le PDF d'une facture (ou avoir si statut='avoir'). Mentions légales FR.
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+// « 2026-10 » -> « octobre 2026 » ; toute autre forme est rendue telle quelle.
+function periodeLisible(p) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(p || ''));
+  return m ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : String(p || '');
+}
+
 function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
   return new Promise((resolve, reject) => {
     try {
@@ -162,9 +169,12 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
 
       const L = 56, R = 539, W = R - L;     // largeur utile 483
 
-      // ===== Bandeau de tête (filet laiton) =====
+      // ===== Bandeau de tête =====
       doc.rect(0, 0, doc.page.width, 4).fill(accent);
-      doc.rect(0, 4, doc.page.width, 2).fill(LAITON);
+
+      // Client professionnel : raison sociale ou SIRET renseignes sur la fiche.
+      // Il change ce que la facture doit dire (identite, penalites, indemnite).
+      const pro = !!(resident.raison_sociale || resident.siret);
 
       const headerY = 54;
       // Logo dans une pastille verte, ou monogramme
@@ -178,7 +188,7 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
         } catch (_) { sellerX = L; }
       } else if (camping.nom || camping.raison_sociale) {
         doc.roundedRect(L, headerY, logoBox, logoBox, 12).fill(accent);
-        doc.fillColor('#F2EBDD').font('Helvetica-Bold').fontSize(28)
+        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(28)
           .text(((camping.raison_sociale || camping.nom || 'C')[0] || 'C').toUpperCase(),
             L, headerY + 15, { width: logoBox, align: 'center' });
         sellerX = L + logoBox + 16;
@@ -207,26 +217,39 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       };
       if (!isProforma) meta('N°', facture.numero || '—'); else meta('Réf.', 'Non comptable');
       meta('Date', fmtDate(facture.date_emission));
-      if (facture.periode) meta('Période', facture.periode);
+      if (facture.periode) meta('Période', periodeLisible(facture.periode));
       const ech = echeanceStr(facture.date_emission, params.delai_paiement);
       if (ech && !isProforma && !isAvoir) meta('Échéance', ech);
 
-      // ===== Bloc client encadré =====
+      // ===== Bloc client =====
       const clientY = 150;
-      doc.roundedRect(L, clientY, 250, 86, 8).fill(IVOIRE);
-      doc.roundedRect(L, clientY, 250, 86, 8).lineWidth(1).stroke(HAIR);
-      doc.rect(L, clientY + 10, 3, 66).fill(LAITON);
-      doc.fillColor(LAITON).font('Helvetica-Bold').fontSize(8).text('FACTURÉ À', L + 16, clientY + 12, { characterSpacing: 1 });
-      doc.fillColor(INK).font('Helvetica-Bold').fontSize(12)
-        .text(`${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', L + 16, clientY + 26, { width: 224 });
-      doc.font('Helvetica').fontSize(9).fillColor('#444');
-      let cy = clientY + 44;
-      if (resident.adresse) { doc.text(resident.adresse, L + 16, cy, { width: 224 }); cy += 12; }
-      if (resident.email) { doc.text(resident.email, L + 16, cy, { width: 224 }); cy += 12; }
-      if (resident.compte_comptable) doc.fillColor(GRIS).fontSize(8).text('Compte ' + resident.compte_comptable, L + 16, cy, { width: 224 });
+      const lignesClient = [];
+      if (pro) {
+        lignesClient.push({ t: resident.raison_sociale || '—', b: true });
+        const contact = `${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim();
+        if (contact) lignesClient.push({ t: 'À l\u2019attention de ' + contact });
+      } else {
+        lignesClient.push({ t: `${resident.civilite || ''} ${resident.prenom || ''} ${resident.nom || ''}`.trim() || '—', b: true });
+      }
+      const ville = [resident.adresse_cp, resident.adresse_ville].filter(Boolean).join(' ');
+      if (resident.adresse) lignesClient.push({ t: resident.adresse });
+      if (ville && !(resident.adresse || '').includes(ville)) lignesClient.push({ t: ville });
+      if (resident.emplacement) lignesClient.push({ t: 'Emplacement ' + resident.emplacement });
+      if (pro && resident.siret) lignesClient.push({ t: 'SIRET ' + resident.siret, petit: true });
+      if (pro && resident.tva_intra) lignesClient.push({ t: 'TVA ' + resident.tva_intra, petit: true });
+      if (!resident.adresse && resident.email) lignesClient.push({ t: resident.email });
+      if (resident.compte_comptable) lignesClient.push({ t: 'Compte ' + resident.compte_comptable, petit: true });
+      const hClient = Math.max(86, 30 + lignesClient.length * 12 + (lignesClient[0] ? 4 : 0));
+      doc.roundedRect(L, clientY, 250, hClient, 8).fill(IVOIRE);
+      doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(8).text(isAvoir ? 'AVOIR ÉMIS À' : 'FACTURÉ À', L + 16, clientY + 12, { characterSpacing: 0.6 });
+      let cy = clientY + 26;
+      lignesClient.forEach((l, i) => {
+        if (i === 0) { doc.fillColor(INK).font('Helvetica-Bold').fontSize(12).text(l.t, L + 16, cy, { width: 224 }); cy += 17; return; }
+        doc.fillColor(l.petit ? GRIS : '#333').font('Helvetica').fontSize(l.petit ? 8 : 9).text(l.t, L + 16, cy, { width: 224 }); cy += 12;
+      });
 
       // ===== Tableau =====
-      let y = clientY + 108;
+      let y = clientY + Math.max(108, hClient + 22);
       const C = { des: L, du: 214, au: 258, nu: 302, qte: 330, puht: 360, totht: 410, tva: 458, ttc: 488 };
       const hasDates = (facture.lignes || []).some((l) => l.date_debut || l.date_fin || l.nuits != null);
 
@@ -264,7 +287,7 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
         const hSous = dg.sous ? 11 : 0;
         const rowH = Math.max(hTitre + hSous, 12) + 9;
         if (y + rowH > 700) { doc.addPage(); doc.rect(0, 0, doc.page.width, 4).fill(accent); y = 56; drawHeader(); }
-        if (i % 2 === 1) { doc.rect(L, y - 4, W, rowH).fill('#FBF9F4'); }
+        if (i % 2 === 1) { doc.rect(L, y - 4, W, rowH).fill('#F8FAF8'); }
         doc.fillColor(INK).font('Helvetica-Bold').fontSize(9);
         doc.text(dg.titre, C.des + 8, y, { width: 150 });
         if (dg.sous) doc.fillColor(GRIS).font('Helvetica').fontSize(7.5).text(dg.sous, C.des + 8, y + hTitre + 1, { width: 150 });
@@ -280,7 +303,7 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
         doc.fillColor('#444').text(`${taux} %`, C.tva, y, { width: 26, align: 'right' });
         doc.font('Helvetica-Bold').fillColor(INK).text(fmtEur(ttc), C.ttc, y, { width: 43, align: 'right' });
         y += rowH;
-        doc.moveTo(L, y - 3).lineTo(R, y - 3).lineWidth(0.5).strokeColor('#EFEBE0').stroke();
+        doc.moveTo(L, y - 3).lineTo(R, y - 3).lineWidth(0.5).strokeColor('#EDF0EC').stroke();
       });
 
       y += 16;
@@ -331,9 +354,7 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
           .join('   \u00b7   ');
         if (pay.acquittee) {
           const bh = 40;
-          doc.roundedRect(L, y, W, bh, 8).fill('#EAF3EC');
-          doc.roundedRect(L, y, W, bh, 8).lineWidth(1).stroke('#BFDBC7');
-          doc.rect(L, y + 10, 3, bh - 20).fill(accent);
+          doc.roundedRect(L, y, W, bh, 8).fill('#E8F0EC');
           doc.fillColor(accent).font('Helvetica-Bold').fontSize(11)
             .text('FACTURE ACQUITT\u00c9E', L + 16, y + 9, { characterSpacing: 1 });
           doc.fillColor(GRIS).font('Helvetica').fontSize(8.5)
@@ -351,7 +372,14 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       if (isProforma) { doc.text('Proforma établie à titre indicatif — ne vaut pas facture et n\u2019ouvre aucun droit à déduction de TVA.', L, y, { width: W }); y = doc.y + 2; }
       if (Number(facture.total_tva || 0) === 0 && params.mention_tva) { doc.text(params.mention_tva, L, y, { width: W }); y = doc.y + 2; }
       doc.text(`Conditions de règlement : ${params.conditions_reglement || 'À réception de facture.'}${ech && !isProforma && !isAvoir ? '  ·  Échéance : ' + ech : ''}`, L, y, { width: W });
-      doc.text(params.penalites || 'En cas de retard de paiement, des pénalités au taux légal en vigueur seront appliquées, ainsi qu\u2019une indemnité forfaitaire pour frais de recouvrement de 40 €.', L, doc.y + 2, { width: W });
+      /* L'indemnite forfaitaire de 40 EUR ne vaut qu'entre professionnels
+         (art. L441-10 du code de commerce) : l'annoncer a un particulier est
+         trompeur. Un texte saisi dans les reglages l'emporte toujours. */
+      if (!isProforma && !isAvoir) {
+        doc.text(params.penalites || (pro
+          ? 'Pénalités de retard : taux d\u2019intérêt appliqué par la BCE à son opération de refinancement la plus récente, majoré de 10 points. Indemnité forfaitaire pour frais de recouvrement : 40 € (art. L441-10 du code de commerce). Pas d\u2019escompte pour paiement anticipé.'
+          : 'En cas de retard de paiement, des intérêts au taux légal pourront être appliqués.'), L, doc.y + 2, { width: W });
+      }
       if (isAvoir && facture.avoir_de) doc.text('Avoir émis en correction d\u2019une facture antérieure.', L, doc.y + 2, { width: W });
 
       // ===== Mentions libres (paramétrables) =====
@@ -365,12 +393,10 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       const hasRib = !isProforma && !isAvoir && (rib.iban || rib.bic || rib.titulaire);
       if (hasRib) {
         const ribY = doc.y + 12;
-        const ribH = 20 + (rib.titulaire ? 13 : 0) + (rib.iban ? 13 : 0) + (rib.bic ? 13 : 0);
+        const ribH = 42 + (rib.titulaire ? 13 : 0) + (rib.iban ? 13 : 0) + (rib.bic ? 13 : 0);
         doc.roundedRect(L, ribY, W, ribH, 8).fill(IVOIRE);
-        doc.roundedRect(L, ribY, W, ribH, 8).lineWidth(1).stroke(HAIR);
-        doc.rect(L, ribY + 10, 3, ribH - 20).fill(LAITON);
-        doc.fillColor(LAITON).font('Helvetica-Bold').fontSize(8)
-          .text('COORDONNÉES BANCAIRES', L + 16, ribY + 10, { characterSpacing: 1 });
+        doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(8)
+          .text('COORDONNÉES BANCAIRES', L + 16, ribY + 10, { characterSpacing: 0.6 });
         let by = ribY + 24;
         doc.fontSize(9);
         const ribLine = (label, val) => {
@@ -389,8 +415,11 @@ function buildFacturePdf({ camping = {}, resident = {}, facture = {} }) {
       const footY = 792;
       doc.moveTo(L, footY).lineTo(R, footY).lineWidth(0.5).strokeColor(HAIR).stroke();
       const foot = [camping.raison_sociale || camping.nom, camping.adresse,
-        camping.siret ? 'SIRET ' + camping.siret : null].filter(Boolean).join('  —  ');
-      if (foot) doc.fillColor('#A69C86').font('Helvetica').fontSize(7).text(foot, L, footY + 6, { width: W, align: 'center' });
+        camping.siret ? 'SIRET ' + camping.siret : null, camping.tva ? 'TVA ' + camping.tva : null].filter(Boolean).join('  —  ');
+      // forme juridique, capital, RCS : obligatoires pour une societe (art. R123-237 du code de commerce)
+      const societe = String(params.mentions_societe || '').trim();
+      if (foot) doc.fillColor('#8A948E').font('Helvetica').fontSize(7).text(foot, L, footY + 6, { width: W, align: 'center' });
+      if (societe) doc.fillColor('#8A948E').font('Helvetica').fontSize(7).text(societe, L, footY + 16, { width: W, align: 'center' });
 
       doc.end();
     } catch (err) {

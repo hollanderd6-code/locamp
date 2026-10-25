@@ -282,6 +282,8 @@ const STATUT_LIB = {
   carte: 'Carte bancaire', stripe: 'Paiement en ligne', ancv: 'Chèques-vacances', autre: 'Autre',
 };
 const lib = (s) => STATUT_LIB[s] || String(s || '').replace(/_/g, ' ');
+// « 2026-10 » -> « octobre 2026 » ; toute autre forme est rendue telle quelle
+const periodeLisible = (p) => { const m = /^(\d{4})-(\d{2})$/.exec(String(p || '')); return m ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : String(p || ''); };
 
 function toast(msg, err = false) {
   const t = $('#toast');
@@ -548,6 +550,14 @@ setTimeout(majEnveloppe, 600);
 function openDrawer(html) { $('#drawer-content').innerHTML = html; $('#drawer').classList.remove('hidden'); }
 function closeDrawer() { $('#drawer').classList.add('hidden'); }
 window.closeDrawer = closeDrawer;
+// Échap ferme le tiroir, comme une fenêtre ; une boîte de confirmation ouverte passe d'abord.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || $('#drawer').classList.contains('hidden')) return;
+  if (document.querySelector('.ask-overlay') || (document.getElementById('notif-overlay') || {}).style?.display === 'flex') return;
+  closeDrawer();
+});
+// Changer d'écran ferme le tiroir : il parlait de l'écran qu'on quitte.
+window.addEventListener('hashchange', () => closeDrawer());
 
 /* ---------- routing ---------- */
 // pdf.js (CDN) pour l'éditeur de zones de signature
@@ -1875,31 +1885,51 @@ window.saveCarte = async () => {
   } catch (err) { toast(err.message, true); }
 };
 
+window.messageDepuisFiche = (id) => { closeDrawer(); window.ouvrirConversation(id); };
+window.allerResident = (id) => { closeDrawer(); location.hash = '#/residents/' + id; };
 window.ficheEmplacement = async (id) => {
   const { emplacement: e, residents } = await api('/api/emplacements/' + id);
   const r = residents[0];
-  let facturesHtml = '';
+  let dues = [];
   if (r) {
-    const { factures } = await api('/api/factures?resident_id=' + r.id + exQSand());
-    const dues = factures.filter((f) => ['emise', 'partielle', 'en_retard'].includes(f.statut));
-    facturesHtml = `<h2 style="margin-top:18px">Factures en cours</h2>
-      ${dues.length ? `<ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="badge ${f.statut}">${lib(f.statut)}</span></span><span>${eur(f.total_ttc - f.montant_regle)}</span></li>`).join('')}</ul>` : '<p class="muted">Aucune facture en attente.</p>'}`;
+    const { factures } = await api('/api/factures?resident_id=' + r.id + exQSand()).catch(() => ({ factures: [] }));
+    dues = (factures || []).filter((f) => facReste(f) > 0.005);
   }
+  const du = dues.reduce((t, f) => t + facReste(f), 0);
+  const retard = dues.some((f) => f.statut === 'en_retard');
+  // Meme regle que la carte : l'etat se deduit du resident et des retards, pas du champ saisi.
+  const etat = r && retard ? 'impaye' : statutReel({ ...e, resident: r });
+  const ETAT_TXT = { occupe: 'Occupé', impaye: 'Impayé', libre: 'Libre', reserve: 'Réservé', indisponible: 'Hors service' };
+  const ETAT_CLS = { occupe: 'occupe', impaye: 'en_retard', libre: 'libre', reserve: 'reserve', indisponible: 'indisponible' };
   openDrawer(`
-    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-right:44px">
-      <h2>Emplacement ${esc(e.numero)}</h2>
-      <button class="btn btn-ghost btn-sm" data-act="modifierEmplacement" data-a1="${e.id}">Modifier</button>
+    <div style="display:flex;align-items:center;gap:12px;padding-right:44px">
+      <div style="width:48px;height:48px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;
+        background:${STATUT_COLOR[etat] || '#E4E6E3'};color:${['occupe', 'impaye'].includes(etat) ? '#fff' : 'var(--encre)'};${etat === 'libre' ? 'border:1.5px dashed #8FA699;' : ''}">${esc(e.numero)}</div>
+      <div style="min-width:0;flex:1">
+        <h2 style="margin:0">${r ? `${esc(r.prenom || '')} ${esc(r.nom)}` : 'Emplacement ' + esc(e.numero)}</h2>
+        <p class="muted" style="margin:2px 0 0">${[e.secteur, e.type].filter(Boolean).map(esc).join(' · ')}${e.secteur || e.type ? ' · ' : ''}<span class="badge ${ETAT_CLS[etat]}">${ETAT_TXT[etat]}</span></p>
+      </div>
     </div>
-    <p class="muted">${esc(e.secteur || '')} ${e.type ? '· ' + esc(e.type) : ''} · <span class="badge ${e.statut}">${lib(e.statut)}</span></p>
-    <ul class="list-tight">
+    ${r ? `
+    <div style="margin-top:16px;padding:14px 16px;border-radius:12px;border:1px solid var(--hairline);display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+      <span class="muted">Reste dû</span>
+      <strong style="font-size:18px;color:${du > 0.005 ? (retard ? 'var(--rouge)' : 'var(--encre)') : 'var(--sapin)'}">${du > 0.005 ? eur(du) : 'À jour'}</strong>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:12px">
+      <button class="btn btn-primary" data-act="encaisserClient" data-a1="${r.id}">Encaisser</button>
+      <button class="btn btn-ghost" data-act="allerResident" data-a1="${r.id}">Fiche</button>
+      <button class="btn btn-ghost" data-act="messageDepuisFiche" data-a1="${r.id}">Message</button>
+    </div>
+    ${dues.length ? `<h2 style="margin-top:20px">Factures en attente</h2>
+      <ul class="list-tight">${dues.map((f) => `<li><span>${esc(f.numero)} <span class="muted">${esc(periodeLisible(f.periode) || '')}</span></span><span>${eur(facReste(f))}</span></li>`).join('')}</ul>` : ''}
+    <ul class="list-tight" style="margin-top:16px">
+      ${r.telephone ? `<li><span>Téléphone</span><a href="tel:${esc(r.telephone)}">${esc(r.telephone)}</a></li>` : ''}
+      ${r.email ? `<li><span>E-mail</span><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></li>` : ''}
       <li><span>Loyer de base</span><span>${eur(e.loyer_base)}</span></li>
-    </ul>
-    ${r ? `<h2 style="margin-top:18px">Résident</h2>
-      <ul class="list-tight">
-        <li><span>${esc(r.prenom || '')} ${esc(r.nom)}</span><span class="fiche-solde ${Number(r.solde) < 0 ? 'neg' : 'pos'}"></span></li>
-        ${r.email ? `<li><span>E-mail</span><span>${esc(r.email)}</span></li>` : ''}
-        ${r.telephone ? `<li><span>Téléphone</span><span>${esc(r.telephone)}</span></li>` : ''}
-      </ul>${facturesHtml}` : '<p class="muted" style="margin-top:14px">Aucun résident rattaché.</p>'}
+    </ul>` : `
+    <ul class="list-tight" style="margin-top:16px"><li><span>Loyer de base</span><span>${eur(e.loyer_base)}</span></li></ul>
+    <p class="muted" style="margin-top:14px">Aucun résident sur cet emplacement.</p>`}
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" data-act="modifierEmplacement" data-a1="${e.id}">Modifier l\u2019emplacement</button>
   `);
 };
 
@@ -2599,18 +2629,26 @@ window.supprimerPrestation = async (pid, residentId) => {
 };
 
 window.encaisserClient = async (id) => {
-  const { moyens } = await api('/api/moyens-paiement').catch(() => ({ moyens: [] }));
+  const [{ moyens }, { factures }] = await Promise.all([
+    api('/api/moyens-paiement').catch(() => ({ moyens: [] })),
+    api('/api/factures?resident_id=' + encodeURIComponent(id)).catch(() => ({ factures: [] })),
+  ]);
+  const ouvertes = (factures || []).filter((f) => facReste(f) > 0.005);
+  const du = Math.round(ouvertes.reduce((t, f) => t + facReste(f), 0) * 100) / 100;
   openDrawer(`
     <h2>Encaisser un paiement</h2>
+    <p class="muted" style="margin-top:4px">${du > 0
+      ? `Reste dû : <strong style="color:var(--encre)">${eur(du)}</strong> sur ${ouvertes.length} facture${ouvertes.length > 1 ? 's' : ''}.`
+      : 'Aucune facture en attente : le paiement sera gardé en avance sur le compte.'}</p>
     <form id="f-enc" class="form-grid" style="margin-top:14px">
       <label>Moyen de paiement<select name="mode">${
         moyens.length ? moyens.map((m) => `<option value="${esc(m.code)}">${esc(m.libelle)}</option>`).join('')
                       : '<option value="espece">Espèces</option><option value="cheque">Chèque</option>'
       }</select></label>
-      <label>Montant (€) *<input name="montant" type="number" step="0.01" required></label>
+      <label>Montant (€) *<input name="montant" type="number" step="0.01" min="0.01" required value="${du > 0 ? du.toFixed(2) : ''}"></label>
       <label class="full">Référence<input name="reference" placeholder="n° chèque, libellé virement…"></label>
       <div class="full"><button class="btn btn-primary btn-block">Encaisser</button>
-        <p class="muted" style="margin:8px 0 0;font-size:12px">Le lettrage se fait tout seul, de la facture la plus ancienne a la plus recente.</p></div>
+        <p class="muted" style="margin:8px 0 0;font-size:12px">Le lettrage se fait tout seul, de la facture la plus ancienne à la plus récente.</p></div>
     </form>`);
   $('#f-enc').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3460,21 +3498,23 @@ const FAC_FILTRES = [
   ['reglees', 'Réglées', (f) => f.statut === 'reglee'],
 ];
 
-const facReste = (f) => Math.round((Number(f.total_ttc || 0) - Number(f.montant_regle || 0)) * 100) / 100;
+// Une facture annulee par un avoir, un avoir ou un brouillon ne doivent rien.
+const facReste = (f) => (['avoir', 'annulee', 'brouillon'].includes(f.statut) ? 0
+  : Math.round((Number(f.total_ttc || 0) - Number(f.montant_regle || 0)) * 100) / 100);
 /* Un montant nul s'ecrit « — » : le mur de zeros comptables donne
    l'impression que rien n'est calcule. */
 const facEur = (n) => (Math.abs(Number(n || 0)) < 0.005 ? '—' : eur(n));
 
 function facEtat(f) {
-  if (f.statut === 'brouillon') return { txt: 'Brouillon', col: 'var(--brume)' };
-  if (f.statut === 'avoir') return { txt: 'Avoir', col: 'var(--brume)' };
-  if (f.statut === 'annulee') return { txt: 'Annulée', col: 'var(--brume)' };
+  if (f.statut === 'brouillon') return { txt: 'Brouillon', col: 'var(--brume)', cls: 'gris' };
+  if (f.statut === 'avoir') return { txt: 'Avoir', col: 'var(--brume)', cls: 'gris' };
+  if (f.statut === 'annulee') return { txt: 'Annulée', col: 'var(--brume)', cls: 'gris' };
   if (facReste(f) > 0.005) {
-    const j = f.date_emission
-      ? Math.floor((Date.now() - new Date(f.date_emission).getTime()) / 86400000) : null;
-    return { txt: 'Impayée' + (j != null && j > 0 ? ' · ' + j + ' j' : ''), col: 'var(--rouge)' };
+    if (f.statut === 'en_retard') return { txt: 'En retard', col: 'var(--rouge)', cls: 'rouge' };
+    if (Number(f.montant_regle || 0) > 0.005) return { txt: 'Partiellement réglée', col: '#7A4E08', cls: 'ambre' };
+    return { txt: 'À payer', col: '#7A4E08', cls: 'ambre' };
   }
-  return { txt: 'Réglée', col: 'var(--sapin)' };
+  return { txt: 'Réglée', col: 'var(--sapin)', cls: 'vert' };
 }
 
 function facVisibles() {
@@ -3501,7 +3541,7 @@ function facLigneListe(f) {
         <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           ${esc(FAC_CACHE.noms[f.resident_id] || 'Résident supprimé')}</div>
         <div style="font-size:12.5px;color:var(--brume);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-          ${esc(f.numero || 'brouillon')}${f.periode ? ' · ' + esc(f.periode) : ''}</div>
+          ${esc(f.numero || 'brouillon')}${f.periode ? ' · ' + esc(periodeLisible(f.periode)) : ''}</div>
       </div>
       <div style="text-align:right;flex:none">
         <div style="font-variant-numeric:tabular-nums;font-size:14px">${eur(f.total_ttc)}</div>
@@ -3569,7 +3609,12 @@ async function facFiche(id) {
       suivi.push({ d: g.date_reglement, txt: `Règlement ${lib(g.mode) || esc(g.mode)} — ${eur(a.montant)}${g.reference ? ' · réf. ' + esc(g.reference) : ''}` });
     }
   }
-  if (f.date_emission) suivi.push({ d: f.date_emission, txt: brouillon ? 'Brouillon créé' : 'Facture émise' });
+  if (f.date_emission) suivi.push({ d: f.date_emission, txt: brouillon ? 'Brouillon créé' : f.statut === 'avoir' ? 'Avoir émis' : 'Facture émise' });
+  // le lien entre une facture annulee et son avoir, dans les deux sens
+  const avoirDe = (FAC_CACHE.factures || []).find((x) => x.avoir_de === f.id);
+  if (avoirDe) suivi.push({ d: avoirDe.date_emission, txt: `Annulée par l\u2019avoir <a href="#" data-act="ouvrirFacture" data-a1="${avoirDe.id}">${esc(avoirDe.numero)}</a>` });
+  const origine = f.avoir_de ? (FAC_CACHE.factures || []).find((x) => x.id === f.avoir_de) : null;
+  if (origine) suivi.push({ d: f.date_emission, txt: `Annule la facture <a href="#" data-act="ouvrirFacture" data-a1="${origine.id}">${esc(origine.numero)}</a>` });
   suivi.sort((a, b) => String(b.d).localeCompare(String(a.d)));
 
   const boutons = [];
@@ -3592,11 +3637,10 @@ async function facFiche(id) {
       <div style="flex:1;min-width:240px">
         <h1 style="margin:0;font-size:24px;line-height:1.15">${esc(f.numero || 'Brouillon')}</h1>
         <div class="muted" style="font-size:13.5px;margin-top:4px">
-          ${esc(nom)}${f.periode ? ' · période ' + esc(f.periode) : ''} · ${brouillon ? 'créé' : 'émise'} le ${dfr(f.date_emission)}
+          ${esc(nom)}${f.periode ? ' · ' + esc(periodeLisible(f.periode)) : ''} · ${brouillon ? 'créé' : 'émise'} le ${dfr(f.date_emission)}
         </div>
         <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap">
-          <span class="badge ${esc(f.statut)}">${lib(f.statut)}</span>
-          ${reste > 0.005 ? `<span style="font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:var(--r-s);background:var(--rouge-pale);color:var(--rouge)">${e.txt}</span>` : ''}
+          <span class="etiq ${e.cls}">${e.txt}</span>
         </div>
       </div>
       <div style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
@@ -3620,8 +3664,10 @@ async function facFiche(id) {
           <div style="display:flex;gap:26px;font-size:13px;color:var(--brume)"><span>Total HT</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${eur(f.total_ht)}</span></div>
           <div style="display:flex;gap:26px;font-size:13px;color:var(--brume)"><span>TVA</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${eur(f.total_tva)}</span></div>
           <div style="display:flex;gap:26px;font-size:15px;font-weight:600;align-items:baseline"><span>Total TTC</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right;font-size:19px">${eur(f.total_ttc)}</span></div>
+${fige || brouillon ? '' : `
           <div style="display:flex;gap:26px;font-size:13px;color:var(--brume)"><span>Déjà réglé</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${facEur(f.montant_regle)}</span></div>
-          <div style="display:flex;gap:26px;font-size:13px;font-weight:600;color:${reste > 0.005 ? 'var(--rouge)' : 'var(--sapin)'}"><span>Reste dû</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${facEur(reste)}</span></div>
+          <div style="display:flex;gap:26px;font-size:13px;font-weight:600;color:${reste > 0.005 ? 'var(--rouge)' : 'var(--sapin)'}"><span>Reste dû</span><span style="font-variant-numeric:tabular-nums;min-width:92px;text-align:right">${facEur(reste)}</span>`}
+</div>
         </div>
       </div>
 
@@ -5647,7 +5693,14 @@ async function vueParametres() {
         <label>Délai de paiement (jours)<input name="delai_paiement" type="number" step="1" value="${fp.delai_paiement ?? 30}"></label>
         <label class="full">Conditions de règlement<input name="conditions_reglement" value="${esc(fp.conditions_reglement || 'À réception de facture.')}"></label>
         <label class="full">Mention TVA non applicable (si 0 %)<input name="mention_tva" value="${esc(fp.mention_tva || '')}"></label>
-        <label class="full">Pénalités de retard<input name="penalites" value="${esc(fp.penalites || '')}"></label>
+        <label class="full">Pénalités de retard<input name="penalites" value="${esc(fp.penalites || '')}"
+          placeholder="Laisser vide : texte adapté automatiquement (particulier ou professionnel)"></label>
+        <label class="full">Mentions légales de la société<input name="mentions_societe" value="${esc(fp.mentions_societe || '')}"
+          placeholder="SARL au capital de 10 000 € — RCS Pontoise 504 537 713"></label>
+        <label class="full">Mentions libres (bas de facture)<input name="mentions_libres" value="${esc(fp.mentions_libres || '')}"></label>
+        <label>Titulaire du compte<input name="rib_titulaire" value="${esc((fp.rib || {}).titulaire || '')}"></label>
+        <label>IBAN<input name="rib_iban" value="${esc((fp.rib || {}).iban || '')}" placeholder="FR76 …"></label>
+        <label>BIC<input name="rib_bic" value="${esc((fp.rib || {}).bic || '')}"></label>
         <label class="full">Message e-mail (paragraphe ajouté au corps)<input name="message_email" value="${esc(fp.message_email || '')}"></label>
         <label>Expéditeur e-mail<input name="email_exp" id="cfg-exp" type="email" value="${esc(fp.email || '')}"
           placeholder="contact@votre-camping.fr"
@@ -5750,6 +5803,9 @@ async function vueParametres() {
       conditions_reglement: f.conditions_reglement,
       mention_tva: f.mention_tva,
       penalites: f.penalites,
+      mentions_societe: f.mentions_societe,
+      mentions_libres: f.mentions_libres,
+      rib: { titulaire: f.rib_titulaire, iban: f.rib_iban, bic: f.rib_bic },
       message_email: f.message_email,
       email: f.email_exp || undefined,
       email_auto: f.email_auto === 'true',
@@ -5823,10 +5879,13 @@ window.supprimerArticle = async (id) => {
 };
 
 window.formFacture = async (presetResidentId, preset) => {
-  const [{ residents }, artRes] = await Promise.all([
+  const [{ residents }, artRes, campRes] = await Promise.all([
     api('/api/residents'),
     api('/api/articles').catch(() => ({ articles: [] })),
+    api('/api/camping').catch(() => ({ camping: {} })),
   ]);
+  // Une ligne libre part du taux du camping : 0 % est un régime d'exonération, pas un défaut.
+  const tvaDefaut = Number((((campRes.camping || {}).parametres || {}).facturation || {}).tva_taux_loyer || 0);
   const actifs = residents.filter((r) => r.actif !== false);
   const articles = artRes.articles || [];
   const articleMap = {}; articles.forEach((a) => { articleMap[a.id] = a; });
@@ -5840,7 +5899,7 @@ window.formFacture = async (presetResidentId, preset) => {
         <label >Au<input name="date_fin" type="date" value="${p.date_fin || ''}"></label>
         <label >Qté<input name="quantite" type="number" step="0.01" value="${p.quantite ?? 1}"></label>
         <label >PU TTC €<input name="pu_ttc" type="number" step="0.01" required value="${p.pu_ttc ?? ''}"></label>
-        <label >TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? 0}"></label>
+        <label >TVA %<input name="taux_tva" type="number" step="0.1" value="${p.taux_tva ?? tvaDefaut}"></label>
       </div>
       <div class="fac-foot">
         <button type="button" class="btn btn-ghost btn-sm" data-act="retirerLigne" data-a1=".fac-ligne">Retirer la ligne</button>
@@ -6918,7 +6977,7 @@ window.chargerTva = async () => {
         <td class="right">${eur(v.base_ht)}</td><td class="right"><strong>${eur(v.tva)}</strong></td><td class="right">${eur(v.ttc)}</td></tr>`).join('')
         || '<tr><td colspan="4" class="muted">Aucun encaissement sur la période.</td></tr>'}</tbody></table>
       <div style="display:flex;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px">
-        <span class="muted">${d.non_ventile > 0 ? `⚠️ ${eur(d.non_ventile)} encaissés non lettrés (TVA non ventilable) — lettrer les règlements concernés.` : 'Tous les encaissements sont lettrés.'}</span>
+        <span class="muted">${d.non_ventile > 0 ? `${eur(d.non_ventile)} encaissés non lettrés (TVA non ventilable) — lettrer les règlements concernés.` : 'Tous les encaissements sont lettrés.'}</span>
         <strong>TVA exigible du mois : ${eur(d.total_tva_exigible)}</strong>
       </div>`;
   } catch (e) { el.innerHTML = `<p class="form-error">${esc(e.message)}</p>`; }
@@ -6931,10 +6990,16 @@ boot();
 /* Cloche dans la barre du haut ; au clic, panneau plein écran centré (overlay). */
 (function () {
   let built = false;
+  const _ic = (d) => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const ICONES = {
-    paiement_recu: '💶', paiement_confirme: '✅', nouveau_message: '💬',
-    nouvelle_facture: '🧾', relance: '⏰', document_signe: '✍️',
+    paiement_recu: _ic('<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h4"/>'),
+    paiement_confirme: _ic('<circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.6 2.6L16 9.5"/>'),
+    nouveau_message: _ic('<path d="M4 5.5h16v11H9l-5 4z"/>'),
+    nouvelle_facture: _ic('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'),
+    relance: _ic('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/>'),
+    document_signe: _ic('<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 16l2 2 4-4"/>'),
   };
+  const ICONE_DEFAUT = _ic('<path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/>');
   function tempsRelatif(iso) {
     const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
     if (diff < 60) return "à l'instant";
@@ -7007,26 +7072,26 @@ boot();
     const card = document.getElementById('notif-card');
     const nonLues = list.filter((n) => !n.lu).length;
     let html = '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
-      + 'padding:16px 18px;border-bottom:1px solid #EFEBE1;flex-shrink:0">'
+      + 'padding:16px 18px;border-bottom:1px solid var(--hairline);flex-shrink:0">'
       + '<strong style="font-size:16px">Notifications</strong>'
       + '<div style="display:flex;gap:14px;align-items:center">'
-      + (nonLues ? '<a href="#" id="notif-tout-lu" style="font-size:13px;color:#1A7A5E;text-decoration:none">Tout marquer lu</a>' : '')
-      + '<button id="notif-close" aria-label="Fermer" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:#999;padding:0 2px">×</button>'
+      + (nonLues ? '<a href="#" id="notif-tout-lu" style="font-size:13px;color:var(--sapin);text-decoration:none">Tout marquer lu</a>' : '')
+      + '<button id="notif-close" aria-label="Fermer" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:var(--brume);padding:0 2px">×</button>'
       + '</div></div><div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
 
     if (!list.length) {
-      html += '<div style="padding:44px 20px;text-align:center;color:#999;font-size:14px">Aucune notification</div>';
+      html += '<div style="padding:44px 20px;text-align:center;color:var(--brume);font-size:14px">Aucune notification</div>';
     } else {
       html += list.map((n) => `
         <div class="notif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;
-          border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
-          <span style="font-size:21px;line-height:1.2;flex-shrink:0">${ICONES[n.type] || '<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2 7.5-2 7.5h16s-2-1.5-2-7.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg><span>Notifications</span>'}</span>
+          border-bottom:1px solid var(--hairline);${n.lu ? '' : 'background:var(--sapin-pale)'}">
+          <span style="flex-shrink:0;width:34px;height:34px;border-radius:10px;background:var(--sapin-pale);color:var(--sapin);display:flex;align-items:center;justify-content:center">${ICONES[n.type] || ICONE_DEFAUT}</span>
           <div style="min-width:0;flex:1">
-            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
-            ${n.corps ? `<div style="font-size:13px;color:#6b6b6b;margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
-            <div style="font-size:11.5px;color:#a3a3a3;margin-top:4px">${tempsRelatif(n.created_at)}</div>
+            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:var(--encre)">${esc(n.titre)}</div>
+            ${n.corps ? `<div style="font-size:13px;color:var(--brume);margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
+            <div style="font-size:11.5px;color:var(--brume);margin-top:4px">${tempsRelatif(n.created_at)}</div>
           </div>
-          ${n.lu ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:#1A7A5E;flex-shrink:0;margin-top:6px"></span>'}
+          ${n.lu ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:var(--sapin);flex-shrink:0;margin-top:6px"></span>'}
         </div>`).join('');
     }
     html += '</div>';

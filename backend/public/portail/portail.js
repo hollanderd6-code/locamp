@@ -331,7 +331,7 @@ function renderMessages(list) {
   fil.innerHTML = list.length ? list.map((m) => `
     <div style="max-width:78%;align-self:${m.auteur === 'resident' ? 'flex-end' : 'flex-start'}">
       <div style="padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;
-        ${m.auteur === 'resident' ? 'background:#1A7A5E;color:#fff;border-bottom-right-radius:4px' : 'background:#fff;border:1px solid #E3E0D6;border-bottom-left-radius:4px'}">${esc(m.corps)}</div>
+        ${m.auteur === 'resident' ? 'background:var(--sapin);color:#fff;border-bottom-right-radius:4px' : 'background:#fff;border:1px solid #E3E0D6;border-bottom-left-radius:4px'}">${esc(m.corps)}</div>
       <div style="font-size:10.5px;color:#999;margin-top:3px;text-align:${m.auteur === 'resident' ? 'right' : 'left'}">${m.auteur === 'resident' ? 'Vous' : 'Le camping'} · ${new Date(m.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
     </div>`).join('') : '<p class="note" style="margin:0">Aucun message. Une question ? Écrivez au camping ci-dessous.</p>';
   fil.scrollTop = fil.scrollHeight;
@@ -611,7 +611,7 @@ function initPadSignature() {
     const r = c.getBoundingClientRect();
     c.width = r.width * dpr; c.height = r.height * dpr;
     ctx.scale(dpr, dpr);
-    ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14283F';
+    ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#17201C';
   };
   dim();
 
@@ -762,10 +762,10 @@ $('#sig-signer').addEventListener('click', async () => {
     const card = document.getElementById('pnotif-card');
     const nonLues = list.filter((n) => !n.lu).length;
     let html = '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
-      + 'padding:16px 18px;border-bottom:1px solid #EFEBE1;flex-shrink:0">'
+      + 'padding:16px 18px;border-bottom:1px solid var(--hairline);flex-shrink:0">'
       + '<strong style="font-size:16px">Notifications</strong>'
       + '<div style="display:flex;gap:14px;align-items:center">'
-      + (nonLues ? '<a href="#" id="pnotif-tout-lu" style="font-size:13px;color:#1A7A5E;text-decoration:none">Tout marquer lu</a>' : '')
+      + (nonLues ? '<a href="#" id="pnotif-tout-lu" style="font-size:13px;color:var(--sapin);text-decoration:none">Tout marquer lu</a>' : '')
       + '<button id="pnotif-close" aria-label="Fermer" style="background:none;border:none;font-size:24px;line-height:1;cursor:pointer;color:#999;padding:0 2px">×</button>'
       + '</div></div><div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
 
@@ -774,14 +774,14 @@ $('#sig-signer').addEventListener('click', async () => {
     } else {
       html += list.map((n) => `
         <div class="pnotif-item" data-id="${esc(n.id)}" style="display:flex;gap:12px;padding:14px 18px;cursor:pointer;
-          border-bottom:1px solid #F4F1E9;${n.lu ? '' : 'background:#F5FBF8'}">
+          border-bottom:1px solid var(--hairline);${n.lu ? '' : 'background:var(--sapin-pale)'}">
           <span style="flex-shrink:0;width:34px;height:34px;border-radius:10px;background:var(--sapin-pale);color:var(--sapin);display:flex;align-items:center;justify-content:center">${ICONES[n.type] || _ic('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.8 2.5H4.2z"/><path d="M10 21a2 2 0 0 0 4 0"/>')}</span>
           <div style="min-width:0;flex:1">
-            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:#14283F">${esc(n.titre)}</div>
-            ${n.corps ? `<div style="font-size:13px;color:#6b6b6b;margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
-            <div style="font-size:11.5px;color:#a3a3a3;margin-top:4px">${tempsRelatif(n.created_at)}</div>
+            <div style="font-size:14.5px;font-weight:${n.lu ? '500' : '700'};color:var(--encre)">${esc(n.titre)}</div>
+            ${n.corps ? `<div style="font-size:13px;color:var(--brume);margin-top:2px;line-height:1.45">${esc(n.corps)}</div>` : ''}
+            <div style="font-size:11.5px;color:var(--brume);margin-top:4px">${tempsRelatif(n.created_at)}</div>
           </div>
-          ${n.lu ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:#1A7A5E;flex-shrink:0;margin-top:6px"></span>'}
+          ${n.lu ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:var(--sapin);flex-shrink:0;margin-top:6px"></span>'}
         </div>`).join('');
     }
     html += '</div>';

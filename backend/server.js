@@ -120,7 +120,22 @@ app.use('/api/portail/mdp-reinit', limiteur(10, 15,
 app.use('/api/signatures/signer', limiteur(30, 15, 'Trop de requêtes. Réessayez plus tard.'));
 
 // Garde-fou général sur l'API.
-app.use('/api/', limiteur(600, 15, 'Trop de requêtes. Réessayez dans quelques minutes.'));
+// Compte PAR SESSION quand la requete est authentifiee, par IP sinon. Compte
+// par IP, tous les postes d'un accueil (une seule IP derriere la box) se
+// partageaient 600 requetes par quart d'heure : chaque ecran en fait une
+// dizaine, l'equipe se retrouvait bloquee en pleine journee.
+const crypto = require('crypto');
+app.use('/api/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_API || 3000),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const h = req.headers.authorization || '';
+    return h.startsWith('Bearer ') ? 'jeton:' + crypto.createHash('sha256').update(h.slice(7)).digest('hex').slice(0, 32) : 'ip:' + req.ip;
+  },
+  message: { error: 'Trop de requêtes. Réessayez dans quelques minutes.' },
+}));
 
 /* ================================================== */
 
