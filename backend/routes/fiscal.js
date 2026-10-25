@@ -161,11 +161,14 @@ const manquantsEditeur = (ed) => Object.keys(CHAMPS_EDITEUR).filter((k) => !Stri
 // la responsabilité de l'éditeur.
 router.get('/attestation.pdf', requirePerm('compta'), async (req, res) => {
   try {
-    const [{ data: camping }, chaine, version] = await Promise.all([
+    const [{ data: camping }, chaine, version, { data: mes }] = await Promise.all([
       supabase.from('campings').select('nom,raison_sociale,adresse,siret,tva,parametres,created_at')
         .eq('id', req.activeCampingId).maybeSingle(),
       verifierChaine(req.activeCampingId),
       schemaVersion(),
+      // db/19 : date de remise à zéro des données d'essai (table absente avant : ignoré)
+      supabase.from('mises_en_service').select('effectuee_at')
+        .eq('camping_id', req.activeCampingId).maybeSingle().then((r) => r, () => ({ data: null })),
     ]);
     const c = camping || {};
     const ed = editeurDe(c.parametres);
@@ -181,7 +184,10 @@ router.get('/attestation.pdf', requirePerm('compta'), async (req, res) => {
       return res.status(409).json({ error: `Attestation indisponible : identité de l'éditeur incomplète (${manque.map((k) => CHAMPS_EDITEUR[k]).join(', ')}). Renseigner les variables LOCAMP_EDITEUR_* sur le serveur.` });
     }
 
-    const mise_en_service = ((c.parametres || {}).fiscal || {}).date_mise_en_service
+    // Début de l'utilisation réelle : la mise en service (db/19) si elle a eu lieu,
+    // sinon la date saisie, sinon la création du camping.
+    const mise_en_service = (mes?.effectuee_at ? jourParis(new Date(mes.effectuee_at)) : null)
+      || ((c.parametres || {}).fiscal || {}).date_mise_en_service
       || (c.created_at ? String(c.created_at).slice(0, 10) : null);
     const frDate = (d) => (d ? new Date(d + 'T12:00:00Z').toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) : '—');
 

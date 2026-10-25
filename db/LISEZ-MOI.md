@@ -23,6 +23,7 @@ Exécuter dans l'ordre numérique, dans Supabase → SQL Editor.
 | `16_inalterabilite` | journal fiscal protégé en base, factures émises figées, annulation des encaissements, chaînage par triggers |
 | `17_ecarts_schema` | colonnes lues par le code et absentes des migrations |
 | `18_cloture_cumul` | cumul perpétuel par type de clôture, search_path figé des fonctions fiscales |
+| `19_mise_en_service` | outil de remise à zéro unique des données d'essai d'un camping (mode d'emploi dans le fichier) |
 
 En gras : reconstitués le 23 août 2026 depuis le schéma réel de la base.
 
