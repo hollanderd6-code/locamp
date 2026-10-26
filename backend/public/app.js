@@ -4348,6 +4348,7 @@ async function vueAdministration() {
             <td style="max-width:340px">${puces(u.droits)}</td>
             <td class="right">
               <button class="btn btn-ghost btn-sm" data-act="formUtilisateur" data-a1="${u.id}">Modifier</button>
+              ${!u.est_moi && u.doit_changer_mdp ? `<button class="btn btn-ghost btn-sm" data-act="renvoyerInvitation" data-a1="${u.id}" data-a2="${esc(u.email || '')}" title="Ce compte ne s\u2019est pas encore connecté">Renvoyer l\u2019invitation</button>` : ''}
               ${u.est_moi ? '' : `<button class="btn btn-ghost btn-sm" data-act="retirerAcces" data-a1="${u.id}" data-a2="${esc((u.prenom || '') + ' ' + (u.nom || ''))}">Retirer</button>`}
             </td>
           </tr>`).join('')}</tbody></table>
@@ -4847,12 +4848,20 @@ window.formUtilisateur = async (userId) => {
         body.email = fd.get('email');
         const r = await api('/api/admin/utilisateurs', { method: 'POST', body });
         toast(r.mot_de_passe_temporaire
-          ? `Compte créé — mot de passe provisoire : ${r.mot_de_passe_temporaire}`
-          : 'Compte créé — identifiants envoyés par e-mail');
+          ? `Accès créé — identifiants envoyés par e-mail (mot de passe provisoire : ${r.mot_de_passe_temporaire})`
+          : 'Accès ajouté — ce compte existait déjà et garde son mot de passe ; il est prévenu par e-mail');
       }
       closeDrawer(); route();
     } catch (err) { toast(err.message, true); }
   });
+};
+
+window.renvoyerInvitation = async (id, email) => {
+  if (!await askConfirm(`Renvoyer l\u2019invitation à ${email} ? Un nouveau mot de passe provisoire lui sera envoyé et l\u2019ancien ne marchera plus.`)) return;
+  try {
+    const r = await api(`/api/admin/utilisateurs/${id}/invitation`, { method: 'POST' });
+    toast(`Invitation renvoyée (mot de passe provisoire : ${r.mot_de_passe_temporaire})`);
+  } catch (e) { toast(e.message, true); }
 };
 
 window.retirerAcces = async (id, nom) => {

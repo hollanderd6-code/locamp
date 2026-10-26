@@ -68,8 +68,53 @@ router.get('/utilisateurs', requirePerm('admin'), async (req, res) => {
   } catch (e) { console.error('[admin:users]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// Mot de passe provisoire + e-mail d'identifiants, pour un compte qui n'a
+// pas encore choisi son mot de passe (doit_changer_mdp). Renvoie le mot de
+// passe provisoire (affiché si l'e-mail n'est pas configuré).
+async function inviter(req, user, prenom) {
+  const motDePasseTemp = Math.random().toString(36).slice(2, 10) + 'A9!';
+  const hash = await bcrypt.hash(motDePasseTemp, 12);
+  const { error } = await supabase.from('utilisateurs')
+    .update({ hash_mdp: hash, doit_changer_mdp: true }).eq('id', user.id);
+  if (error) throw error;
+
+  const { data: camp } = await supabase.from('campings').select('nom,raison_sociale').eq('id', req.activeCampingId).maybeSingle();
+  const nomCamping = camp?.nom || camp?.raison_sociale || 'le camping';
+  const base = process.env.PUBLIC_APP_URL || '';
+  sendEmail({
+    to: user.email,
+    subject: `Votre accès à Locamp — ${nomCamping}`,
+    html: `<p>Bonjour ${esc(prenom || user.prenom || '')},</p><p>Un accès Locamp a été créé pour vous sur <b>${esc(nomCamping)}</b>.</p>`
+      + `<p>Identifiant : <b>${esc(user.email)}</b><br>Mot de passe provisoire : <b>${motDePasseTemp}</b></p>`
+      + `<p>Vous devrez le changer à la première connexion.</p>`
+      + (base ? `<p><a href="${base}">Se connecter</a></p>` : ''),
+  }).catch((e) => console.error('[admin:invite]', e.message));
+  return motDePasseTemp;
+}
+
+// Compte qui a déjà son propre mot de passe : on le prévient seulement.
+async function prevenirNouvelAcces(req, user) {
+  const { data: camp } = await supabase.from('campings').select('nom,raison_sociale').eq('id', req.activeCampingId).maybeSingle();
+  const nomCamping = camp?.nom || camp?.raison_sociale || 'le camping';
+  const base = process.env.PUBLIC_APP_URL || '';
+  sendEmail({
+    to: user.email,
+    subject: `Nouvel accès Locamp — ${nomCamping}`,
+    html: `<p>Bonjour ${esc(user.prenom || '')},</p><p>Vous avez maintenant accès à <b>${esc(nomCamping)}</b> sur Locamp.</p>`
+      + `<p>Connectez-vous avec votre adresse <b>${esc(user.email)}</b> et votre mot de passe habituel.</p>`
+      + (base ? `<p><a href="${base}">Se connecter</a></p>` : ''),
+  }).catch((e) => console.error('[admin:acces]', e.message));
+}
+
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // POST /api/admin/utilisateurs  { email, nom, prenom, role, permissions }
 // Crée le compte s'il n'existe pas, puis lui donne accès au camping actif.
+// Un compte qui existe déjà (par exemple après « Retirer » puis réajout)
+// reçoit de nouveaux identifiants s'il n'a jamais choisi son mot de passe,
+// sinon un simple e-mail l'informe de son nouvel accès.
 router.post('/utilisateurs', requirePerm('admin'), async (req, res) => {
   try {
     const b = req.body || {};
@@ -77,18 +122,28 @@ router.post('/utilisateurs', requirePerm('admin'), async (req, res) => {
     if (!email) return res.status(400).json({ error: 'E-mail requis' });
     if (!ROLES.includes(b.role)) return res.status(400).json({ error: 'Rôle invalide' });
 
-    let { data: user } = await supabase.from('utilisateurs').select('id,email,nom,prenom').eq('email', email).maybeSingle();
-    let motDePasseTemp = null;
+    let { data: user } = await supabase.from('utilisateurs')
+      .select('id,email,nom,prenom,doit_changer_mdp').eq('email', email).maybeSingle();
+    const nouveau = !user;
 
-    if (!user) {
-      motDePasseTemp = Math.random().toString(36).slice(2, 10) + 'A9!';
-      const hash = await bcrypt.hash(motDePasseTemp, 12);
+    if (nouveau) {
+      // mot de passe aléatoire non communiqué : remplacé juste après par inviter()
+      const hash = await bcrypt.hash(Math.random().toString(36), 12);
       const ins = await supabase.from('utilisateurs').insert({
         email, nom: b.nom || null, prenom: b.prenom || null,
         hash_mdp: hash, doit_changer_mdp: true, actif: true,
-      }).select('id,email,nom,prenom').single();
+      }).select('id,email,nom,prenom,doit_changer_mdp').single();
       if (ins.error) throw ins.error;
       user = ins.data;
+    } else if (user.doit_changer_mdp) {
+      // jamais connecté : l'administrateur peut encore corriger le nom saisi
+      const identite = {};
+      if (typeof b.prenom === 'string' && b.prenom.trim()) identite.prenom = b.prenom.trim();
+      if (typeof b.nom === 'string' && b.nom.trim()) identite.nom = b.nom.trim();
+      if (Object.keys(identite).length) {
+        await supabase.from('utilisateurs').update(identite).eq('id', user.id);
+        user = { ...user, ...identite };
+      }
     }
 
     const { data: existant } = await supabase.from('user_campings')
@@ -105,26 +160,40 @@ router.post('/utilisateurs', requirePerm('admin'), async (req, res) => {
     await writeAudit(req, { action: 'create', entite: 'user_campings', entite_id: user.id,
       apres: { email, role: b.role, permissions: perms } });
 
-    // envoi des identifiants si le compte vient d'être créé
-    if (motDePasseTemp) {
-      const { data: camp } = await supabase.from('campings').select('nom,raison_sociale').eq('id', req.activeCampingId).maybeSingle();
-      const nomCamping = camp?.nom || camp?.raison_sociale || 'le camping';
-      const base = process.env.PUBLIC_APP_URL || '';
-      sendEmail({
-        to: email,
-        subject: `Votre accès à Locamp — ${nomCamping}`,
-        html: `<p>Bonjour ${b.prenom || ''},</p><p>Un accès Locamp a été créé pour vous sur <b>${nomCamping}</b>.</p>`
-          + `<p>Identifiant : <b>${email}</b><br>Mot de passe provisoire : <b>${motDePasseTemp}</b></p>`
-          + `<p>Vous devrez le changer à la première connexion.</p>`
-          + (base ? `<p><a href="${base}">Se connecter</a></p>` : ''),
-      }).catch((e) => console.error('[admin:invite]', e.message));
-    }
+    let motDePasseTemp = null;
+    if (nouveau || user.doit_changer_mdp) motDePasseTemp = await inviter(req, user, b.prenom);
+    else await prevenirNouvelAcces(req, user);
 
+    const { doit_changer_mdp, ...publicUser } = user;
     res.status(201).json({
-      utilisateur: { ...user, role: b.role, permissions: perms },
+      utilisateur: { ...publicUser, role: b.role, permissions: perms },
       mot_de_passe_temporaire: motDePasseTemp,   // affiché une seule fois si e-mail non configuré
+      compte_existant: !nouveau,
     });
   } catch (e) { console.error('[admin:user-create]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
+// POST /api/admin/utilisateurs/:id/invitation  -> renvoie des identifiants
+// Seulement pour un compte du camping actif qui n'a pas encore choisi son
+// mot de passe : on ne remplace jamais le mot de passe de quelqu'un d'autre.
+router.post('/utilisateurs/:id/invitation', requirePerm('admin'), async (req, res) => {
+  try {
+    const { data: lien } = await supabase.from('user_campings').select('user_id')
+      .eq('user_id', req.params.id).eq('camping_id', req.activeCampingId).maybeSingle();
+    if (!lien) return res.status(404).json({ error: 'Accès introuvable' });
+
+    const { data: user } = await supabase.from('utilisateurs')
+      .select('id,email,nom,prenom,doit_changer_mdp').eq('id', req.params.id).maybeSingle();
+    if (!user) return res.status(404).json({ error: 'Compte introuvable' });
+    if (!user.doit_changer_mdp) {
+      return res.status(409).json({ error: 'Ce compte a déjà choisi son mot de passe' });
+    }
+
+    const motDePasseTemp = await inviter(req, user);
+    await writeAudit(req, { action: 'email', entite: 'utilisateurs', entite_id: user.id,
+      apres: { invitation: 'renvoyée' } });
+    res.json({ ok: true, mot_de_passe_temporaire: motDePasseTemp });
+  } catch (e) { console.error('[admin:user-reinvite]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
 // PUT /api/admin/utilisateurs/:id  { role?, permissions?, prenom?, nom? }  -> sur le camping actif
