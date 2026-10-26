@@ -19,6 +19,8 @@ enum Configuration {
 
     static let cloche = false
     static let espacesCamping = false
+    /// Le portail a sa propre connexion : pas de changement de mot de passe ici.
+    static let motDePasse = false
     /// Le paiement en ligne passe par Stripe, hors achat integre : il est
     /// masque dans l'app (regle App Store 3.1.1), via window.LOCAMP_NATIVE.
     static let paiementMasque = true

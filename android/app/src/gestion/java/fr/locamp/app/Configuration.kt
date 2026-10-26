@@ -40,6 +40,8 @@ object Configuration {
     const val CLOCHE = true
     /** Plusieurs espaces camping : choix et creation dans le menu du compte. */
     const val ESPACES_CAMPING = true
+    /** « Changer mon mot de passe » dans le menu du compte. */
+    const val MOT_DE_PASSE = true
     /** Paiement en ligne masque : outil professionnel, non. */
     const val PAIEMENT_MASQUE = false
 

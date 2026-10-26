@@ -198,6 +198,7 @@ object Pont {
     fun changerExercice(id: String) = appeler("changerExercice", id)
     fun ouvrirNotifications() = appeler("notifications")
     fun deconnexion() = appeler("deconnexion")
+    fun changerMotDePasse() = appeler("motDePasse")
     fun retour() = appeler("retour")
     fun recharger() = appeler("recharger")
     fun rafraichirBadges() = appeler("rafraichirBadges")

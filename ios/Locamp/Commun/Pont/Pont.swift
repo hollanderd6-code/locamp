@@ -166,6 +166,7 @@ final class Pont: NSObject {
     func changerExercice(_ id: String) { appeler("changerExercice", id) }
     func ouvrirNotifications() { appeler("notifications") }
     func deconnexion() { appeler("deconnexion") }
+    func changerMotDePasse() { appeler("motDePasse") }
     func retour() { appeler("retour") }
 
     func repondre(_ d: DialogueWeb, _ valeur: Any?) {

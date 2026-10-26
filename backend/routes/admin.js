@@ -127,13 +127,30 @@ router.post('/utilisateurs', requirePerm('admin'), async (req, res) => {
   } catch (e) { console.error('[admin:user-create]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
-// PUT /api/admin/utilisateurs/:id  { role?, permissions? }  -> sur le camping actif
+// PUT /api/admin/utilisateurs/:id  { role?, permissions?, prenom?, nom? }  -> sur le camping actif
+// Le prénom et le nom sont ceux du compte : modifiables seulement pour un
+// compte qui a accès au camping actif.
 router.put('/utilisateurs/:id', requirePerm('admin'), async (req, res) => {
   try {
     const b = req.body || {};
     if (req.params.id === req.user.uid && (b.role && b.role !== 'admin')) {
       return res.status(400).json({ error: 'Impossible de retirer son propre rôle admin' });
     }
+
+    const { data: lien } = await supabase.from('user_campings').select('user_id')
+      .eq('user_id', req.params.id).eq('camping_id', req.activeCampingId).maybeSingle();
+    if (!lien) return res.status(404).json({ error: 'Accès introuvable' });
+
+    const identite = {};
+    for (const k of ['prenom', 'nom']) {
+      if (typeof b[k] === 'string') identite[k] = b[k].trim() || null;
+    }
+    if (Object.keys(identite).length) {
+      const { error: idErr } = await supabase.from('utilisateurs').update(identite).eq('id', req.params.id);
+      if (idErr) throw idErr;
+      await writeAudit(req, { action: 'update', entite: 'utilisateurs', entite_id: req.params.id, apres: identite });
+    }
+
     const patch = {};
     if (b.role) {
       if (!ROLES.includes(b.role)) return res.status(400).json({ error: 'Rôle invalide' });
@@ -144,7 +161,10 @@ router.put('/utilisateurs/:id', requirePerm('admin'), async (req, res) => {
       for (const d of DROITS) if (typeof b.permissions[d] === 'boolean') perms[d] = b.permissions[d];
       patch.permissions = perms;
     }
-    if (!Object.keys(patch).length) return res.status(400).json({ error: 'Rien à modifier' });
+    if (!Object.keys(patch).length) {
+      if (Object.keys(identite).length) return res.json({ ok: true });
+      return res.status(400).json({ error: 'Rien à modifier' });
+    }
 
     const { data, error } = await supabase.from('user_campings').update(patch)
       .eq('user_id', req.params.id).eq('camping_id', req.activeCampingId).select().single();

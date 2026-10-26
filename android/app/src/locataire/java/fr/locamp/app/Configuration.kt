@@ -28,6 +28,8 @@ object Configuration {
 
     const val CLOCHE = false
     const val ESPACES_CAMPING = false
+    /** Le portail a sa propre connexion : pas de changement de mot de passe ici. */
+    const val MOT_DE_PASSE = false
     /** Paiement Stripe masque dans l'app, comme sur iOS et dans l'ancienne app. */
     const val PAIEMENT_MASQUE = true
 

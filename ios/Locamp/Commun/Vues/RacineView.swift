@@ -127,6 +127,13 @@ struct PlusView: View {
                             Label("Notifications", systemImage: "bell")
                         }
                         .badge(etat?.badges.notifications ?? 0)
+                        if Configuration.motDePasse {
+                            Button {
+                                pont.changerMotDePasse()
+                            } label: {
+                                Label("Changer mon mot de passe", systemImage: "key")
+                            }
+                        }
                         Button("Se déconnecter", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                             pont.deconnexion()
                         }

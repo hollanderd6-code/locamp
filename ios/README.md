@@ -12,8 +12,8 @@ titre, boutons d'action, menus, recherche, alertes, toasts, feuilles. Le
 contenu des ecrans reste celui du site (`backend/public`), affiche dans un
 WKWebView qui defile **sous** le verre.
 
-Elles remplacent a terme les apps Capacitor `mobile/gestion` et
-`mobile/portail` (memes identifiants, memes projets Firebase).
+Elles remplacent les anciennes apps Capacitor (retirees du depot), avec les
+memes identifiants et les memes projets Firebase.
 
 ## Organisation
 

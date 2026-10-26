@@ -27,6 +27,8 @@ enum Configuration {
     static let cloche = true
     /// Plusieurs espaces camping : choix et creation dans le menu du compte.
     static let espacesCamping = true
+    /// « Changer mon mot de passe » dans le menu du compte.
+    static let motDePasse = true
     /// Paiement en ligne masque (regle App Store 3.1.1) : outil pro, non.
     static let paiementMasque = false
 

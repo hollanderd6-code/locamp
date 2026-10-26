@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.Cabin
 import androidx.compose.material3.Badge
@@ -124,6 +125,14 @@ fun FeuilleCompte(etat: EtatWeb, fermer: () -> Unit) {
                     leadingContent = { Icon(Icons.Filled.Notifications, null) },
                     headlineContent = { Text("Notifications") },
                     trailingContent = { if (etat.badges.notifications > 0) Badge { Text("${etat.badges.notifications}") } },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                )
+            }
+            if (Configuration.MOT_DE_PASSE) {
+                ListItem(
+                    modifier = Modifier.clickable { fermer(); Pont.changerMotDePasse() },
+                    leadingContent = { Icon(Icons.Filled.Lock, null) },
+                    headlineContent = { Text("Changer mon mot de passe") },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 )
             }
