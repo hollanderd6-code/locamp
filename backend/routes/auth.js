@@ -94,7 +94,7 @@ router.post('/login', async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('utilisateurs')
-      .select('id, email, hash_mdp, nom, prenom, actif')
+      .select('id, email, hash_mdp, nom, prenom, actif, doit_changer_mdp')
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
     if (error) throw error;
@@ -121,7 +121,8 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom },
+      user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom,
+              doit_changer_mdp: !!user.doit_changer_mdp },
       campings: campings || [],
     });
   } catch (e) {
@@ -136,7 +137,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', auth, campingScope, async (req, res) => {
   const { data: user } = await supabase
     .from('utilisateurs')
-    .select('id, email, nom, prenom')
+    .select('id, email, nom, prenom, doit_changer_mdp')
     .eq('id', req.user.uid)
     .maybeSingle();
 
@@ -156,6 +157,40 @@ router.get('/me', auth, campingScope, async (req, res) => {
     activeCampingId: req.activeCampingId,
     activeRole: req.activeRole,
   });
+});
+
+// -----------------------------------------------------------------
+// POST /api/auth/mot-de-passe   (JWT requis)  { actuel, nouveau }
+// Change son propre mot de passe. Lève l'obligation posée sur un compte
+// créé avec un mot de passe provisoire (doit_changer_mdp).
+// -----------------------------------------------------------------
+router.post('/mot-de-passe', auth, async (req, res) => {
+  try {
+    const { actuel, nouveau } = req.body || {};
+    if (!actuel || !nouveau) return res.status(400).json({ error: 'Mot de passe actuel et nouveau requis' });
+    if (String(nouveau).length < 8) return res.status(400).json({ error: 'Le nouveau mot de passe doit faire au moins 8 caractères' });
+    if (nouveau === actuel) return res.status(400).json({ error: 'Le nouveau mot de passe doit être différent de l\u2019actuel' });
+
+    const { data: user, error } = await supabase.from('utilisateurs')
+      .select('id, hash_mdp').eq('id', req.user.uid).maybeSingle();
+    if (error) throw error;
+    if (!user) return res.status(404).json({ error: 'Compte introuvable' });
+    if (!(await bcrypt.compare(actuel, user.hash_mdp))) {
+      return res.status(400).json({ error: 'Mot de passe actuel incorrect' });
+    }
+
+    const hash = await bcrypt.hash(nouveau, 12);
+    const { error: upErr } = await supabase.from('utilisateurs')
+      .update({ hash_mdp: hash, doit_changer_mdp: false }).eq('id', user.id);
+    if (upErr) throw upErr;
+
+    await writeAudit(req, { action: 'update', entite: 'utilisateurs', entite_id: user.id,
+      apres: { mot_de_passe: 'modifié' } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[mot-de-passe]', e.message);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 module.exports = router;

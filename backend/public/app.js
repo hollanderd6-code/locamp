@@ -350,7 +350,45 @@ function startApp() {
   if (navAdmin) navAdmin.classList.toggle('hidden', !MES_DROITS.admin);
   if (!location.hash) location.hash = '#/dashboard';
   route();
+  // Compte créé avec un mot de passe provisoire : le mail promet de le
+  // changer à la première connexion, on le propose tout de suite.
+  if (USER.doit_changer_mdp) ouvrirMotDePasse(true);
 }
+
+/** Changer son mot de passe. `obligatoire` : première connexion avec le
+    mot de passe provisoire reçu par e-mail. */
+function ouvrirMotDePasse(obligatoire = false) {
+  openDrawer(`
+    <h2>${obligatoire ? 'Choisissez votre mot de passe' : 'Changer mon mot de passe'}</h2>
+    <p class="muted" style="margin-top:4px">${obligatoire
+      ? 'Votre compte a été créé avec un mot de passe provisoire. Remplacez-le par le vôtre.'
+      : 'Au moins 8 caractères.'}</p>
+    <form id="f-mdp" class="form-grid" style="margin-top:14px">
+      <label class="full">${obligatoire ? 'Mot de passe provisoire' : 'Mot de passe actuel'}
+        <input name="actuel" type="password" autocomplete="current-password" required></label>
+      <label class="full">Nouveau mot de passe
+        <input name="nouveau" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="full">Confirmer le nouveau mot de passe
+        <input name="confirmation" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div class="full"><button class="btn btn-primary btn-block">Enregistrer</button></div>
+    </form>`);
+  $('#f-mdp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    if (fd.get('nouveau') !== fd.get('confirmation')) {
+      toast('Les deux mots de passe ne correspondent pas', true);
+      return;
+    }
+    try {
+      await api('/api/auth/mot-de-passe', { method: 'POST',
+        body: { actuel: fd.get('actuel'), nouveau: fd.get('nouveau') } });
+      USER.doit_changer_mdp = false;
+      closeDrawer();
+      toast('Mot de passe modifié');
+    } catch (err) { toast(err.message, true); }
+  });
+}
+window.ouvrirMotDePasse = ouvrirMotDePasse;
 
 // Sélecteur d'espace : toujours visible (les noms viennent de /api/auth/me).
 // Changer d'espace recharge tout — aucune donnée d'un camping ne persiste sur l'autre.
@@ -484,6 +522,7 @@ $('#login-form').addEventListener('submit', async (e) => {
   } finally { btn.disabled = false; }
 });
 $('#logout-btn').addEventListener('click', demanderDeconnexion);
+$('#password-btn')?.addEventListener('click', () => ouvrirMotDePasse(false));
 // menu mobile
 /* Le tiroir : un bouton l'ouvre depuis la barre haute, trois choses le
    ferment — la croix, le voile, et la touche Echap. Un panneau qui recouvre
@@ -4771,9 +4810,9 @@ window.formUtilisateur = async (userId) => {
     <p class="muted" style="margin-top:4px">${u ? esc(u.email) : 'Le compte recevra ses identifiants par e-mail. Les droits ne valent que pour le camping actif.'}</p>
     <form id="f-user" class="form-grid" style="margin-top:14px">
       ${u ? '' : `
-        <label class="full">E-mail *<input name="email" type="email" required></label>
-        <label>Prénom<input name="prenom"></label>
-        <label>Nom<input name="nom"></label>`}
+        <label class="full">E-mail *<input name="email" type="email" required></label>`}
+      <label>Prénom<input name="prenom" value="${esc(u?.prenom || '')}"></label>
+      <label>Nom<input name="nom" value="${esc(u?.nom || '')}"></label>
       <label class="full">Rôle
         <select name="role" id="u-role">
           ${ref.roles.map((r) => `<option value="${r}"${r === role ? ' selected' : ''}>${esc(r)}</option>`).join('')}
@@ -4799,13 +4838,13 @@ window.formUtilisateur = async (userId) => {
     const fd = new FormData(e.target);
     const permissions = {};
     ref.droits.forEach((d) => { permissions[d] = fd.get('d_' + d) === 'on'; });
-    const body = { role: fd.get('role'), permissions };
+    const body = { role: fd.get('role'), permissions, prenom: fd.get('prenom'), nom: fd.get('nom') };
     try {
       if (u) {
         await api(`/api/admin/utilisateurs/${u.id}`, { method: 'PUT', body });
-        toast('Droits mis à jour');
+        toast('Accès mis à jour');
       } else {
-        body.email = fd.get('email'); body.nom = fd.get('nom'); body.prenom = fd.get('prenom');
+        body.email = fd.get('email');
         const r = await api('/api/admin/utilisateurs', { method: 'POST', body });
         toast(r.mot_de_passe_temporaire
           ? `Compte créé — mot de passe provisoire : ${r.mot_de_passe_temporaire}`
