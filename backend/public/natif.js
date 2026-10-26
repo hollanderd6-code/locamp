@@ -17,7 +17,7 @@
 
    App -> site  : window.LocampNatif.<fonction>(...)
      naviguer(hash), action(id), rechercher(texte), changerCamping(id),
-     changerExercice(annee), notifications(), deconnexion(), recharger(),
+     changerExercice(annee), notifications(), deconnexion(), motDePasse(), recharger(),
      retour(), repondre(idDialogue, valeur), jetonPush(jeton)
 
    Le contrat complet est decrit dans ios/README.md. Toute evolution d'un
@@ -312,6 +312,10 @@
     },
     deconnexion() {
       (window.demanderDeconnexion || window.logout)();
+    },
+    /* Le menu latéral (et son bouton cadenas) est masqué dans l'app. */
+    motDePasse() {
+      if (typeof window.ouvrirMotDePasse === 'function') window.ouvrirMotDePasse(false);
     },
     recharger() {
       if (estConnecte() && typeof route === 'function') route(); else location.reload();

@@ -128,6 +128,9 @@ struct MenuCompte: View {
                 Button("Nouvel espace camping…", systemImage: "plus") { pont.changerCamping("__new__") }
             }
             Divider()
+            if Configuration.motDePasse {
+                Button("Changer mon mot de passe", systemImage: "key") { pont.changerMotDePasse() }
+            }
             Button("Se déconnecter", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                 pont.deconnexion()
             }
