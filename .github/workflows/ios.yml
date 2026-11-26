@@ -62,8 +62,8 @@ jobs:
       - name: Simulateur et captures
         if: matrix.app == 'LocampLocataire'
         env:
-          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL }}
-          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP }}
+          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL || vars.LOCAMP_TEST_EMAIL }}
+          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP || vars.LOCAMP_TEST_MDP }}
         run: |
           set -x
           cd ios/Locamp

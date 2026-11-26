@@ -27,8 +27,8 @@ jobs:
       - name: Parcours
         env:
           LOCAMP_URL: https://locamp.onrender.com
-          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL }}
-          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP }}
+          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL || vars.LOCAMP_TEST_EMAIL }}
+          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP || vars.LOCAMP_TEST_MDP }}
         run: node backend/test-e2e/parcours.js captures-site
       - uses: actions/upload-artifact@v4
         if: always()
