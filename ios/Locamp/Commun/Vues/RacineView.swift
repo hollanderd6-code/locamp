@@ -256,6 +256,7 @@ struct VueNative: View {
         case .accueilGestion: AccueilGestionView()
         case .residentsGestion: ResidentsView()
         case .facturationGestion: FacturationView()
+        case .compteursGestion: CompteursView()
         }
     }
 }

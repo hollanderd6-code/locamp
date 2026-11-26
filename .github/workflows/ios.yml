@@ -5,6 +5,9 @@ name: iOS
 
 on:
   push:
+    # Pas sur main : la branche a deja ete testee avant la fusion, et les
+    # Mac de GitHub sont rares (une file d'attente bloquait les tests suivants).
+    branches-ignore: [main]
     paths:
       - 'ios/**'
       - 'backend/public/natif.*'

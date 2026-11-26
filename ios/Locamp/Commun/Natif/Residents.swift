@@ -16,6 +16,7 @@ struct ResidentsView: View {
     @State private var recherche = ""
     @State private var filtre = Filtre.actifs
     @State private var nouveau = false
+    @State private var ouvert: ResidentCible?
 
     enum Filtre: String, CaseIterable, Identifiable {
         case actifs = "Actifs", soldeDu = "Solde dû", aCompleter = "À compléter", anciens = "Anciens"
@@ -65,7 +66,21 @@ struct ResidentsView: View {
         .barreGestion()
         .charger(source)
         .navigationDestination(for: ResidentCible.self) { FicheResidentView(residentId: $0.id) }
+        .navigationDestination(item: $ouvert) { FicheResidentView(residentId: $0.id) }
         .sensoryFeedback(.selection, trigger: filtre)
+        .toolbar {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Nouveau résident", systemImage: "plus") { nouveau = true }
+                    .buttonStyle(.glassProminent)
+            }
+        }
+        .sheet(isPresented: $nouveau) {
+            FormulaireResident(fiche: nil) { id in
+                Task { await source.rafraichir() }
+                if let id { ouvert = ResidentCible(id: id) }
+            }
+        }
     }
 
     private func filtrer(_ d: Donnees) -> [Resident] {
@@ -121,6 +136,7 @@ struct FicheResidentView: View {
     @State private var apercu = ApercuFichier()
     @State private var encaisser = false
     @State private var message = false
+    @State private var modifier = false
 
     init(residentId: String) {
         self.residentId = residentId
@@ -241,6 +257,14 @@ struct FicheResidentView: View {
             }
             .navigationDestination(isPresented: $message) {
                 ConversationGestionView(residentId: r.id, nom: r.nomComplet)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Modifier", systemImage: "square.and.pencil") { modifier = true }
+                }
+            }
+            .sheet(isPresented: $modifier) {
+                FormulaireResident(fiche: d.fiche) { _ in Task { await source.rafraichir() } }
             }
         }
         .charger(source)

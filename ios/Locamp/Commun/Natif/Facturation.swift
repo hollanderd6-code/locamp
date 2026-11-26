@@ -13,6 +13,21 @@ struct FacturationView: View {
     @State private var section = Section_.factures
     @State private var encaisser = false
     @State private var revision = 0
+    @State private var generer = false
+
+    private func genererMois() async {
+        struct R: Decodable { let crees: Int?; let ignores: Int?; let erreurs: Int? }
+        do {
+            let r = try await ClientAPI.partage.requete("/api/factures/run-mensuel", methode: "POST", corps: [:], as: R.self)
+            Pont.partage.afficherToast("\(r.crees ?? 0) facture\((r.crees ?? 0) > 1 ? "s" : "") créée\((r.crees ?? 0) > 1 ? "s" : "")"
+                                       + ((r.erreurs ?? 0) > 0 ? " · \(r.erreurs!) erreur\(r.erreurs! > 1 ? "s" : "")" : ""),
+                                       erreur: (r.erreurs ?? 0) > 0)
+            section = .factures
+            ClientAPI.partage.revision += 1
+        } catch {
+            Pont.partage.afficherToast(error.localizedDescription, erreur: true)
+        }
+    }
 
     var body: some View {
         Group {
@@ -33,11 +48,22 @@ struct FacturationView: View {
         .toolbarTitleDisplayMode(.large)
         .barreGestion()
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("Plus d'actions", systemImage: "ellipsis") {
+                    Button("Générer la facturation du mois", systemImage: "doc.badge.plus") { generer = true }
+                }
+            }
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Encaisser un paiement", systemImage: "eurosign") { encaisser = true }
                     .buttonStyle(.glassProminent)
             }
+        }
+        .alert("Générer la facturation de \(Date.now.formatted(.dateTime.month(.wide).year().locale(Fmt.fr))) ?", isPresented: $generer) {
+            Button("Annuler", role: .cancel) {}
+            Button("Générer") { Task { await genererMois() } }
+        } message: {
+            Text("Crée les brouillons du mois pour tous les résidents (loyer, charges et prestations en cours). Vous les vérifiez puis les émettez.")
         }
         .sheet(isPresented: $encaisser, onDismiss: { revision += 1 }) { EncaisserView() }
         .sensoryFeedback(.selection, trigger: section)
@@ -75,6 +101,18 @@ private struct ListeFactures: View {
     @State private var recherche = ""
     @State private var apercu = ApercuFichier()
 
+    /// Emettre un brouillon : numero definitif, entree dans la chaine fiscale.
+    private func emettre(_ f: FactureG) async {
+        do {
+            _ = try await ClientAPI.partage.requete("/api/factures/\(f.id)/emettre", methode: "POST", corps: [:], as: ClientAPI.Vide.self)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Pont.partage.afficherToast("Facture émise")
+            await source.rafraichir()
+        } catch {
+            Pont.partage.afficherToast(error.localizedDescription, erreur: true)
+        }
+    }
+
     var body: some View {
         Chargeur(etat: source.etat, reessayer: source.rafraichir) { factures in
             let liste = factures.filter { f in
@@ -107,7 +145,16 @@ private struct ListeFactures: View {
                             LigneFactureG(facture: f, nom: f.resident_id.flatMap { AnnuaireResidents.noms[$0] })
                         }
                         .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing) {
+                            if f.statut == "brouillon" {
+                                Button("Émettre", systemImage: "paperplane") { Task { await emettre(f) } }
+                                    .tint(Color.accentColor)
+                            }
+                        }
                         .contextMenu {
+                            if f.statut == "brouillon" {
+                                Button("Émettre la facture", systemImage: "paperplane") { Task { await emettre(f) } }
+                            }
                             if let r = f.resident_id {
                                 NavigationLink(value: ResidentCible(id: r)) { Label("Voir le résident", systemImage: "person.crop.circle") }
                             }
