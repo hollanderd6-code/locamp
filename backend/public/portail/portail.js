@@ -534,10 +534,19 @@ async function chargerSignatures() {
     const sec = $('#sec-signer');
     if (!a_signer.length && !signes.length) { sec.classList.add('hidden'); return; }
     sec.classList.remove('hidden');
+    /* Le bandeau ambre « Action requise » n'a de sens que s'il reste un
+       document a signer. Sinon la section ne montre que l'historique des
+       documents signes, sobrement, dans l'onglet Documents seulement. */
+    const attente = a_signer.length > 0;
+    sec.classList.toggle('a-signer', attente);
+    sec.querySelector('.eyebrow').textContent = attente ? 'Action requise' : 'Signature électronique';
+    sec.querySelector('h2').textContent = attente
+      ? (a_signer.length > 1 ? 'Vos signatures sont attendues' : 'Votre signature est attendue')
+      : 'Documents signés';
 
     $('#liste-signer').innerHTML = [
       ...a_signer.map((d) => `
-        <div class="fac">
+        <div class="fac" data-a-signer>
           <div>
             <div class="l1">${esc(d.titre)}</div>
             <div class="l2">${d.nb_pages || 1} page(s) · <strong style="color:var(--rouge)">signature requise</strong></div>

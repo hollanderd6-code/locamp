@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/marque.css?v=1793070000">
-<link rel="stylesheet" href="/portail/portail.css?v=1793090000">
+<link rel="stylesheet" href="/portail/portail.css?v=1793200000">
 <link rel="stylesheet" href="/portail/natif-portail.css?v=1793110000">
 </head>
 <body>
@@ -298,7 +298,7 @@
 
 <div id="toast" class="toast hidden"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="/portail/portail.js?v=1793090000"></script>
+<script src="/portail/portail.js?v=1793200000"></script>
 <!-- Pont avec l'app iOS native : inerte dans un navigateur. -->
 <script src="/portail/natif-portail.js?v=1793100000"></script>
 
@@ -370,8 +370,8 @@
     var liste = document.getElementById('liste-signer');
     var pastille = document.getElementById('ong-signer');
     if (!liste || !pastille) return;
-    var n = liste.querySelectorAll('[data-doc-id], .doc-signer, li, .row').length;
-    if (!n && liste.children.length && !liste.querySelector('p.note')) n = liste.children.length;
+    // Seuls les documents EN ATTENTE comptent : les signes ne demandent rien.
+    var n = liste.querySelectorAll('[data-a-signer]').length;
     pastille.textContent = n > 9 ? '9+' : n;
     pastille.classList.toggle('hidden', !n);
   }

@@ -117,7 +117,20 @@ async function portail(navigateur, nom, options) {
   ];
   for (const [nom, f, opts] of etapes) {
     try { await f(nav, nom, opts); }
-    catch (e) { echecs++; rapport.push({ ecran: nom, problemes: ['parcours interrompu : ' + e.message] }); console.log(`✗ ${nom} interrompu : ${e.message}`); }
+    catch (e) {
+      echecs++;
+      // Ce que l'ecran affichait au moment de l'echec (message d'erreur de connexion…).
+      let vu = '';
+      for (const p of nav.contexts().flatMap((c) => c.pages())) {
+        try {
+          await p.screenshot({ path: path.join(SORTIE, `${nom}-echec.png`) });
+          vu = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').slice(0, 300);
+        } catch { /* page fermee */ }
+      }
+      rapport.push({ ecran: nom, problemes: ['parcours interrompu : ' + e.message.split('\n')[0], 'ecran : ' + vu] });
+      console.log(`✗ ${nom} interrompu : ${e.message.split('\n')[0]}\n    ecran : ${vu}`);
+      for (const c of nav.contexts()) await c.close().catch(() => {});
+    }
   }
   await nav.close();
   fs.writeFileSync(path.join(SORTIE, 'rapport.json'), JSON.stringify(rapport, null, 2));
