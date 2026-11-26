@@ -17,6 +17,8 @@ jobs:
     # Les identifiants de test sont des secrets de l'environnement GitHub « Locamp ».
     environment: Locamp
     timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,3 +39,19 @@ jobs:
         with:
           name: captures-site
           path: captures-site
+
+      - name: Captures sur la branche captures-tests (compte de test, donnees fictives)
+        if: always()
+        env:
+          DOSSIER: captures-site
+          SOUS: site
+        run: |
+          [ -d "$DOSSIER" ] || exit 0
+          git config user.name "locamp-tests"; git config user.email "tests@locamp.invalid"
+          TMP=$(mktemp -d); cp -R "$DOSSIER"/. "$TMP"/
+          git stash -u -q || true
+          if git fetch -q origin captures-tests; then git checkout -q -B captures-tests FETCH_HEAD; else git checkout -q --orphan captures-tests; git rm -rqf . || true; fi
+          rm -rf "$SOUS"; mkdir -p "$SOUS"; cp -R "$TMP"/. "$SOUS"/
+          git add -A "$SOUS"
+          git commit -qm "Captures $SOUS ($GITHUB_SHA)" || exit 0
+          for i in 1 2 3; do git pull -q --rebase origin captures-tests 2>/dev/null || true; git push -q origin HEAD:captures-tests && break; sleep 3; done
