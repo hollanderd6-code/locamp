@@ -1,0 +1,37 @@
+# Parcours du site en ligne, connecte avec le compte de test, en lecture
+# seule : capture de chaque ecran (gestion et portail, ordinateur et
+# telephone) et releve des erreurs. A la demande ou a chaque modification
+# du parcours.
+name: Site
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/test-e2e/**'
+      - '.github/workflows/site.yml'
+
+jobs:
+  parcours:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Parcours
+        env:
+          LOCAMP_URL: https://locamp.onrender.com
+          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL }}
+          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP }}
+        run: node backend/test-e2e/parcours.js captures-site
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-site
+          path: captures-site

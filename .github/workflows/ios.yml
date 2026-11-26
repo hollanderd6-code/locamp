@@ -86,6 +86,16 @@ jobs:
               xcrun simctl io "$UDID" screenshot "captures/02-$ONGLET.png"
               xcrun simctl terminate "$UDID" fr.locamp.portail || true
             done
+            # Mode sombre
+            xcrun simctl ui "$UDID" appearance dark
+            for ONGLET in accueil factures; do
+              SIMCTL_CHILD_LOCAMP_TEST_EMAIL="$LOCAMP_TEST_EMAIL" SIMCTL_CHILD_LOCAMP_TEST_MDP="$LOCAMP_TEST_MDP" \
+              SIMCTL_CHILD_LOCAMP_TEST_ONGLET="$ONGLET" \
+                xcrun simctl launch "$UDID" fr.locamp.portail
+              sleep 12
+              xcrun simctl io "$UDID" screenshot "captures/03-sombre-$ONGLET.png"
+              xcrun simctl terminate "$UDID" fr.locamp.portail || true
+            done
           fi
           xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "LocampLocataire"' --style compact 2>/dev/null | grep -iE "error|fault|locamp" | tail -60 || true
 
