@@ -165,6 +165,22 @@ app.get(['/confidentialite', '/politique-de-confidentialite'], (req, res) =>
 
    L'empreinte vient de l'environnement : elle identifie la cle de
    signature, et changera le jour ou la cle changera. */
+/* Liens universels iOS : un lien d'activation, de nouveau mot de passe ou de
+   connexion recu par e-mail (/portail/?activation=…) ouvre l'app Locataire
+   au lieu de Safari, si elle est installee. Seul /portail/ est revendique :
+   le logiciel de gestion reste au navigateur. */
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  const equipe = process.env.APPLE_TEAM_ID || 'H5H2Y3S26J';
+  res.type('application/json').send(JSON.stringify({
+    applinks: {
+      details: [{
+        appIDs: [`${equipe}.fr.locamp.portail`],
+        components: [{ '/': '/portail/*', comment: 'Espace locataire' }],
+      }],
+    },
+  }));
+});
+
 app.get('/.well-known/assetlinks.json', (req, res) => {
   /* assetlinks.json est une LISTE : un site peut autoriser plusieurs
      applications. Avec une seule declaration, la seconde application

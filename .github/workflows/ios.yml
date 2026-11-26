@@ -1,0 +1,98 @@
+# Compile les deux apps iOS sur un Mac de GitHub, a chaque modification
+# de l'app ou du pont. Pas de signature : on verifie que le code compile,
+# puis on lance l'app Locataire dans le simulateur et on capture l'ecran.
+name: iOS
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - 'backend/public/natif.*'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler:
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [LocampLocataire, LocampGestion]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | grep -m5 iPhone || true
+
+      - name: XcodeGen
+        run: |
+          brew install xcodegen
+          cd ios/Locamp && xcodegen generate
+
+      - name: Paquets Swift (cache)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: spm-${{ hashFiles('ios/Locamp/project.yml') }}
+
+      - name: Compilation (${{ matrix.app }})
+        run: |
+          set -o pipefail
+          cd ios/Locamp
+          xcodebuild -project Locamp.xcodeproj -scheme ${{ matrix.app }} \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/dd \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log | grep -E "error:|warning: .*(deprecated|unused)|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Erreurs de compilation
+        if: failure()
+        run: grep -E "error:" -A3 ios/Locamp/build.log | head -200 || true
+
+      - name: Simulateur et captures
+        if: matrix.app == 'LocampLocataire'
+        env:
+          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL }}
+          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP }}
+        run: |
+          set -x
+          cd ios/Locamp
+          APP=$(find build/dd/Build/Products -name "${{ matrix.app }}.app" -maxdepth 3 | head -1)
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone 17 Pro') or x['name'].startswith('iPhone 16 Pro')))")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p captures
+          xcrun simctl launch "$UDID" fr.locamp.portail
+          sleep 8
+          xcrun simctl io "$UDID" screenshot captures/01-connexion.png
+          if [ -n "$LOCAMP_TEST_EMAIL" ]; then
+            xcrun simctl terminate "$UDID" fr.locamp.portail || true
+            for ONGLET in accueil factures messages documents compte; do
+              SIMCTL_CHILD_LOCAMP_TEST_EMAIL="$LOCAMP_TEST_EMAIL" SIMCTL_CHILD_LOCAMP_TEST_MDP="$LOCAMP_TEST_MDP" \
+              SIMCTL_CHILD_LOCAMP_TEST_ONGLET="$ONGLET" \
+                xcrun simctl launch "$UDID" fr.locamp.portail
+              sleep 14
+              xcrun simctl io "$UDID" screenshot "captures/02-$ONGLET.png"
+              xcrun simctl terminate "$UDID" fr.locamp.portail || true
+            done
+          fi
+          xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "LocampLocataire"' --style compact 2>/dev/null | grep -iE "error|fault|locamp" | tail -60 || true
+
+      - name: Publier les captures
+        if: matrix.app == 'LocampLocataire' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captures-locataire
+          path: ios/Locamp/captures
+          if-no-files-found: ignore

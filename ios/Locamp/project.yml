@@ -1,9 +1,8 @@
 # Projet Xcode des deux apps iOS natives de Locamp :
 #   - Locamp Gestion   (fr.locamp.gestion) : le logiciel du camping
-#   - Mon camping      (fr.locamp.portail) : l'espace locataire
-# Le code natif (Commun/) est partage ; chaque app a sa configuration
-# (Gestion/Configuration.swift, Portail/Configuration.swift), son icone et
-# son projet Firebase.
+#   - Mon camping      (fr.locamp.portail) : l'espace locataire, 100 % SwiftUI
+# La Gestion affiche le site dans une coquille native (Commun/ + Gestion/).
+# Le Locataire est entierement natif (Portail/), sans page web.
 #
 # Le .xcodeproj n'est pas suivi par Git : on le genere avec XcodeGen.
 #   brew install xcodegen
@@ -55,16 +54,13 @@ targets:
       - package: Firebase
         product: FirebaseMessaging
 
+  # App 100 % native (SwiftUI, Liquid Glass) : aucun WKWebView, elle parle
+  # directement a l'API du portail. N'utilise pas Commun/.
   LocampLocataire:
     type: application
     platform: iOS
     sources:
-      - path: Commun
       - path: Portail
-      - path: ../../backend/public/portail/natif-portail.js
-        buildPhase: resources
-      - path: ../../backend/public/portail/natif-portail.css
-        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: LocampLocataire

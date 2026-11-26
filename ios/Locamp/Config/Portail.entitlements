@@ -4,5 +4,12 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Liens universels : les liens d'activation et de mot de passe recus par
+	     e-mail (https://locamp.onrender.com/portail/?…) ouvrent l'app.
+	     Le serveur publie /.well-known/apple-app-site-association. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:locamp.onrender.com</string>
+	</array>
 </dict>
 </plist>
