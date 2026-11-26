@@ -116,6 +116,39 @@ struct AccueilGestionView: View {
 
     // MARK: A faire
 
+    /// Les echeances regroupees par nature et urgence : 120 « assurance
+    /// manquante » deviennent une seule ligne qu'on deplie.
+    struct GroupeAFaire: Identifiable {
+        let id: String
+        let titre: String
+        let symbole: String
+        let couleur: Color
+        let ordre: Int
+        let elements: [Echeance]
+    }
+
+    private func groupes(_ liste: [Echeance]) -> [GroupeAFaire] {
+        Dictionary(grouping: liste) { "\($0.type)-\($0.statut)" }.map { cle, el in
+            let e = el[0]
+            let n = el.count
+            let (titre, ordre): (String, Int) = {
+                switch (e.type, e.statut) {
+                case ("assurance", "expiree"): return ("Assurance expirée", 0)
+                case ("assurance", "manquante"): return ("Attestation d'assurance manquante", 2)
+                case ("assurance", _): return ("Assurance à renouveler", 3)
+                case ("contrat", "expiree"): return ("Contrat échu", 1)
+                case ("contrat", _): return ("Contrat à renouveler", 4)
+                case (_, "expiree"): return ("Document échu", 1)
+                default: return ("Document arrivant à échéance", 5)
+                }
+            }()
+            return GroupeAFaire(id: cle, titre: n > 1 ? "\(titre) · \(n)" : titre, symbole: e.symbole,
+                                couleur: e.statut == "a_venir" ? .orange : .red, ordre: ordre,
+                                elements: el.sorted { ($0.jours_restants ?? -9999) < ($1.jours_restants ?? -9999) })
+        }
+        .sorted { $0.ordre < $1.ordre }
+    }
+
     @ViewBuilder private func aFaire(_ d: Donnees) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -132,31 +165,71 @@ struct AccueilGestionView: View {
                     .background(.background.secondary, in: .rect(cornerRadius: 18))
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(d.echeances.prefix(12).enumerated()), id: \.element.id) { i, e in
+                    ForEach(Array(groupes(d.echeances).enumerated()), id: \.element.id) { i, g in
                         if i > 0 { Divider().padding(.leading, 52) }
-                        Button {
-                            if let r = e.resident_id { ouvert = ResidentCible(id: r) }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: e.symbole)
-                                    .foregroundStyle(e.statut == "a_venir" ? Color.orange : Color.red)
-                                    .frame(width: 28)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(e.libelle) — \(e.resident_nom ?? "")").font(.subheadline.weight(.semibold)).lineLimit(2)
-                                    Text(e.detail).font(.footnote).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 12)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
+                        GroupeAFaireVue(groupe: g) { ouvert = ResidentCible(id: $0) }
                     }
                 }
                 .background(.background.secondary, in: .rect(cornerRadius: 18))
             }
         }
+    }
+}
+
+/// Un groupe « A faire » : une ligne, depliable sur la liste des residents.
+private struct GroupeAFaireVue: View {
+    let groupe: AccueilGestionView.GroupeAFaire
+    let ouvrir: (String) -> Void
+    @State private var deplie = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                if groupe.elements.count == 1, let r = groupe.elements[0].resident_id { ouvrir(r) }
+                else { withAnimation(.smooth) { deplie.toggle() } }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: groupe.symbole).foregroundStyle(groupe.couleur).frame(width: 28)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(groupe.titre).font(.subheadline.weight(.semibold))
+                        Text(resume).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: groupe.elements.count == 1 ? "chevron.right" : "chevron.down")
+                        .font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(deplie ? 180 : 0))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+
+            if deplie {
+                VStack(spacing: 0) {
+                    ForEach(groupe.elements) { e in
+                        Button { if let r = e.resident_id { ouvrir(r) } } label: {
+                            HStack {
+                                Text(e.resident_nom ?? "—").font(.subheadline)
+                                Spacer()
+                                Text(e.detail).font(.caption).foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
+                            .padding(.leading, 54).padding(.trailing, 14).padding(.vertical, 9)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private var resume: String {
+        let noms = groupe.elements.compactMap(\.resident_nom)
+        if noms.count == 1 { return "\(noms[0]) · \(groupe.elements[0].detail)" }
+        let debut = noms.prefix(2).joined(separator: ", ")
+        return noms.count > 2 ? "\(debut) et \(noms.count - 2) autre\(noms.count - 2 > 1 ? "s" : "")" : debut
     }
 }
 
