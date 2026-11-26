@@ -82,13 +82,14 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           mkdir -p captures
-          xcrun simctl launch "$UDID" ${{ matrix.bundle }}
+          # LOCAMP_CAPTURE : pas d'alerte de notifications (elle resterait par-dessus les captures suivantes).
+          SIMCTL_CHILD_LOCAMP_CAPTURE=1 xcrun simctl launch "$UDID" ${{ matrix.bundle }}
           sleep 12
           xcrun simctl io "$UDID" screenshot captures/01-connexion.png
           if [ -n "$LOCAMP_TEST_EMAIL" ]; then
             # Un seul lancement : l'app visite les ecrans et attend chaque capture.
             xcrun simctl terminate "$UDID" ${{ matrix.bundle }} || true
-            SIMCTL_CHILD_LOCAMP_TEST_EMAIL="$LOCAMP_TEST_EMAIL" SIMCTL_CHILD_LOCAMP_TEST_MDP="$LOCAMP_TEST_MDP" \
+            SIMCTL_CHILD_LOCAMP_CAPTURE=1 SIMCTL_CHILD_LOCAMP_TEST_EMAIL="$LOCAMP_TEST_EMAIL" SIMCTL_CHILD_LOCAMP_TEST_MDP="$LOCAMP_TEST_MDP" \
               xcrun simctl launch "$UDID" ${{ matrix.bundle }}
             CACHES="$(xcrun simctl get_app_container "$UDID" ${{ matrix.bundle }} data)/Library/Caches"
             VU=""

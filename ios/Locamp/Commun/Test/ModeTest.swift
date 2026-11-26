@@ -35,7 +35,8 @@ enum ModeTest {
 
         for o in Configuration.onglets {
             pont.onglet = o
-            try? await Task.sleep(for: .seconds(4))
+            // La Carte est lourde : on laisse le temps a l'ecran suivant de s'afficher.
+            try? await Task.sleep(for: .seconds(7))
             await etape(o.id)
         }
         if !Configuration.ecransPlus.isEmpty {

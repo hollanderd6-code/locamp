@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             Messaging.messaging().delegate = self
             #if DEBUG
             // Captures automatiques : pas d'alerte systeme par-dessus les ecrans.
-            if ProcessInfo.processInfo.environment["LOCAMP_TEST_EMAIL"]?.isEmpty == false { return true }
+            if ProcessInfo.processInfo.environment["LOCAMP_CAPTURE"] == "1" { return true }
             #endif
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { ok, _ in
                 guard ok else { return }

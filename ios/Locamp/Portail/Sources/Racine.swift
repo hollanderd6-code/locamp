@@ -77,7 +77,7 @@ struct OngletsLocataire: View {
 /// et attend que le simulateur ait capture l'ecran (fichier ok-<etape>).
 /// Absent des versions publiees.
 enum ModeTest {
-    @MainActor static var actif: Bool { ProcessInfo.processInfo.environment["LOCAMP_TEST_EMAIL"]?.isEmpty == false }
+    @MainActor static var actif: Bool { ProcessInfo.processInfo.environment["LOCAMP_CAPTURE"] == "1" }
     @MainActor static var ouvrirCompte = false
     /// Une fermeture par onglet (chacun a sa barre et sa feuille Compte).
     @MainActor static var fermetures: [String: () -> Void] = [:]
