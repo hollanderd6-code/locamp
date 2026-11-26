@@ -297,8 +297,11 @@ async function api(path, opts = {}) {
   if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
   if (ACTIVE_CAMPING) headers['x-camping-id'] = ACTIVE_CAMPING;
   const r = await fetch(API + path, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
-  if (r.status === 401) { logout(); throw new Error('Session expirée'); }
   const data = await r.json().catch(() => ({}));
+  /* 401 = session expiree seulement si on en avait une. A la connexion,
+     c'est un mauvais mot de passe : on affiche le message du serveur
+     (« Identifiants invalides ») au lieu de deconnecter en silence. */
+  if (r.status === 401 && TOKEN && !path.startsWith('/api/auth/login')) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
   if (!r.ok) throw new Error(data.error || 'Erreur serveur');
   return data;
 }
@@ -7091,7 +7094,9 @@ boot();
   }
 
   async function majCompteur() {
-    if (!built) return;
+    // Hors session (ecran de connexion), on ne sonne pas a la porte : chaque
+    // appel revenait en 401 et declenchait une deconnexion.
+    if (!built || !TOKEN) return;
     try {
       const { non_lues } = await api('/api/notifications/compteur');
       const b = document.getElementById('notif-badge');

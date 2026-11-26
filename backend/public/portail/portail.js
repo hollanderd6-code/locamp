@@ -22,7 +22,8 @@ async function api(path, opts = {}) {
   if (RTOKEN) headers['Authorization'] = 'Bearer ' + RTOKEN;
   const r = await fetch(API + path, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
   const data = await r.json().catch(() => ({}));
-  if (r.status === 401) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
+  // 401 sans session ouverte = mauvais identifiants : on montre le message du serveur.
+  if (r.status === 401 && headers['Authorization']) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
   if (!r.ok) throw new Error(data.error || 'Erreur serveur');
   return data;
 }

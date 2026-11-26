@@ -9,6 +9,7 @@ on:
   push:
     paths:
       - 'backend/test-e2e/**'
+      - 'backend/public/**'
       - '.github/workflows/site.yml'
 
 jobs:
@@ -31,6 +32,7 @@ jobs:
       - name: Parcours
         env:
           LOCAMP_URL: https://locamp.onrender.com
+          LOCAMP_FRONT_LOCAL: "1"   # front de la branche, API en ligne
           LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL }}
           LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP }}
         run: node backend/test-e2e/parcours.js captures-site

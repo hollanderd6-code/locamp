@@ -15,6 +15,27 @@ const BASE = (process.env.LOCAMP_URL || 'https://locamp.onrender.com').replace(/
 const EMAIL = process.env.LOCAMP_TEST_EMAIL;
 const MDP = process.env.LOCAMP_TEST_MDP;
 const SORTIE = process.argv[2] || 'captures-site';
+/* LOCAMP_FRONT_LOCAL=1 : les pages et scripts viennent de backend/public
+   (la branche testee), l'API reste celle du serveur en ligne. Permet de
+   verifier un correctif du front avant de le deployer. */
+const FRONT_LOCAL = process.env.LOCAMP_FRONT_LOCAL === '1';
+const PUBLIC = path.join(__dirname, '..', 'public');
+
+async function contexte(navigateur, options) {
+  const ctx = await navigateur.newContext({ ...options, serviceWorkers: 'block' });
+  if (FRONT_LOCAL) {
+    await ctx.route((u) => u.origin === BASE && !u.pathname.startsWith('/api/') && !u.pathname.startsWith('/.well-known/'), async (route) => {
+      const u = new URL(route.request().url());
+      let f = path.join(PUBLIC, decodeURIComponent(u.pathname));
+      if (f.endsWith(path.sep) || f.endsWith('/')) f = path.join(f, 'index.html');
+      if (!f.startsWith(PUBLIC) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
+        if (fs.existsSync(path.join(f, 'index.html'))) f = path.join(f, 'index.html'); else return route.continue();
+      }
+      return route.fulfill({ path: f });
+    });
+  }
+  return ctx;
+}
 
 const ECRANS_GESTION = ['dashboard', 'carte', 'emplacements', 'residents', 'contrats', 'signatures', 'factures',
   'reglements', 'impayes', 'messagerie', 'compteurs', 'compta', 'parametres', 'administration'];
@@ -54,7 +75,7 @@ async function noter(nom, page, journal, debut) {
 }
 
 async function gestion(navigateur, nom, options) {
-  const ctx = await navigateur.newContext(options);
+  const ctx = await contexte(navigateur, options);
   const page = await ctx.newPage();
   const journal = [];
   surveiller(page, journal);
@@ -63,7 +84,8 @@ async function gestion(navigateur, nom, options) {
   await page.fill('#login-email', EMAIL);
   await page.fill('#login-password', MDP);
   await page.click('#login-btn');
-  await page.waitForSelector('#app:not(.hidden)', { timeout: 60000 });
+  await page.waitForSelector('#app:not(.hidden), #login-error:not(.hidden)', { timeout: 60000 });
+  if (await page.isVisible('#login-error')) throw new Error('connexion refusee : ' + (await page.textContent('#login-error')));
   await attendreCalme(page);
   await noter(`${nom}-00-connexion`, page, journal, t);
   let i = 1;
@@ -77,7 +99,7 @@ async function gestion(navigateur, nom, options) {
 }
 
 async function portail(navigateur, nom, options) {
-  const ctx = await navigateur.newContext(options);
+  const ctx = await contexte(navigateur, options);
   const page = await ctx.newPage();
   const journal = [];
   surveiller(page, journal);
@@ -87,7 +109,8 @@ async function portail(navigateur, nom, options) {
   await page.fill('#cx-email', EMAIL);
   await page.fill('#cx-mdp', MDP);
   await page.click('#btn-connexion');
-  await page.waitForSelector('#espace:not(.hidden)', { timeout: 60000 });
+  await page.waitForSelector('#espace:not(.hidden), #cx-err:not(.hidden)', { timeout: 60000 });
+  if (await page.isVisible('#cx-err')) throw new Error('connexion refusee : ' + (await page.textContent('#cx-err')));
   await attendreCalme(page);
   await noter(`${nom}-00-connexion`, page, journal, t);
   let i = 1;
