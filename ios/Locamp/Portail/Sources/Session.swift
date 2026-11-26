@@ -124,6 +124,9 @@ final class Session {
     // MARK: Notifications push
 
     func demanderPush() {
+        #if DEBUG
+        if ModeTest.actif { return }      // pas d'alerte systeme pendant les captures
+        #endif
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { ok, _ in
             guard ok else { return }
             DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }

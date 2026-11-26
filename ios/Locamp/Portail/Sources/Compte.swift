@@ -28,7 +28,10 @@ private struct BarreEspace: ViewModifier {
             .sheet(isPresented: $compte) { CompteView() }
             .sheet(isPresented: $notifications) { NotificationsView() }
             #if DEBUG
-            .onAppear { if ModeTest.ouvrirCompte { ModeTest.ouvrirCompte = false; compte = true } }
+            .onChange(of: Session.partage.revision, initial: true) { _, _ in
+                if ModeTest.ouvrirCompte { ModeTest.ouvrirCompte = false; compte = true }
+                ModeTest.fermerCompte = { compte = false }
+            }
             #endif
     }
 }

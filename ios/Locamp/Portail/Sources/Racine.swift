@@ -72,9 +72,15 @@ struct OngletsLocataire: View {
 
 #if DEBUG
 /// Captures automatiques dans le simulateur (.github/workflows/ios.yml) :
-/// connexion avec un compte de test et onglet choisi, par variables
-/// d'environnement. Absent des versions publiees.
+/// connexion avec un compte de test, puis visite des ecrans en UN seul
+/// lancement. A chaque etape l'app ecrit son nom dans Library/Caches/etape.txt
+/// et attend que le simulateur ait capture l'ecran (fichier ok-<etape>).
+/// Absent des versions publiees.
 enum ModeTest {
+    @MainActor static var actif: Bool { ProcessInfo.processInfo.environment["LOCAMP_TEST_EMAIL"]?.isEmpty == false }
+    @MainActor static var ouvrirCompte = false
+    @MainActor static var fermerCompte: () -> Void = {}
+
     @MainActor static func demarrer() async {
         let env = ProcessInfo.processInfo.environment
         guard let email = env["LOCAMP_TEST_EMAIL"], let mdp = env["LOCAMP_TEST_MDP"], !email.isEmpty else { return }
@@ -86,12 +92,40 @@ enum ModeTest {
                 Session.partage.ouvrir(jeton: r.token)
             } catch {
                 Session.partage.afficher("Test : \(error.localizedDescription)", erreur: true)
+                await etape("echec-connexion")
                 return
             }
         }
-        if let o = env["LOCAMP_TEST_ONGLET"].flatMap(Onglet.init(rawValue:)) { Session.partage.onglet = o }
-        if env["LOCAMP_TEST_ONGLET"] == "compte" { ModeTest.ouvrirCompte = true }
+        try? await Task.sleep(for: .seconds(4))      // chargement de l'espace
+        let s = Session.partage
+        for o in Onglet.allCases {
+            s.onglet = o
+            try? await Task.sleep(for: .seconds(3))
+            await etape(o.rawValue)
+        }
+        s.onglet = .accueil
+        ouvrirCompte = true
+        s.signalerNouveautes()
+        try? await Task.sleep(for: .seconds(3))
+        await etape("compte")
+        fermerCompte()
+        for o in [Onglet.accueil, .factures, .documents] {
+            s.onglet = o
+            try? await Task.sleep(for: .seconds(3))
+            await etape("sombre-" + o.rawValue)
+        }
+        await etape("fin")
     }
-    @MainActor static var ouvrirCompte = false
+
+    /// Publie l'etape et attend la capture (60 s au plus).
+    @MainActor private static func etape(_ nom: String) async {
+        let dossier = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        try? nom.write(to: dossier.appendingPathComponent("etape.txt"), atomically: true, encoding: .utf8)
+        let ok = dossier.appendingPathComponent("ok-" + nom)
+        for _ in 0..<120 {
+            if FileManager.default.fileExists(atPath: ok.path) { return }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+    }
 }
 #endif
