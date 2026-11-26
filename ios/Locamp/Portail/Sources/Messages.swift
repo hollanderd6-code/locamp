@@ -98,7 +98,10 @@ struct MessagesView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0) {
+                // Pile simple et non « Lazy » : un fil reste court, et une pile
+                // paresseuse ancree en bas recalculait sa mise en page en boucle
+                // (ecran fige a l'ouverture de Messages).
+                VStack(spacing: 0) {
                     ForEach(jours, id: \.jour) { j in
                         Text(j.titre)
                             .font(.caption.weight(.semibold))
@@ -119,11 +122,15 @@ struct MessagesView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
             }
-            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: modele.lignes.last?.id) { _, id in
+            .onAppear {
+                if let id = modele.lignes.last?.id { proxy.scrollTo(id, anchor: .bottom) }
+            }
+            .onChange(of: modele.lignes.last?.id) { ancien, id in
                 guard let id else { return }
-                withAnimation(.smooth) { proxy.scrollTo(id, anchor: .bottom) }
+                // Premier chargement : on se place en bas sans animation.
+                if ancien == nil { proxy.scrollTo(id, anchor: .bottom) }
+                else { withAnimation(.smooth) { proxy.scrollTo(id, anchor: .bottom) } }
             }
             .onChange(of: saisie) { _, actif in
                 guard actif, let id = modele.lignes.last?.id else { return }
@@ -250,7 +257,6 @@ private struct Bulle: View {
                     .padding(.vertical, 9)
                     .background(fond, in: forme)
                     .opacity(ligne.etat == .enCours ? 0.65 : 1)
-                    .textSelection(.enabled)
                     .contextMenu {
                         Button("Copier", systemImage: "doc.on.doc") { UIPasteboard.general.string = ligne.corps }
                     }

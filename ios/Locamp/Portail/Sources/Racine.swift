@@ -79,7 +79,9 @@ struct OngletsLocataire: View {
 enum ModeTest {
     @MainActor static var actif: Bool { ProcessInfo.processInfo.environment["LOCAMP_TEST_EMAIL"]?.isEmpty == false }
     @MainActor static var ouvrirCompte = false
-    @MainActor static var fermerCompte: () -> Void = {}
+    /// Une fermeture par onglet (chacun a sa barre et sa feuille Compte).
+    @MainActor static var fermetures: [String: () -> Void] = [:]
+    @MainActor static func fermerCompte() { fermetures.values.forEach { $0() } }
 
     @MainActor static func demarrer() async {
         let env = ProcessInfo.processInfo.environment
@@ -117,12 +119,12 @@ enum ModeTest {
         await etape("fin")
     }
 
-    /// Publie l'etape et attend la capture (60 s au plus).
+    /// Publie l'etape et attend la capture (3 min au plus).
     @MainActor private static func etape(_ nom: String) async {
         let dossier = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         try? nom.write(to: dossier.appendingPathComponent("etape.txt"), atomically: true, encoding: .utf8)
         let ok = dossier.appendingPathComponent("ok-" + nom)
-        for _ in 0..<120 {
+        for _ in 0..<360 {
             if FileManager.default.fileExists(atPath: ok.path) { return }
             try? await Task.sleep(for: .milliseconds(500))
         }
