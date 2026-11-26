@@ -165,7 +165,7 @@ private struct ListeFactures: View {
             .overlay {
                 if liste.isEmpty {
                     ContentUnavailableView("Aucune facture", systemImage: "doc.text",
-                                           description: Text("« Générer la facturation du mois » se fait depuis le site pour l'instant."))
+                                           description: Text("Menu « … » → « Générer la facturation du mois » crée les brouillons du mois."))
                 }
             }
             .searchable(text: $recherche, prompt: "Numéro, résident, période")
