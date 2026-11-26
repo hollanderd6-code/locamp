@@ -19,6 +19,9 @@ struct RacineView: View {
         .overlay(alignment: .bottom) { ToastVue() }
         .modifier(DialogueNatif())
         .sheet(item: $pont.fenetre) { FenetreVue(fenetre: $0) }
+        #if DEBUG
+        .task { await ModeTest.demarrer() }
+        #endif
     }
 }
 

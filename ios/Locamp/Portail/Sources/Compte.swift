@@ -10,6 +10,7 @@ private struct BarreEspace: ViewModifier {
     @Environment(Espace.self) private var espace
     @State private var compte = false
     @State private var notifications = false
+    @State private var jeton = UUID().uuidString
 
     func body(content: Content) -> some View {
         content
@@ -30,7 +31,7 @@ private struct BarreEspace: ViewModifier {
             #if DEBUG
             .onChange(of: Session.partage.revision, initial: true) { _, _ in
                 if ModeTest.ouvrirCompte { ModeTest.ouvrirCompte = false; compte = true }
-                ModeTest.fermerCompte = { compte = false }
+                ModeTest.fermetures[jeton] = { compte = false }
             }
             #endif
     }

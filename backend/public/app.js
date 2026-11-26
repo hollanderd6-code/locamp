@@ -133,6 +133,7 @@ let ACTIVE_EXERCICE = null;                 // annee de debut de l'exercice affi
 let EX_DM = 1;                              // mois de debut d'exercice (parametres.exercice_debut_mois)
 let USER = null;
 let MES_DROITS = {};
+let MON_ROLE = '';   // role sur le camping actif (admin, gestionnaire, comptabilite, lecture)
 
 /* ---------- utilitaires ---------- */
 const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -336,8 +337,8 @@ async function boot() {
   try {
     const me = await api('/api/auth/me');
     USER = me.user; CAMPINGS = me.campings || [];
-    try { const d = await api('/api/admin/mes-droits'); MES_DROITS = d.droits || {}; }
-    catch { MES_DROITS = {}; }
+    try { const d = await api('/api/admin/mes-droits'); MES_DROITS = d.droits || {}; MON_ROLE = d.role || ''; }
+    catch { MES_DROITS = {}; MON_ROLE = ''; }
     if (!ACTIVE_CAMPING && me.activeCampingId) ACTIVE_CAMPING = me.activeCampingId;
     startApp();
   } catch { logout(); }
@@ -467,8 +468,8 @@ async function changerCamping(id) {
   localStorage.setItem('lc_camping', ACTIVE_CAMPING);
   carteState = null;
   // les droits sont propres à chaque camping : on les recharge avant d'afficher
-  try { const d = await api('/api/admin/mes-droits'); MES_DROITS = d.droits || {}; }
-  catch { MES_DROITS = {}; }
+  try { const d = await api('/api/admin/mes-droits'); MES_DROITS = d.droits || {}; MON_ROLE = d.role || ''; }
+  catch { MES_DROITS = {}; MON_ROLE = ''; }
   const navAdmin = $('#nav-admin');
   if (navAdmin) navAdmin.classList.toggle('hidden', !MES_DROITS.admin);
   const c = CAMPINGS.find((x) => x.camping_id === id);
@@ -565,7 +566,11 @@ function _majEnveloppe() {
   const poser = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   poser('user-ini', ini);
   poser('topbar-ini', ini);
-  poser('user-role', window.MES_DROITS && MES_DROITS.admin ? 'Administrateur' : 'Gestionnaire');
+  /* Le role du compte sur ce camping. (L'ancien test lisait window.MES_DROITS,
+     toujours vide : MES_DROITS est un « let », pas une propriete de window,
+     et tout le monde s'affichait « Gestionnaire ».) */
+  const ROLES = { admin: 'Administrateur', gestionnaire: 'Gestionnaire', comptabilite: 'Comptabilité', lecture: 'Lecture seule' };
+  poser('user-role', ROLES[MON_ROLE] || (MES_DROITS.admin ? 'Administrateur' : 'Gestionnaire'));
 
   const camping = document.getElementById('camping-select');
   const exercice = document.getElementById('exercice-select');
@@ -4347,8 +4352,8 @@ async function vueAdministration() {
           <tr>
             <td><strong>${esc((u.prenom || '') + ' ' + (u.nom || ''))}</strong>${u.est_moi ? ' <span class="badge reglee">vous</span>' : ''}
               <div class="muted">${esc(u.email || '')}</div></td>
-            <td><span class="badge ${u.role === 'admin' ? 'reglee' : 'occupe'}">${esc(u.role)}</span></td>
-            <td style="max-width:340px">${puces(u.droits)}</td>
+            <td data-l="Rôle"><span class="badge ${u.role === 'admin' ? 'reglee' : 'occupe'}">${esc(u.role)}</span></td>
+            <td data-l="Droits" class="td-droits" style="max-width:340px">${puces(u.droits)}</td>
             <td class="right">
               <button class="btn btn-ghost btn-sm" data-act="formUtilisateur" data-a1="${u.id}">Modifier</button>
               ${!u.est_moi && u.doit_changer_mdp ? `<button class="btn btn-ghost btn-sm" data-act="renvoyerInvitation" data-a1="${u.id}" data-a2="${esc(u.email || '')}" title="Ce compte ne s\u2019est pas encore connecté">Renvoyer l\u2019invitation</button>` : ''}
@@ -4916,7 +4921,7 @@ async function vueSignatures() {
   $('#main').innerHTML = `
     <div class="page-head">
       <div><div class="eyebrow">Documents</div><h1>Signature électronique</h1></div>
-      <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <select id="sig-filtre" data-act="filtrerSignatures" data-evt="change" data-a1="@value"
                 aria-label="Filtrer les documents par statut" style="width:auto">
           <option value="">Tous les statuts</option>
@@ -4936,11 +4941,11 @@ async function vueSignatures() {
       <tbody>${documents.map((d) => `
         <tr data-sig-statut="${d.statut}">
           <td><strong>${esc(d.titre)}</strong><div class="muted">${d.nb_pages || 1} page(s)</div></td>
-          <td>${esc(d.resident_nom || '—')}</td>
-          <td class="muted">${(d.champs || []).length}</td>
-          <td><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
-          <td class="muted">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-          <td data-stop>${d.statut === 'annule' || d.statut === 'refuse'
+          <td data-l="Signataire">${esc(d.resident_nom || '—')}</td>
+          <td class="muted" data-l="Zones">${(d.champs || []).length}</td>
+          <td data-l="Statut"><span class="badge ${d.statut === 'signe' ? 'reglee' : d.statut === 'envoye' ? 'emise' : d.statut === 'annule' ? 'annulee' : 'brouillon'}">${esc(SIG_STATUT[d.statut] || d.statut)}</span></td>
+          <td class="muted" data-l="Signé le">${d.date_signature ? new Date(d.date_signature).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+          <td data-stop data-l="Terme">${d.statut === 'annule' || d.statut === 'refuse'
             /* Un document annulé ou refusé n'a pas de terme : proposer de le
                modifier n'a pas de sens, et le badge « expiré » y donnait
                l'impression qu'il restait quelque chose à refaire. */

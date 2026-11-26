@@ -21,6 +21,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             FirebaseApp.configure()
             Messaging.messaging().delegate = self
+            #if DEBUG
+            // Captures automatiques : pas d'alerte systeme par-dessus les ecrans.
+            if ProcessInfo.processInfo.environment["LOCAMP_CAPTURE"] == "1" { return true }
+            #endif
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { ok, _ in
                 guard ok else { return }
                 DispatchQueue.main.async { application.registerForRemoteNotifications() }

@@ -192,7 +192,8 @@ struct FilMessagesView: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "fr_FR")
         f.setLocalizedDateFormatFromTemplate(cal.isDate(d, equalTo: .now, toGranularity: .year) ? "EEEEdMMMM" : "dMMMMy")
-        return f.string(from: d).capitalized(with: f.locale)
+        let s = f.string(from: d)   // « mardi 14 juillet » -> « Mardi 14 juillet »
+        return s.prefix(1).uppercased() + s.dropFirst()
     }
 
     /// Deux messages du meme auteur a moins de 3 minutes forment un groupe.
