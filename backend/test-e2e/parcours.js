@@ -58,8 +58,15 @@ function surveiller(page, journal) {
 }
 
 async function attendreCalme(page) {
+  await page.waitForTimeout(250);                 // laisse partir les premieres requetes
   await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(600);
+  // Les vues enchainent parfois leurs appels : on attend la fin du « Chargement… ».
+  await page.waitForFunction(() => {
+    const m = document.querySelector('#main, #espace .content');
+    return !m || !/Chargement…/.test(m.innerText || '');
+  }, null, { timeout: 25000 }).catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(400);
 }
 
 async function noter(nom, page, journal, debut) {
@@ -68,6 +75,8 @@ async function noter(nom, page, journal, debut) {
   const ms = Date.now() - debut;
   const vide = await page.evaluate(() => (document.querySelector('#main, .content')?.innerText || '').trim().length < 20).catch(() => false);
   if (vide) journal.push('ecran presque vide');
+  const charge = await page.evaluate(() => /Chargement…/.test(document.querySelector('#main, #espace .content')?.innerText || '')).catch(() => false);
+  if (charge) journal.push('toujours « Chargement… » apres 25 s');
   rapport.push({ ecran: nom, ms, problemes: [...journal] });
   if (journal.length) echecs++;
   console.log(`${journal.length ? '✗' : '✓'} ${nom} (${ms} ms)${journal.length ? '\n    ' + journal.join('\n    ') : ''}`);
