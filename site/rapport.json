@@ -1,52 +1,57 @@
 [
   {
     "ecran": "gestion-ordi-00-connexion",
-    "ms": 6175,
+    "ms": 6620,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-01-dashboard",
-    "ms": 687,
+    "ms": 693,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-02-carte",
-    "ms": 772,
+    "ms": 811,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-03-emplacements",
-    "ms": 1190,
+    "ms": 1324,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-04-residents",
-    "ms": 848,
-    "problemes": []
+    "ms": 1354,
+    "problemes": [
+      "API 502 GET /api/relances/impayes?debut=2026-01-01&fin=2026-12-31",
+      "console : Failed to load resource: the server responded with a status of 502 ()",
+      "API 502 GET /api/residents",
+      "console : Failed to load resource: the server responded with a status of 502 ()"
+    ]
   },
   {
     "ecran": "gestion-ordi-05-contrats",
-    "ms": 896,
+    "ms": 1123,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-06-signatures",
-    "ms": 880,
+    "ms": 1066,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-07-factures",
-    "ms": 877,
+    "ms": 1191,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-08-reglements",
-    "ms": 899,
+    "ms": 1533,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-09-impayes",
-    "ms": 832,
+    "ms": 949,
     "problemes": []
   },
   {
@@ -56,137 +61,137 @@
   },
   {
     "ecran": "gestion-ordi-11-compteurs",
-    "ms": 720,
+    "ms": 835,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-12-compta",
-    "ms": 924,
+    "ms": 1059,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-13-parametres",
-    "ms": 1694,
+    "ms": 2226,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-14-administration",
-    "ms": 700,
+    "ms": 1170,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-00-connexion",
-    "ms": 5526,
+    "ms": 6679,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-01-dashboard",
-    "ms": 713,
+    "ms": 715,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-02-carte",
-    "ms": 816,
+    "ms": 1116,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-03-emplacements",
-    "ms": 1371,
+    "ms": 1972,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-04-residents",
-    "ms": 859,
+    "ms": 1176,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-05-contrats",
-    "ms": 901,
+    "ms": 1285,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-06-signatures",
-    "ms": 912,
+    "ms": 906,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-07-factures",
-    "ms": 944,
+    "ms": 880,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-08-reglements",
-    "ms": 861,
+    "ms": 1314,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-09-impayes",
-    "ms": 899,
+    "ms": 983,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-10-messagerie",
-    "ms": 982,
+    "ms": 1116,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-11-compteurs",
-    "ms": 732,
+    "ms": 795,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-12-compta",
-    "ms": 888,
+    "ms": 994,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-13-parametres",
-    "ms": 1718,
+    "ms": 2560,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-14-administration",
-    "ms": 1126,
+    "ms": 1128,
     "problemes": []
   },
   {
     "ecran": "portail-tel-00-connexion",
-    "ms": 2511,
+    "ms": 2969,
     "problemes": []
   },
   {
     "ecran": "portail-tel-1-solde",
-    "ms": 733,
+    "ms": 732,
     "problemes": []
   },
   {
     "ecran": "portail-tel-2-factures",
-    "ms": 727,
+    "ms": 724,
     "problemes": []
   },
   {
     "ecran": "portail-tel-3-messages",
-    "ms": 741,
+    "ms": 742,
     "problemes": []
   },
   {
     "ecran": "portail-tel-4-documents",
-    "ms": 745,
+    "ms": 743,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-00-connexion",
-    "ms": 2424,
+    "ms": 2496,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-1-solde",
-    "ms": 680,
+    "ms": 679,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-2-factures",
-    "ms": 680,
+    "ms": 683,
     "problemes": []
   },
   {
