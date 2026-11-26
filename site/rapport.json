@@ -1,0 +1,64 @@
+[
+  {
+    "ecran": "gestion-ordi",
+    "problemes": [
+      "parcours interrompu : page.waitForSelector: Timeout 60000ms exceeded.\nCall log:\n  - waiting for locator('#app:not(.hidden)') to be visible\n    - waiting for\" https://locamp.onrender.com/\" navigation to finish...\n    - navigated to \"https://locamp.onrender.com/\"\n"
+    ]
+  },
+  {
+    "ecran": "gestion-tel",
+    "problemes": [
+      "parcours interrompu : page.waitForSelector: Timeout 60000ms exceeded.\nCall log:\n  - waiting for locator('#app:not(.hidden)') to be visible\n"
+    ]
+  },
+  {
+    "ecran": "portail-tel-00-connexion",
+    "ms": 3526,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-tel-1-solde",
+    "ms": 681,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-tel-2-factures",
+    "ms": 682,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-tel-3-messages",
+    "ms": 698,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-tel-4-documents",
+    "ms": 698,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-ordi-00-connexion",
+    "ms": 3254,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-ordi-1-solde",
+    "ms": 629,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-ordi-2-factures",
+    "ms": 632,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-ordi-3-messages",
+    "ms": 634,
+    "problemes": []
+  },
+  {
+    "ecran": "portail-ordi-4-documents",
+    "ms": 631,
+    "problemes": []
+  }
+]
