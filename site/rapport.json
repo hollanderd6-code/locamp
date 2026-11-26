@@ -2,63 +2,65 @@
   {
     "ecran": "gestion-ordi",
     "problemes": [
-      "parcours interrompu : page.waitForSelector: Timeout 60000ms exceeded.\nCall log:\n  - waiting for locator('#app:not(.hidden)') to be visible\n    - waiting for\" https://locamp.onrender.com/\" navigation to finish...\n    - navigated to \"https://locamp.onrender.com/\"\n"
+      "parcours interrompu : page.waitForSelector: Timeout 60000ms exceeded.",
+      "ecran : Locamp L'outil des campings résidentiels E-mail Mot de passe Se connecter"
     ]
   },
   {
     "ecran": "gestion-tel",
     "problemes": [
-      "parcours interrompu : page.waitForSelector: Timeout 60000ms exceeded.\nCall log:\n  - waiting for locator('#app:not(.hidden)') to be visible\n"
+      "parcours interrompu : page.waitForSelector: Timeout 60000ms exceeded.",
+      "ecran : Locamp L'outil des campings résidentiels E-mail Mot de passe Se connecter"
     ]
   },
   {
     "ecran": "portail-tel-00-connexion",
-    "ms": 3526,
+    "ms": 3879,
     "problemes": []
   },
   {
     "ecran": "portail-tel-1-solde",
-    "ms": 681,
+    "ms": 715,
     "problemes": []
   },
   {
     "ecran": "portail-tel-2-factures",
-    "ms": 682,
+    "ms": 720,
     "problemes": []
   },
   {
     "ecran": "portail-tel-3-messages",
-    "ms": 698,
+    "ms": 728,
     "problemes": []
   },
   {
     "ecran": "portail-tel-4-documents",
-    "ms": 698,
+    "ms": 718,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-00-connexion",
-    "ms": 3254,
+    "ms": 3853,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-1-solde",
-    "ms": 629,
+    "ms": 648,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-2-factures",
-    "ms": 632,
+    "ms": 645,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-3-messages",
-    "ms": 634,
+    "ms": 657,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-4-documents",
-    "ms": 631,
+    "ms": 649,
     "problemes": []
   }
 ]
