@@ -222,7 +222,7 @@ private struct ChoixResident: View {
     }
 }
 
-private struct MessageATous: View {
+struct MessageATous: View {
     @Environment(\.dismiss) private var fermer
     @Environment(Pont.self) private var pont
     @State private var texte = ""

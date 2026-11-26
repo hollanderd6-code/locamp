@@ -322,7 +322,11 @@ extension Pont: WKScriptMessageHandler {
             // Session du site, pour les ecrans natifs (messagerie).
             if let jeton = corps["jeton"] as? String, !jeton.isEmpty,
                let base = URL(string: corps["base"] as? String ?? "") {
-                ClientAPI.partage.identifiants = .init(base: base, jeton: jeton, camping: corps["camping"] as? String)
+                let ex = corps["exercice"] as? [String: Any]
+                ClientAPI.partage.identifiants = .init(base: base, jeton: jeton, camping: corps["camping"] as? String,
+                                                       debut: ex?["debut"] as? String, fin: ex?["fin"] as? String,
+                                                       role: corps["role"] as? String)
+                ClientAPI.partage.revision += 1
             } else {
                 ClientAPI.partage.identifiants = nil
             }

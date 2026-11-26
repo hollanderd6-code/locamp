@@ -9,10 +9,15 @@ enum Configuration {
     /// Onglets natifs : les huit entrees du menu web s'y repartissent,
     /// les quatre moins frequentes vivent sous « Plus ».
     static let onglets: [OngletApp] = [
-        OngletApp(id: "accueil", titre: "Accueil", symbole: "square.grid.2x2", groupes: ["dashboard"]),
+        // Accueil, Residents et Facturation sont 100 % natifs (Commun/Natif) ;
+        // la Carte reste celle du site pour l'instant.
+        OngletApp(id: "accueil", titre: "Accueil", symbole: "square.grid.2x2", groupes: ["dashboard"],
+                  natif: .accueilGestion),
         OngletApp(id: "carte", titre: "Carte", symbole: "map", groupes: ["carte"]),
-        OngletApp(id: "residents", titre: "Résidents", symbole: "person.2", groupes: ["residents"]),
-        OngletApp(id: "factures", titre: "Facturation", symbole: "doc.text", groupes: ["factures"], badge: \.factures),
+        OngletApp(id: "residents", titre: "Résidents", symbole: "person.2", groupes: ["residents"],
+                  natif: .residentsGestion),
+        OngletApp(id: "factures", titre: "Facturation", symbole: "doc.text", groupes: ["factures"], badge: \.factures,
+                  natif: .facturationGestion),
     ]
 
     static let ecransPlus: [EcranPlus] = [

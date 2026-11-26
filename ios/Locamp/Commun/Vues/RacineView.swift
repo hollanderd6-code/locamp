@@ -253,6 +253,9 @@ struct VueNative: View {
         switch ecran {
         case .messagerieGestion: ConversationsView()
         case .messagerieLocataire: MessagerieLocataireView()
+        case .accueilGestion: AccueilGestionView()
+        case .residentsGestion: ResidentsView()
+        case .facturationGestion: FacturationView()
         }
     }
 }
