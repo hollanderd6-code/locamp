@@ -103,6 +103,11 @@ async function portail(navigateur, nom, options) {
 (async () => {
   if (!EMAIL || !MDP) { console.error('LOCAMP_TEST_EMAIL / LOCAMP_TEST_MDP absents'); process.exit(2); }
   fs.mkdirSync(SORTIE, { recursive: true });
+  // Render endort le serveur : on le reveille avant de mesurer quoi que ce soit.
+  for (let i = 0; i < 30; i++) {
+    try { const r = await fetch(BASE + '/health'); if (r.ok) break; } catch { /* encore endormi */ }
+    await new Promise((ok) => setTimeout(ok, 5000));
+  }
   const nav = await chromium.launch();
   const etapes = [
     ['gestion-ordi', gestion, { viewport: { width: 1440, height: 900 } }],
