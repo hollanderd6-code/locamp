@@ -1,7 +1,7 @@
 [
   {
     "ecran": "gestion-ordi-00-connexion",
-    "ms": 6334,
+    "ms": 5596,
     "problemes": []
   },
   {
@@ -11,152 +11,152 @@
   },
   {
     "ecran": "gestion-ordi-02-carte",
-    "ms": 989,
+    "ms": 756,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-03-emplacements",
-    "ms": 1107,
+    "ms": 1020,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-04-residents",
-    "ms": 928,
+    "ms": 863,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-05-contrats",
-    "ms": 906,
+    "ms": 857,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-06-signatures",
-    "ms": 847,
+    "ms": 814,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-07-factures",
-    "ms": 890,
+    "ms": 991,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-08-reglements",
-    "ms": 832,
+    "ms": 766,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-09-impayes",
-    "ms": 831,
+    "ms": 830,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-10-messagerie",
-    "ms": 1015,
+    "ms": 882,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-11-compteurs",
-    "ms": 701,
+    "ms": 715,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-12-compta",
-    "ms": 839,
+    "ms": 824,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-13-parametres",
-    "ms": 1559,
+    "ms": 1593,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-14-administration",
-    "ms": 699,
+    "ms": 696,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-00-connexion",
-    "ms": 5181,
+    "ms": 5316,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-01-dashboard",
-    "ms": 714,
+    "ms": 710,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-02-carte",
-    "ms": 733,
+    "ms": 1048,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-03-emplacements",
-    "ms": 1102,
+    "ms": 1237,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-04-residents",
-    "ms": 940,
+    "ms": 2156,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-05-contrats",
-    "ms": 898,
+    "ms": 989,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-06-signatures",
-    "ms": 905,
+    "ms": 900,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-07-factures",
-    "ms": 845,
+    "ms": 961,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-08-reglements",
-    "ms": 879,
+    "ms": 1031,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-09-impayes",
-    "ms": 1148,
+    "ms": 912,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-10-messagerie",
-    "ms": 968,
+    "ms": 1453,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-11-compteurs",
-    "ms": 741,
+    "ms": 775,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-12-compta",
-    "ms": 893,
+    "ms": 958,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-13-parametres",
-    "ms": 1709,
+    "ms": 2442,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-14-administration",
-    "ms": 736,
+    "ms": 778,
     "problemes": []
   },
   {
     "ecran": "portail-tel-00-connexion",
-    "ms": 2676,
+    "ms": 2551,
     "problemes": []
   },
   {
     "ecran": "portail-tel-1-solde",
-    "ms": 729,
+    "ms": 727,
     "problemes": []
   },
   {
@@ -166,37 +166,37 @@
   },
   {
     "ecran": "portail-tel-3-messages",
-    "ms": 742,
+    "ms": 741,
     "problemes": []
   },
   {
     "ecran": "portail-tel-4-documents",
-    "ms": 744,
+    "ms": 745,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-00-connexion",
-    "ms": 2288,
+    "ms": 2811,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-1-solde",
-    "ms": 682,
+    "ms": 680,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-2-factures",
-    "ms": 679,
+    "ms": 694,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-3-messages",
-    "ms": 700,
+    "ms": 686,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-4-documents",
-    "ms": 696,
+    "ms": 697,
     "problemes": []
   }
 ]
