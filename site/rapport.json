@@ -1,158 +1,152 @@
 [
   {
     "ecran": "gestion-ordi-00-connexion",
-    "ms": 6747,
+    "ms": 6175,
     "problemes": []
   },
   {
     "ecran": "gestion-ordi-01-dashboard",
-    "ms": 645,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-02-carte",
-    "ms": 640,
-    "problemes": [
-      "ecran presque vide"
-    ]
-  },
-  {
-    "ecran": "gestion-ordi-03-emplacements",
-    "ms": 671,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-04-residents",
-    "ms": 723,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-05-contrats",
-    "ms": 755,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-06-signatures",
-    "ms": 725,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-07-factures",
-    "ms": 662,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-08-reglements",
-    "ms": 647,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-09-impayes",
-    "ms": 639,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-10-messagerie",
-    "ms": 656,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-11-compteurs",
-    "ms": 658,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-12-compta",
-    "ms": 656,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-ordi-13-parametres",
-    "ms": 632,
-    "problemes": [
-      "ecran presque vide"
-    ]
-  },
-  {
-    "ecran": "gestion-ordi-14-administration",
-    "ms": 635,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-tel-00-connexion",
-    "ms": 5354,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-tel-01-dashboard",
-    "ms": 681,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-tel-02-carte",
-    "ms": 690,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-tel-03-emplacements",
-    "ms": 700,
-    "problemes": []
-  },
-  {
-    "ecran": "gestion-tel-04-residents",
     "ms": 687,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-05-contrats",
-    "ms": 674,
+    "ecran": "gestion-ordi-02-carte",
+    "ms": 772,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-06-signatures",
-    "ms": 698,
+    "ecran": "gestion-ordi-03-emplacements",
+    "ms": 1190,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-07-factures",
-    "ms": 698,
+    "ecran": "gestion-ordi-04-residents",
+    "ms": 848,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-08-reglements",
-    "ms": 682,
+    "ecran": "gestion-ordi-05-contrats",
+    "ms": 896,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-09-impayes",
-    "ms": 696,
+    "ecran": "gestion-ordi-06-signatures",
+    "ms": 880,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-10-messagerie",
-    "ms": 696,
+    "ecran": "gestion-ordi-07-factures",
+    "ms": 877,
     "problemes": []
   },
   {
-    "ecran": "gestion-tel-11-compteurs",
+    "ecran": "gestion-ordi-08-reglements",
+    "ms": 899,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-ordi-09-impayes",
+    "ms": 832,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-ordi-10-messagerie",
+    "ms": 1117,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-ordi-11-compteurs",
+    "ms": 720,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-ordi-12-compta",
+    "ms": 924,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-ordi-13-parametres",
+    "ms": 1694,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-ordi-14-administration",
     "ms": 700,
     "problemes": []
   },
   {
+    "ecran": "gestion-tel-00-connexion",
+    "ms": 5526,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-01-dashboard",
+    "ms": 713,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-02-carte",
+    "ms": 816,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-03-emplacements",
+    "ms": 1371,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-04-residents",
+    "ms": 859,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-05-contrats",
+    "ms": 901,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-06-signatures",
+    "ms": 912,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-07-factures",
+    "ms": 944,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-08-reglements",
+    "ms": 861,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-09-impayes",
+    "ms": 899,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-10-messagerie",
+    "ms": 982,
+    "problemes": []
+  },
+  {
+    "ecran": "gestion-tel-11-compteurs",
+    "ms": 732,
+    "problemes": []
+  },
+  {
     "ecran": "gestion-tel-12-compta",
-    "ms": 691,
+    "ms": 888,
     "problemes": []
   },
   {
     "ecran": "gestion-tel-13-parametres",
-    "ms": 664,
-    "problemes": [
-      "ecran presque vide"
-    ]
+    "ms": 1718,
+    "problemes": []
   },
   {
     "ecran": "gestion-tel-14-administration",
-    "ms": 688,
+    "ms": 1126,
     "problemes": []
   },
   {
@@ -162,47 +156,47 @@
   },
   {
     "ecran": "portail-tel-1-solde",
-    "ms": 680,
+    "ms": 733,
     "problemes": []
   },
   {
     "ecran": "portail-tel-2-factures",
-    "ms": 689,
+    "ms": 727,
     "problemes": []
   },
   {
     "ecran": "portail-tel-3-messages",
-    "ms": 697,
+    "ms": 741,
     "problemes": []
   },
   {
     "ecran": "portail-tel-4-documents",
-    "ms": 692,
+    "ms": 745,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-00-connexion",
-    "ms": 2696,
+    "ms": 2424,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-1-solde",
-    "ms": 635,
+    "ms": 680,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-2-factures",
-    "ms": 632,
+    "ms": 680,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-3-messages",
-    "ms": 645,
+    "ms": 693,
     "problemes": []
   },
   {
     "ecran": "portail-ordi-4-documents",
-    "ms": 650,
+    "ms": 697,
     "problemes": []
   }
 ]
