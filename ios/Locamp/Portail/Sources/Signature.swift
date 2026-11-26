@@ -322,7 +322,8 @@ struct ToileSignature: UIViewRepresentable {
     }
 
     func updateUIView(_ c: PKCanvasView, context: Context) {
-        if c.drawing != dessin { c.drawing = dessin }
+        // Changement venu de l'exterieur (Effacer, reprise d'un trace) seulement.
+        if c.drawing.strokes.count != dessin.strokes.count { c.drawing = dessin }
     }
 
     func makeCoordinator() -> Coordinateur { Coordinateur(dessin: $dessin) }
