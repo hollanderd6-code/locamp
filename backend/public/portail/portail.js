@@ -22,7 +22,8 @@ async function api(path, opts = {}) {
   if (RTOKEN) headers['Authorization'] = 'Bearer ' + RTOKEN;
   const r = await fetch(API + path, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
   const data = await r.json().catch(() => ({}));
-  if (r.status === 401) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
+  // 401 sans session ouverte = mauvais identifiants : on montre le message du serveur.
+  if (r.status === 401 && headers['Authorization']) { logout(); throw new Error('Session expirée, reconnectez-vous.'); }
   if (!r.ok) throw new Error(data.error || 'Erreur serveur');
   return data;
 }
@@ -534,10 +535,19 @@ async function chargerSignatures() {
     const sec = $('#sec-signer');
     if (!a_signer.length && !signes.length) { sec.classList.add('hidden'); return; }
     sec.classList.remove('hidden');
+    /* Le bandeau ambre « Action requise » n'a de sens que s'il reste un
+       document a signer. Sinon la section ne montre que l'historique des
+       documents signes, sobrement, dans l'onglet Documents seulement. */
+    const attente = a_signer.length > 0;
+    sec.classList.toggle('a-signer', attente);
+    sec.querySelector('.eyebrow').textContent = attente ? 'Action requise' : 'Signature électronique';
+    sec.querySelector('h2').textContent = attente
+      ? (a_signer.length > 1 ? 'Vos signatures sont attendues' : 'Votre signature est attendue')
+      : 'Documents signés';
 
     $('#liste-signer').innerHTML = [
       ...a_signer.map((d) => `
-        <div class="fac">
+        <div class="fac" data-a-signer>
           <div>
             <div class="l1">${esc(d.titre)}</div>
             <div class="l2">${d.nb_pages || 1} page(s) · <strong style="color:var(--rouge)">signature requise</strong></div>

@@ -55,6 +55,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Un champ « fichier » du site propose aussi l'appareil photo : sans ces
+	     textes, iOS ferme l'app des qu'on choisit « Prendre une photo ». -->
+	<key>NSCameraUsageDescription</key>
+	<string>Pour photographier un document ou un compteur et l'ajouter à Locamp.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Pour enregistrer une image partagée depuis Locamp dans vos photos.</string>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
 </dict>

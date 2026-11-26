@@ -1,0 +1,59 @@
+# Parcours du site en ligne, connecte avec le compte de test, en lecture
+# seule : capture de chaque ecran (gestion et portail, ordinateur et
+# telephone) et releve des erreurs. A la demande ou a chaque modification
+# du parcours.
+name: Site
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/test-e2e/**'
+      - 'backend/public/**'
+      - '.github/workflows/site.yml'
+
+jobs:
+  parcours:
+    runs-on: ubuntu-24.04   # Playwright ne prend pas encore en charge 26.04
+    # Les identifiants de test sont des secrets de l'environnement GitHub « Locamp ».
+    environment: Locamp
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Parcours
+        env:
+          LOCAMP_URL: https://locamp.onrender.com
+          LOCAMP_FRONT_LOCAL: "1"   # front de la branche, API en ligne
+          LOCAMP_TEST_EMAIL: ${{ secrets.LOCAMP_TEST_EMAIL }}
+          LOCAMP_TEST_MDP: ${{ secrets.LOCAMP_TEST_MDP }}
+        run: node backend/test-e2e/parcours.js captures-site
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-site
+          path: captures-site
+
+      - name: Captures sur la branche captures-tests (compte de test, donnees fictives)
+        if: always()
+        env:
+          DOSSIER: captures-site
+          SOUS: site
+        run: |
+          [ -d "$DOSSIER" ] || exit 0
+          git config user.name "locamp-tests"; git config user.email "tests@locamp.invalid"
+          TMP=$(mktemp -d); cp -R "$DOSSIER"/. "$TMP"/
+          git stash -u -q || true
+          if git fetch -q origin captures-tests; then git checkout -q -B captures-tests FETCH_HEAD; else git checkout -q --orphan captures-tests; git rm -rqf . || true; fi
+          rm -rf "$SOUS"; mkdir -p "$SOUS"; cp -R "$TMP"/. "$SOUS"/
+          git add -A "$SOUS"
+          git commit -qm "Captures $SOUS ($GITHUB_SHA)" || exit 0
+          for i in 1 2 3; do git pull -q --rebase origin captures-tests 2>/dev/null || true; git push -q origin HEAD:captures-tests && break; sleep 3; done

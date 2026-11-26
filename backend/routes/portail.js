@@ -336,6 +336,39 @@ router.get('/mes-donnees', async (req, res) => {
   } catch (e) { console.error('[portail:mes-donnees]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// POST /api/portail/demande-suppression  { motif? }
+// Le resident demande l'effacement de son compte depuis l'app (exigence
+// App Store 5.1.1(v)). Ses donnees appartiennent au camping, responsable du
+// traitement : la demande est tracee (RGPD, art. 12) et transmise au camping,
+// qui l'execute en conservant ce que la loi impose (factures : 10 ans).
+router.post('/demande-suppression', async (req, res) => {
+  try {
+    const motif = String(req.body?.motif || '').trim().slice(0, 1000) || null;
+    const { error } = await supabase.from('demandes_rgpd').insert({
+      camping_id: req.resident.camping_id, resident_id: req.resident.id,
+      type: 'effacement', origine: 'portail', statut: 'recue',
+    });
+    if (error) throw error;
+    await auditPortail(req, req.resident, 'portail_demande_suppression', { entite: 'residents', entite_id: req.resident.id });
+
+    (async () => {
+      const { creerNotifsStaff } = require('../lib/notifications');
+      const { data: r } = await supabase.from('residents').select('nom,prenom')
+        .eq('id', req.resident.id).maybeSingle();
+      const nom = `${(r && r.prenom) || ''} ${(r && r.nom) || ''}`.trim() || 'Un résident';
+      await creerNotifsStaff(req.resident.camping_id, {
+        type: 'demande_rgpd', perm: 'gerer_residents',
+        titre: `${nom} demande la suppression de son compte`,
+        corps: motif ? motif.slice(0, 140) : 'Demande envoyée depuis l\u2019app locataire.',
+        entite: 'resident', entite_id: req.resident.id,
+        donnees: { resident_id: req.resident.id },
+      });
+    })().catch((e) => console.error('[portail:suppression notif]', e.message));
+
+    res.status(201).json({ ok: true, message: 'Votre demande a été transmise à votre camping. Elle sera traitée sous 30 jours au plus.' });
+  } catch (e) { console.error('[portail:suppression]', e.message); res.status(500).json({ error: 'Erreur serveur' }); }
+});
+
 /* ==================== SIGNATURE ÉLECTRONIQUE ====================
    Le résident signe DEPUIS SON ESPACE, déjà authentifié par le portail.
    Preuve d'identité plus forte qu'un simple lien : la session vaut
