@@ -724,3 +724,11 @@ body[data-onglet="messages"] .msg-form{position:fixed;z-index:49;left:0;right:0;
   bottom:calc(58px + env(safe-area-inset-bottom));padding:10px 14px;
   background:linear-gradient(to top, var(--ivoire) 65%, rgba(245,246,244,0))}
 body.en-signature .msg-form{display:none}
+
+/* Connexion : de l'air entre l'enseigne et le formulaire ; sur telephone,
+   les deux liens passent l'un sous l'autre au lieu d'une coupure bancale. */
+.panel > .brand{margin-bottom:24px}
+@media (max-width:480px){
+  .liens{flex-direction:column;gap:10px}
+  .liens > span{display:none}
+}
