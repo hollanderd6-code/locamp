@@ -170,7 +170,8 @@ struct MessagesView: View {
         let f = DateFormatter()
         f.locale = Format.fr
         f.setLocalizedDateFormatFromTemplate(cal.isDate(d, equalTo: .now, toGranularity: .year) ? "EEEEdMMMM" : "dMMMMy")
-        return f.string(from: d).capitalized(with: Format.fr)
+        let s = f.string(from: d)   // « mardi 14 juillet » -> « Mardi 14 juillet »
+        return s.prefix(1).uppercased() + s.dropFirst()
     }
 
     private func memeGroupe(_ a: FilModele.Ligne?, _ b: FilModele.Ligne?) -> Bool {
