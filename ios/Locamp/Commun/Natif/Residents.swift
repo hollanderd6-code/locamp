@@ -129,7 +129,7 @@ private struct LigneResident: View {
 struct FicheResidentView: View {
     let residentId: String
 
-    struct Donnees { let fiche: FicheResident; let factures: [FactureG]; let reglements: [Reglement] }
+    struct Donnees { let fiche: FicheResident; let factures: [FactureG]; let reglements: [Reglement]; let contrats: [Contrat] }
 
     @Environment(Pont.self) private var pont
     @State private var source: Source<Donnees>
@@ -146,8 +146,10 @@ struct FicheResidentView: View {
             async let f = api.requete("/api/residents/\(rid)", as: FicheResident.self)
             async let fa = try? api.requete("/api/factures?resident_id=\(rid)", as: ReponseFacturesG.self)
             async let re = try? api.requete("/api/reglements?resident_id=\(rid)", as: ReponseReglements.self)
-            let (ff, ffa, rre) = try await (f, fa, re)
-            return Donnees(fiche: ff, factures: ffa?.factures ?? [], reglements: rre?.reglements ?? [])
+            async let co = try? api.requete("/api/contrats?resident_id=\(rid)", as: ReponseContrats.self)
+            let (ff, ffa, rre, cco) = try await (f, fa, re, co)
+            return Donnees(fiche: ff, factures: ffa?.factures ?? [], reglements: rre?.reglements ?? [],
+                           contrats: cco?.contrats ?? [])
         })
     }
 
@@ -204,6 +206,30 @@ struct FicheResidentView: View {
                     if let t = r.telephone, !t.isEmpty { LabeledContent("Téléphone", value: t) }
                     if let a = r.adresse, !a.isEmpty { LabeledContent("Adresse", value: a) }
                     if let s = r.raison_sociale, !s.isEmpty { LabeledContent("Société", value: s) }
+                }
+
+                if !d.contrats.isEmpty {
+                    Section("Contrats") {
+                        ForEach(d.contrats) { c in
+                            Button {
+                                apercu.ouvrirLien(nom: "Contrat \(c.numero ?? "").pdf", chemin: "/api/contrats/\(c.id)/pdf")
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(c.numero ?? "Contrat").font(.body.weight(.medium)).foregroundStyle(.primary)
+                                        Text("\(Fmt.jour(c.date_debut)) → \(c.date_fin.map { Fmt.jour($0) } ?? "sans terme")")
+                                            .font(.footnote).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        if let m = c.montant_mensuel { Text("\(m.euros)/mois").font(.footnote.monospacedDigit()) }
+                                        Pastille(texte: c.libelleStatut,
+                                                 couleur: ["signe", "actif"].contains(c.statut) ? .green : c.statut == "envoye" ? .orange : .secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Section("Assurance") {

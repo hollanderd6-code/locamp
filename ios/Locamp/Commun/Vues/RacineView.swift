@@ -25,23 +25,18 @@ struct RacineView: View {
     }
 }
 
-/// Avant connexion : l'ecran de connexion du site, sans aucune barre.
+/// Avant connexion : formulaire natif. Le site reste charge dessous (hors de
+/// vue) : il recoit la session et sert les ecrans pas encore natifs.
 struct ConnexionView: View {
     @Environment(Pont.self) private var pont
 
     var body: some View {
-        WebViewHote(actif: !pont.connecte)
-            .ignoresSafeArea()
-            .background(Color("Fond"))
-            .onAppear { pont.definirMarges(EdgeInsets()) }
-            .overlay {
-                if pont.chargement {
-                    ProgressView()
-                        .controlSize(.large)
-                        .padding(28)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 24))
-                }
-            }
+        ZStack {
+            WebViewHote(actif: !pont.connecte)
+                .ignoresSafeArea()
+                .onAppear { pont.definirMarges(EdgeInsets()) }
+            ConnexionNative()
+        }
     }
 }
 
@@ -258,6 +253,7 @@ struct VueNative: View {
         case .facturationGestion: FacturationView()
         case .compteursGestion: CompteursView()
         case .carteGestion: CarteView()
+        case .comptaGestion: ComptabiliteView()
         }
     }
 }

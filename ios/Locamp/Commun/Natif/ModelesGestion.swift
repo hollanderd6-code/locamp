@@ -139,6 +139,21 @@ struct Emplacement: Decodable, Identifiable, Hashable {
 }
 struct ReponseEmplacements: Decodable { let emplacements: [Emplacement] }
 
+struct Contrat: Decodable, Identifiable, Hashable {
+    let id: String
+    let numero: String?
+    let date_debut: String?
+    let date_fin: String?
+    let montant_mensuel: Montant?
+    let statut: String
+    var libelleStatut: String {
+        ["brouillon": "Brouillon", "envoye": "En attente de signature", "signe": "Signé", "actif": "Actif",
+         "annule": "Annulé", "expire": "Expiré", "renouvele": "Renouvelé"][statut] ?? statut
+    }
+    var couleur: String { statut }
+}
+struct ReponseContrats: Decodable { let contrats: [Contrat] }
+
 // MARK: - Facturation
 
 struct FactureG: Decodable, Identifiable, Hashable {

@@ -138,5 +138,5 @@ struct EcranPlus: Hashable, Identifiable {
 /// Les ecrans dessines entierement en SwiftUI, sans le site.
 enum EcranNatif: Hashable {
     case messagerieGestion, messagerieLocataire
-    case accueilGestion, residentsGestion, facturationGestion, compteursGestion, carteGestion
+    case accueilGestion, residentsGestion, facturationGestion, compteursGestion, carteGestion, comptaGestion
 }

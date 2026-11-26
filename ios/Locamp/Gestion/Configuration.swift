@@ -26,7 +26,8 @@ enum Configuration {
                    natif: .messagerieGestion),
         EcranPlus(id: "compteurs", titre: "Compteurs", symbole: "gauge.with.dots.needle.33percent",
                   natif: .compteursGestion),
-        EcranPlus(id: "compta", titre: "Comptabilité", symbole: "chart.bar.xaxis"),
+        EcranPlus(id: "compta", titre: "Comptabilité", symbole: "chart.bar.xaxis",
+                  natif: .comptaGestion),
         EcranPlus(id: "parametres", titre: "Réglages", symbole: "gearshape"),
     ]
 
