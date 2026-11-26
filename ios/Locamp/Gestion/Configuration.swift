@@ -9,11 +9,12 @@ enum Configuration {
     /// Onglets natifs : les huit entrees du menu web s'y repartissent,
     /// les quatre moins frequentes vivent sous « Plus ».
     static let onglets: [OngletApp] = [
-        // Accueil, Residents et Facturation sont 100 % natifs (Commun/Natif) ;
-        // la Carte reste celle du site pour l'instant.
+        // Les quatre onglets sont natifs (Commun/Natif). La modification du
+        // plan de la carte reste sur le site.
         OngletApp(id: "accueil", titre: "Accueil", symbole: "square.grid.2x2", groupes: ["dashboard"],
                   natif: .accueilGestion),
-        OngletApp(id: "carte", titre: "Carte", symbole: "map", groupes: ["carte"]),
+        OngletApp(id: "carte", titre: "Carte", symbole: "map", groupes: ["carte"],
+                  natif: .carteGestion),
         OngletApp(id: "residents", titre: "Résidents", symbole: "person.2", groupes: ["residents"],
                   natif: .residentsGestion),
         OngletApp(id: "factures", titre: "Facturation", symbole: "doc.text", groupes: ["factures"], badge: \.factures,
