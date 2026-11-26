@@ -167,6 +167,9 @@
       base: (typeof API !== 'undefined' && API) || location.origin,
       jeton: (typeof TOKEN !== 'undefined' && TOKEN) || null,
       camping: (typeof ACTIVE_CAMPING !== 'undefined' && ACTIVE_CAMPING) || null,
+      // Exercice choisi dans le menu : les ecrans natifs cadrent leurs chiffres dessus.
+      exercice: (typeof exerciceActif === 'function' && (function () { try { return exerciceActif(); } catch (e) { return null; } })()) || null,
+      role: (typeof MON_ROLE !== 'undefined' && MON_ROLE) || null,
     };
   }
 

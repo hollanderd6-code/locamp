@@ -6,6 +6,7 @@ import Foundation
 /// (message « auth ») a chaque connexion, changement de camping ou
 /// deconnexion. Rien n'est stocke sur le disque.
 @MainActor
+@Observable
 final class ClientAPI {
     static let partage = ClientAPI()
 
@@ -14,9 +15,53 @@ final class ClientAPI {
         var jeton: String
         /// Camping actif (en-tete x-camping-id), app Gestion seulement.
         var camping: String?
+        /// Exercice choisi dans le menu du compte (bornes AAAA-MM-JJ).
+        var debut: String? = nil
+        var fin: String? = nil
+        /// Role sur le camping actif (admin, gestionnaire, comptabilite, lecture).
+        var role: String? = nil
     }
 
     var identifiants: Identifiants?
+    /// Incremente a chaque changement de session, de camping ou d'exercice :
+    /// les ecrans natifs rechargent leurs donnees.
+    var revision = 0
+
+    /// « ?debut=…&fin=… » de l'exercice choisi, ou vide.
+    var exercice: String {
+        guard let d = identifiants?.debut, let f = identifiants?.fin else { return "" }
+        return "debut=\(d)&fin=\(f)"
+    }
+
+    /// Donnees brutes (PDF genere a la volee).
+    func donnees(_ chemin: String) async throws -> Data {
+        guard let id = identifiants, let url = URL(string: chemin, relativeTo: id.base) else { throw Erreur.horsSession }
+        var r = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
+        r.setValue("Bearer \(id.jeton)", forHTTPHeaderField: "Authorization")
+        if let c = id.camping { r.setValue(c, forHTTPHeaderField: "x-camping-id") }
+        let (data, rep) = try await URLSession.shared.data(for: r)
+        let code = (rep as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 401 { Pont.partage.sessionExpiree(); throw Erreur.sessionExpiree }
+        guard (200..<300).contains(code) else { throw Erreur.serveur("Erreur serveur (\(code)).") }
+        return data
+    }
+
+    /// Telecharge un fichier (lien signe) dans le dossier temporaire.
+    func telecharger(_ adresse: String, nom: String) async throws -> URL {
+        guard let u = URL(string: adresse) else { throw Erreur.serveur("Lien invalide.") }
+        let (tmp, rep) = try await URLSession.shared.download(from: u)
+        guard let h = rep as? HTTPURLResponse, (200..<300).contains(h.statusCode) else { throw Erreur.serveur("Fichier indisponible.") }
+        return try Self.ranger(tmp, nom: nom)
+    }
+
+    static func ranger(_ source: URL, nom: String) throws -> URL {
+        let dossier = FileManager.default.temporaryDirectory.appendingPathComponent("Apercus", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dossier, withIntermediateDirectories: true)
+        let cible = dossier.appendingPathComponent(nom.replacingOccurrences(of: "/", with: "-"))
+        try? FileManager.default.removeItem(at: cible)
+        try FileManager.default.moveItem(at: source, to: cible)
+        return cible
+    }
 
     enum Erreur: LocalizedError {
         case horsSession, sessionExpiree, serveur(String)
@@ -108,7 +153,10 @@ enum DateISO {
     private static let simple = ISO8601DateFormatter()
 
     static func lire(_ s: String) -> Date {
-        avecFraction.date(from: s) ?? simple.date(from: s) ?? .now
+        lireOptionnel(s) ?? .now
+    }
+    static func lireOptionnel(_ s: String) -> Date? {
+        avecFraction.date(from: s) ?? simple.date(from: s)
     }
 }
 

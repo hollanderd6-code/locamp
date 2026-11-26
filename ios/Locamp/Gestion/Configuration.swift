@@ -9,17 +9,25 @@ enum Configuration {
     /// Onglets natifs : les huit entrees du menu web s'y repartissent,
     /// les quatre moins frequentes vivent sous « Plus ».
     static let onglets: [OngletApp] = [
-        OngletApp(id: "accueil", titre: "Accueil", symbole: "square.grid.2x2", groupes: ["dashboard"]),
-        OngletApp(id: "carte", titre: "Carte", symbole: "map", groupes: ["carte"]),
-        OngletApp(id: "residents", titre: "Résidents", symbole: "person.2", groupes: ["residents"]),
-        OngletApp(id: "factures", titre: "Facturation", symbole: "doc.text", groupes: ["factures"], badge: \.factures),
+        // Les quatre onglets sont natifs (Commun/Natif). La modification du
+        // plan de la carte reste sur le site.
+        OngletApp(id: "accueil", titre: "Accueil", symbole: "square.grid.2x2", groupes: ["dashboard"],
+                  natif: .accueilGestion),
+        OngletApp(id: "carte", titre: "Carte", symbole: "map", groupes: ["carte"],
+                  natif: .carteGestion),
+        OngletApp(id: "residents", titre: "Résidents", symbole: "person.2", groupes: ["residents"],
+                  natif: .residentsGestion),
+        OngletApp(id: "factures", titre: "Facturation", symbole: "doc.text", groupes: ["factures"], badge: \.factures,
+                  natif: .facturationGestion),
     ]
 
     static let ecransPlus: [EcranPlus] = [
         EcranPlus(id: "messagerie", titre: "Messagerie", symbole: "bubble.left.and.bubble.right", badge: \.messagerie,
                    natif: .messagerieGestion),
-        EcranPlus(id: "compteurs", titre: "Compteurs", symbole: "gauge.with.dots.needle.33percent"),
-        EcranPlus(id: "compta", titre: "Comptabilité", symbole: "chart.bar.xaxis"),
+        EcranPlus(id: "compteurs", titre: "Compteurs", symbole: "gauge.with.dots.needle.33percent",
+                  natif: .compteursGestion),
+        EcranPlus(id: "compta", titre: "Comptabilité", symbole: "chart.bar.xaxis",
+                  natif: .comptaGestion),
         EcranPlus(id: "parametres", titre: "Réglages", symbole: "gearshape"),
     ]
 
