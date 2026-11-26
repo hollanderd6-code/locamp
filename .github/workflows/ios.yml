@@ -18,6 +18,8 @@ concurrency:
 jobs:
   compiler:
     runs-on: macos-26
+    # Les identifiants de test sont des secrets de l'environnement GitHub « Locamp ».
+    environment: Locamp
     timeout-minutes: 45
     strategy:
       fail-fast: false

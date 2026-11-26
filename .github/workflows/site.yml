@@ -13,7 +13,9 @@ on:
 
 jobs:
   parcours:
-    runs-on: ubuntu-24.04   # Playwright ne prend pas encore en charge 26.04
+    runs-on: ubuntu-24.04
+    # Les identifiants de test sont des secrets de l'environnement GitHub « Locamp ».
+    environment: Locamp   # Playwright ne prend pas encore en charge 26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
