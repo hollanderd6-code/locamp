@@ -75,6 +75,24 @@ async function noter(nom, page, journal, debut) {
   const ms = Date.now() - debut;
   const vide = await page.evaluate(() => (document.querySelector('#main, .content')?.innerText || '').trim().length < 20).catch(() => false);
   if (vide) journal.push('ecran presque vide');
+  // Debordement horizontal : un element qui sort de l'ecran sans etre dans
+  // une zone qui defile volontairement (onglets, tableau large, carte).
+  const deborde = await page.evaluate(() => {
+    const L = window.innerWidth;
+    const defile = (el) => { for (let n = el.parentElement; n; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowX; if (o === 'auto' || o === 'scroll' || o === 'hidden') return true; } return false; };
+    const fautifs = [];
+    for (const el of document.querySelectorAll('#main *, #espace .content *')) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.right > L + 2 && !defile(el)) {
+        fautifs.push((el.className && typeof el.className === 'string' ? el.tagName.toLowerCase() + '.' + el.className.split(' ')[0] : el.tagName.toLowerCase())
+          + ' « ' + (el.innerText || '').trim().slice(0, 30) + ' »');
+        if (fautifs.length >= 3) break;
+      }
+    }
+    return fautifs;
+  }).catch(() => []);
+  if (deborde.length) journal.push('deborde a droite : ' + deborde.join(' ; '));
   const charge = await page.evaluate(() => /Chargement…/.test(document.querySelector('#main, #espace .content')?.innerText || '')).catch(() => false);
   if (charge) journal.push('toujours « Chargement… » apres 25 s');
   rapport.push({ ecran: nom, ms, problemes: [...journal] });

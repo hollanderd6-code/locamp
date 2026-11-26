@@ -156,7 +156,7 @@
         nomCamping: (campings.find((c) => c.id === (typeof ACTIVE_CAMPING !== 'undefined' ? ACTIVE_CAMPING : null)) || {}).nom || null,
         exercices: opts(exSel).map((o) => ({ id: o.value, nom: texte(o) })),
         exerciceActif: exSel ? exSel.value : null,
-        utilisateur: { nom, email: user ? user.email || '' : '', admin: !!(typeof MES_DROITS !== 'undefined' && MES_DROITS.admin) },
+        utilisateur: { nom, email: user ? user.email || '' : '', admin: !!((typeof MON_ROLE !== 'undefined' && MON_ROLE === 'admin') || (typeof MES_DROITS !== 'undefined' && MES_DROITS.admin)) },
       },
     };
   }
