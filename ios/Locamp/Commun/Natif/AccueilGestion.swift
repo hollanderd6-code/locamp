@@ -17,8 +17,7 @@ struct AccueilGestionView: View {
         async let t = api.requete("/api/dashboard" + ex, as: TableauDeBord.self)
         async let e = try? api.requete("/api/echeances?horizon=60", as: ReponseEcheances.self)
         async let p = try? api.requete("/api/prestations?statut=en_cours", as: ReponsePrestations.self)
-        struct NL: Decodable { let total: Int }
-        async let m = try? api.requete("/api/messages/non-lus", as: NL.self)
+        async let m = try? api.requete("/api/messages/non-lus", as: MessagesNonLus.self)
         let (tdb, ech, pre, msg) = try await (t, e, p, m)
         let prest = pre?.prestations ?? []
         return Donnees(tdb: tdb, echeances: ech?.echeances ?? [],
@@ -240,6 +239,12 @@ private struct GroupeAFaireVue: View {
 }
 
 struct ResidentCible: Identifiable, Hashable { let id: String }
+
+/// Reponse de /api/messages/non-lus. Declaree ici et non dans la fermeture
+/// de chargement : Swift 6.4 (Xcode 27) plante sur un type local declare dans
+/// l'initialiseur d'une propriete @State (« Global is external, but doesn't
+/// have external or weak linkage »).
+struct MessagesNonLus: Decodable { let total: Int }
 
 /// Une tuile d'indicateur, touchable.
 struct Indicateur: View {
