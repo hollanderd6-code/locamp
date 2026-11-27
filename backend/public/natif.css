@@ -22,6 +22,10 @@ html.natif{
   overscroll-behavior-y:none;
   --natif-haut:env(safe-area-inset-top);
   --natif-bas:env(safe-area-inset-bottom);
+  /* Cotes : en paysage (iPhone Duo, Split View), l'ile dynamique et la barre
+     d'onglets native se placent a gauche ou a droite. */
+  --natif-gauche:env(safe-area-inset-left);
+  --natif-droite:env(safe-area-inset-right);
   -webkit-text-size-adjust:100%;
 }
 html.natif body{
@@ -50,14 +54,15 @@ html.natif #main .page-head{margin-bottom:14px}
 html.natif .app{display:block;min-height:100vh}
 html.natif .main{
   max-width:none;
-  padding:calc(var(--natif-haut) + 10px) 16px calc(var(--natif-bas) + 28px);
+  padding:calc(var(--natif-haut) + 10px) calc(var(--natif-droite) + 16px) calc(var(--natif-bas) + 28px) calc(var(--natif-gauche) + 16px);
 }
 @media (min-width:880px){
-  html.natif .main{padding-left:28px;padding-right:28px}
+  html.natif .main{padding-left:calc(var(--natif-gauche) + 28px);padding-right:calc(var(--natif-droite) + 28px)}
 }
 
 /* ---- Ecran de connexion : plein ecran, aucune barre native ---- */
-html.natif .login-wrap{padding-top:calc(env(safe-area-inset-top) + 24px);padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
+html.natif .login-wrap{padding-top:calc(env(safe-area-inset-top) + 24px);padding-bottom:calc(env(safe-area-inset-bottom) + 24px);
+  padding-left:calc(env(safe-area-inset-left) + 16px);padding-right:calc(env(safe-area-inset-right) + 16px)}
 
 /* ---- Panneaux web restants (fiche, encaissement...) : en feuille iOS ----
    L'app masque ses barres pendant qu'ils sont ouverts. La feuille monte du
@@ -68,7 +73,7 @@ html.natif .drawer-panel{
   top:auto!important;bottom:0;left:0;right:0;width:auto!important;max-width:none!important;
   height:calc(100% - env(safe-area-inset-top) - 12px)!important;
   border-radius:34px 34px 0 0!important;
-  padding:46px 20px calc(env(safe-area-inset-bottom) + 28px)!important;
+  padding:46px calc(var(--natif-droite) + 20px) calc(env(safe-area-inset-bottom) + 28px) calc(var(--natif-gauche) + 20px)!important;
   background:var(--carte,#fff);
   box-shadow:0 -10px 40px rgba(0,0,0,.18);
   animation:natifFeuille .32s cubic-bezier(.2,.9,.25,1) both!important;

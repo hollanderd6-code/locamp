@@ -200,16 +200,19 @@ final class Pont: NSObject {
     /// Mieux vaut quelques points de vide qu'une ligne cachee sous une barre.
     private func fusionnerMarges() {
         let a = margesSwiftUI, b = margesUIKit
-        let ui = UIEdgeInsets(top: max(a.top, b.top), left: 0, bottom: max(a.bottom, b.bottom), right: 0)
+        // Les cotes comptent aussi : en paysage (iPhone Duo, Split View), l'ile
+        // dynamique et la barre d'onglets passent a gauche ou a droite.
+        let ui = UIEdgeInsets(top: max(a.top, b.top), left: max(a.left, b.left),
+                              bottom: max(a.bottom, b.bottom), right: max(a.right, b.right))
         guard ui != marges else { return }
         marges = ui
         appliquerMarges()
     }
 
     private func appliquerMarges() {
-        webView.scrollView.verticalScrollIndicatorInsets = UIEdgeInsets(top: marges.top, left: 0, bottom: marges.bottom, right: 0)
+        webView.scrollView.verticalScrollIndicatorInsets = UIEdgeInsets(top: marges.top, left: 0, bottom: marges.bottom, right: marges.right)
         let js = """
-        (function(s){s.setProperty('--natif-haut','\(Int(marges.top))px');s.setProperty('--natif-bas','\(Int(marges.bottom))px');})(document.documentElement.style);
+        (function(s){s.setProperty('--natif-haut','\(Int(marges.top))px');s.setProperty('--natif-bas','\(Int(marges.bottom))px');s.setProperty('--natif-gauche','\(Int(marges.left))px');s.setProperty('--natif-droite','\(Int(marges.right))px');})(document.documentElement.style);
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
