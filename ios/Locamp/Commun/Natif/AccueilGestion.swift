@@ -127,26 +127,32 @@ struct AccueilGestionView: View {
         let elements: [Echeance]
     }
 
-    private func groupes(_ liste: [Echeance]) -> [GroupeAFaire] {
-        Dictionary(grouping: liste) { "\($0.type)-\($0.statut)" }.map { cle, el in
-            let e = el[0]
-            let n = el.count
-            let (titre, ordre): (String, Int) = {
-                switch (e.type, e.statut) {
-                case ("assurance", "expiree"): return ("Assurance expirée", 0)
-                case ("assurance", "manquante"): return ("Attestation d'assurance manquante", 2)
-                case ("assurance", _): return ("Assurance à renouveler", 3)
-                case ("contrat", "expiree"): return ("Contrat échu", 1)
-                case ("contrat", _): return ("Contrat à renouveler", 4)
-                case (_, "expiree"): return ("Document échu", 1)
-                default: return ("Document arrivant à échéance", 5)
-                }
-            }()
-            return GroupeAFaire(id: cle, titre: n > 1 ? "\(titre) · \(n)" : titre, symbole: e.symbole,
-                                couleur: e.statut == "a_venir" ? .orange : .red, ordre: ordre,
-                                elements: el.sorted { ($0.jours_restants ?? -9999) < ($1.jours_restants ?? -9999) })
+    /// Titre et rang d'urgence d'un groupe (0 = le plus urgent).
+    private static func nature(_ e: Echeance) -> (titre: String, ordre: Int) {
+        switch (e.type, e.statut) {
+        case ("assurance", "expiree"): return ("Assurance expirée", 0)
+        case ("assurance", "manquante"): return ("Attestation d'assurance manquante", 2)
+        case ("assurance", _): return ("Assurance à renouveler", 3)
+        case ("contrat", "expiree"): return ("Contrat échu", 1)
+        case ("contrat", _): return ("Contrat à renouveler", 4)
+        case (_, "expiree"): return ("Document échu", 1)
+        default: return ("Document arrivant à échéance", 5)
         }
-        .sorted { $0.ordre < $1.ordre }
+    }
+
+    private func groupes(_ liste: [Echeance]) -> [GroupeAFaire] {
+        let parCle: [String: [Echeance]] = Dictionary(grouping: liste) { e in e.type + "-" + e.statut }
+        var resultat: [GroupeAFaire] = []
+        for (cle, elements) in parCle {
+            guard let e = elements.first else { continue }
+            let n = Self.nature(e)
+            let tries = elements.sorted { a, b in (a.jours_restants ?? -9999) < (b.jours_restants ?? -9999) }
+            let titre = elements.count > 1 ? n.titre + " · " + String(elements.count) : n.titre
+            let couleur: Color = e.statut == "a_venir" ? .orange : .red
+            resultat.append(GroupeAFaire(id: cle, titre: titre, symbole: e.symbole, couleur: couleur,
+                                         ordre: n.ordre, elements: tries))
+        }
+        return resultat.sorted { a, b in a.ordre < b.ordre }
     }
 
     @ViewBuilder private func aFaire(_ d: Donnees) -> some View {

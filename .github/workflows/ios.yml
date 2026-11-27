@@ -47,6 +47,11 @@ jobs:
 
       - name: Xcode
         run: |
+          # Le Xcode le plus recent installe sur la machine (les utilisateurs
+          # compilent avec le dernier SDK : iOS 27 et plus).
+          ls -d /Applications/Xcode*.app || true
+          DERNIER=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -viE "beta|rc" | sort -V | tail -1)
+          if [ -n "$DERNIER" ]; then sudo xcode-select -s "$DERNIER"; fi
           xcodebuild -version
           xcrun simctl list devices available | grep -m5 iPhone || true
 
@@ -76,7 +81,8 @@ jobs:
 
       - name: Erreurs de compilation
         if: failure()
-        run: grep -E "error:" -A3 ios/Locamp/build.log | head -200 || true
+        run: |
+          grep -E "error:|Stack dump|Please submit a bug report|While (type-checking|evaluating|emitting)|^[0-9]+\.\s+(While|Contents)" -A4 ios/Locamp/build.log | head -150 || true
 
       - name: Simulateur et captures
         env:
