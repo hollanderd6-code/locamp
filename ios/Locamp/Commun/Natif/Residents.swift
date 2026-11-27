@@ -190,21 +190,26 @@ struct FicheResidentView: View {
 
     @ViewBuilder private func actionsFiche(_ r: FicheResident.Detail, icones: Bool) -> some View {
         GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
-                if let t = r.telephone, let u = URL(string: "tel:" + t.filter { $0.isNumber || $0 == "+" }) {
-                    Link(destination: u) { Label("Appeler", systemImage: "phone.fill").frame(maxWidth: .infinity) }
-                        .buttonStyle(.glass)
-                }
-                Button { message = true } label: { Label("Écrire", systemImage: "bubble.left.fill").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glass)
-                Button { encaisser = true } label: { Label("Encaisser", systemImage: "eurosign").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glassProminent)
+            if icones {
+                boutonsFiche(r).labelStyle(.iconOnly)
+            } else {
+                boutonsFiche(r).labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
             }
-            .labelStyle(icones ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
-            .lineLimit(1)
-            .fixedSize(horizontal: !icones, vertical: false)
-            .controlSize(.regular)
         }
+    }
+
+    private func boutonsFiche(_ r: FicheResident.Detail) -> some View {
+        HStack(spacing: 10) {
+            if let t = r.telephone, let u = URL(string: "tel:" + t.filter { $0.isNumber || $0 == "+" }) {
+                Link(destination: u) { Label("Appeler", systemImage: "phone.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.glass)
+            }
+            Button { message = true } label: { Label("Écrire", systemImage: "bubble.left.fill").frame(maxWidth: .infinity) }
+                .buttonStyle(.glass)
+            Button { encaisser = true } label: { Label("Encaisser", systemImage: "eurosign").frame(maxWidth: .infinity) }
+                .buttonStyle(.glassProminent)
+        }
+        .controlSize(.regular)
     }
 
     var body: some View {
@@ -344,9 +349,3 @@ struct FicheResidentView: View {
     }
 }
 
-/// Pour choisir le style d'etiquette a l'execution.
-struct AnyLabelStyle: LabelStyle {
-    private let corps: (Configuration) -> AnyView
-    init<S: LabelStyle>(_ style: S) { corps = { AnyView(style.makeBody(configuration: $0)) } }
-    func makeBody(configuration: Configuration) -> some View { corps(configuration) }
-}
