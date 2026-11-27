@@ -41,9 +41,14 @@
 		<key>UIColorName</key>
 		<string>Fond</string>
 	</dict>
+	<!-- Toutes orientations : sur iPhone Duo deplie (ecran interieur 7,6")
+	     l'orientation imposee est ignoree, et le multitache Split View
+	     d'iOS 27 redimensionne l'app. La mise en page suit les classes de taille. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>

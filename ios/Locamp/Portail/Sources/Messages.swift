@@ -121,6 +121,9 @@ struct MessagesView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
+                // Ecran large (iPhone Duo deplie, iPad) : un fil lisible, centre.
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
             .onAppear {
@@ -229,6 +232,8 @@ struct MessagesView: View {
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 8)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity)
     }
 }
 

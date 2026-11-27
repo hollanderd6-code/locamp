@@ -43,6 +43,9 @@ struct ConversationsView: View {
     @State private var nouveau = false
     @State private var aTous = false
     @State private var ouverte: ResidentCourt?
+    /// Conversation affichee a droite quand l'ecran est large (iPhone Duo deplie, iPad).
+    @State private var selection: Conversation?
+    @Environment(\.horizontalSizeClass) private var taille
 
     private var filtrees: [Conversation] {
         let q = recherche.trimmingCharacters(in: .whitespaces)
@@ -54,10 +57,18 @@ struct ConversationsView: View {
 
     var body: some View {
         List(filtrees) { c in
-            NavigationLink {
-                ConversationGestionView(residentId: c.resident_id, nom: c.resident_nom)
-            } label: {
-                LigneConversation(conversation: c)
+            Group {
+                if taille == .regular {
+                    Button { selection = c } label: { LigneConversation(conversation: c) }
+                        .buttonStyle(.plain)
+                        .listRowBackground(selection?.id == c.id ? Color.accentColor.opacity(0.14) : nil)
+                } else {
+                    NavigationLink {
+                        ConversationGestionView(residentId: c.resident_id, nom: c.resident_nom)
+                    } label: {
+                        LigneConversation(conversation: c)
+                    }
+                }
             }
             .contextMenu {
                 Button("Voir la fiche", systemImage: "person.crop.circle") { pont.naviguer("residents/\(c.resident_id)") }
@@ -66,6 +77,32 @@ struct ConversationsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color("Fond"))
+        // Ecran large : les conversations a gauche, le fil a droite.
+        .frame(maxWidth: taille == .regular ? 380 : .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .trailing) {
+            if taille == .regular {
+                GeometryReader { geo in
+                    HStack(spacing: 0) {
+                        Divider()
+                        Group {
+                            if let c = selection ?? filtrees.first {
+                                FilMessagesView(source: .gestion(resident: c.resident_id),
+                                                invite: "Message à \(c.resident_nom.split(separator: " ").first.map(String.init) ?? c.resident_nom)",
+                                                videTitre: "Nouvelle conversation",
+                                                videTexte: "Le résident recevra votre message dans son espace et par e-mail.")
+                                    .id(c.resident_id)
+                            } else {
+                                ContentUnavailableView("Aucune conversation", systemImage: "bubble.left.and.bubble.right")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .frame(width: max(geo.size.width - 380, 0))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        }
         .navigationTitle("Messagerie")
         .toolbarTitleDisplayMode(.large)
         .searchable(text: $recherche, prompt: "Rechercher un résident ou un message")

@@ -168,35 +168,93 @@ private struct PlanZoomable: View {
     let choisir: (DonneesCarte.Empl) -> Void
 
     static let W: CGFloat = 1000, H: CGFloat = 620
-    @State private var echelle: CGFloat = 1
+    /// Zoom choisi par l'utilisateur (1 = plan cadre a l'ecran).
+    @State private var zoom: CGFloat = 1
+    /// Deplacement au doigt, en points d'ecran.
+    @State private var decalage: CGSize = .zero
     @GestureState private var pince: CGFloat = 1
+    @GestureState private var glisse: CGSize = .zero
+
+    /// Le cadre reellement occupe : on ignore le vide autour du plan.
+    private var cadre: CGRect {
+        var r = CGRect.null
+        for e in emplacements {
+            guard let x = e.coord_x?.valeur, let y = e.coord_y?.valeur else { continue }
+            r = r.union(CGRect(x: x - 24, y: y - 18, width: 48, height: 36))
+        }
+        for el in elements {
+            let x = el.x.valeur, y = el.y.valeur
+            let w = el.largeur?.valeur ?? 40, h = el.hauteur?.valeur ?? 40
+            r = r.union(CGRect(x: x, y: y, width: w, height: h))
+            if let x2 = el.x2?.valeur, let y2 = el.y2?.valeur { r = r.union(CGRect(x: x2, y: y2, width: 1, height: 1)) }
+        }
+        if r.isNull { return CGRect(x: 0, y: 0, width: Self.W, height: Self.H) }
+        return r.insetBy(dx: -16, dy: -16)
+    }
 
     var body: some View {
         GeometryReader { geo in
-            let base = geo.size.width / Self.W            // le plan tient en largeur
-            let e = min(max(echelle * pince, 1), 5)
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                ZStack(alignment: .topLeading) {
-                    Canvas { ctx, _ in dessinerDecor(&ctx) }
-                        .frame(width: Self.W, height: Self.H)
-                    ForEach(emplacements.filter { $0.coord_x != nil && $0.coord_y != nil }) { emp in
-                        let s = etat(emp)
-                        Button { choisir(emp) } label: { Pastille_(emp: emp, etat: s) }
-                            .buttonStyle(.plain)
-                            .opacity(visible(emp) ? 1 : 0.18)
-                            .position(x: min(max(emp.coord_x!.valeur, 20), Self.W - 20),
-                                      y: min(max(emp.coord_y!.valeur, 20), Self.H - 20))
-                    }
+            let c = cadre
+            // Echelle qui fait tenir le plan entier dans l'ecran.
+            let ajuste = min(geo.size.width / c.width, geo.size.height / c.height)
+            let z = min(max(zoom * pince, 1), 6)
+            let s = ajuste * z
+            // Le cadre centre a l'ecran, puis le deplacement de l'utilisateur.
+            let centre = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let ox = centre.x - (c.midX * s) + decalage.width + glisse.width
+            let oy = centre.y - (c.midY * s) + decalage.height + glisse.height
+
+            ZStack(alignment: .topLeading) {
+                Canvas { ctx, _ in dessinerDecor(&ctx) }
+                    .frame(width: Self.W, height: Self.H)
+                ForEach(emplacements.filter { $0.coord_x != nil && $0.coord_y != nil }) { emp in
+                    Button { choisir(emp) } label: { Pastille_(emp: emp, etat: etat(emp)) }
+                        .buttonStyle(.plain)
+                        .opacity(visible(emp) ? 1 : 0.18)
+                        .position(x: emp.coord_x!.valeur, y: emp.coord_y!.valeur)
                 }
-                .frame(width: Self.W, height: Self.H)
-                .scaleEffect(base * e, anchor: .topLeading)
-                .frame(width: Self.W * base * e, height: Self.H * base * e, alignment: .topLeading)
             }
-            .background(Color(red: 0.937, green: 0.953, blue: 0.937))
-            .gesture(MagnifyGesture().updating($pince) { v, s, _ in s = v.magnification }
-                .onEnded { v in echelle = min(max(echelle * v.magnification, 1), 5) })
-            .onTapGesture(count: 2) { withAnimation(.smooth) { echelle = echelle > 1.5 ? 1 : 2.5 } }
+            .frame(width: Self.W, height: Self.H, alignment: .topLeading)
+            .scaleEffect(s, anchor: .topLeading)
+            .offset(x: ox, y: oy)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .contentShape(.rect)
+            .clipped()
+            .gesture(
+                SimultaneousGesture(
+                    MagnifyGesture().updating($pince) { v, st, _ in st = v.magnification }
+                        .onEnded { v in
+                            let nz = min(max(zoom * v.magnification, 1), 6)
+                            // Le zoom garde le centre de l'ecran a sa place.
+                            decalage = CGSize(width: decalage.width * nz / zoom, height: decalage.height * nz / zoom)
+                            zoom = nz
+                            if nz == 1 { withAnimation(.smooth) { decalage = .zero } }
+                        },
+                    DragGesture(minimumDistance: 4).updating($glisse) { v, st, _ in st = v.translation }
+                        .onEnded { v in
+                            decalage.width += v.translation.width
+                            decalage.height += v.translation.height
+                        }
+                )
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.smooth) {
+                    if zoom > 1.4 { zoom = 1; decalage = .zero } else { zoom = 2.5; decalage = .zero }
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if zoom > 1.01 || decalage != .zero {
+                    Button { withAnimation(.smooth) { zoom = 1; decalage = .zero } } label: {
+                        Label("Recadrer", systemImage: "arrow.up.left.and.arrow.down.right")
+                            .labelStyle(.iconOnly).font(.title3).padding(12)
+                    }
+                    .buttonStyle(.glass)
+                    .padding(16)
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
         }
+        .background(Color(red: 0.937, green: 0.953, blue: 0.937))
     }
 
     private func dessinerDecor(_ ctx: inout GraphicsContext) {
