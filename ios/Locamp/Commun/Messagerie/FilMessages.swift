@@ -154,6 +154,9 @@ struct FilMessagesView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
+                // Ecran large (iPhone Duo deplie, iPad) : un fil lisible, centre.
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
@@ -253,6 +256,8 @@ struct FilMessagesView: View {
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 8)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity)
     }
 }
 

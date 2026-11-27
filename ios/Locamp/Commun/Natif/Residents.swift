@@ -17,6 +17,9 @@ struct ResidentsView: View {
     @State private var filtre = Filtre.actifs
     @State private var nouveau = false
     @State private var ouvert: ResidentCible?
+    /// Resident affiche a droite quand l'ecran est large (iPhone Duo deplie, iPad).
+    @State private var selection: String?
+    @Environment(\.horizontalSizeClass) private var taille
 
     enum Filtre: String, CaseIterable, Identifiable {
         case actifs = "Actifs", soldeDu = "Solde dû", aCompleter = "À compléter", anciens = "Anciens"
@@ -29,8 +32,18 @@ struct ResidentsView: View {
             List {
                 Section {
                     ForEach(liste) { r in
-                        NavigationLink(value: ResidentCible(id: r.id)) {
-                            LigneResident(resident: r, emplacement: r.emplacement_id.flatMap { d.emplacements[$0] })
+                        Group {
+                            if taille == .regular {
+                                Button { selection = r.id } label: {
+                                    LigneResident(resident: r, emplacement: r.emplacement_id.flatMap { d.emplacements[$0] })
+                                }
+                                .buttonStyle(.plain)
+                                .listRowBackground(selection == r.id ? Color.accentColor.opacity(0.14) : nil)
+                            } else {
+                                NavigationLink(value: ResidentCible(id: r.id)) {
+                                    LigneResident(resident: r, emplacement: r.emplacement_id.flatMap { d.emplacements[$0] })
+                                }
+                            }
                         }
                         .swipeActions(edge: .leading) {
                             if let t = r.telephone, let u = URL(string: "tel:" + t.filter { $0.isNumber || $0 == "+" }) {
@@ -58,6 +71,28 @@ struct ResidentsView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+            // Ecran large : la liste a gauche, la fiche a droite.
+            .frame(maxWidth: taille == .regular ? 400 : .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .trailing) {
+                if taille == .regular {
+                    GeometryReader { geo in
+                        HStack(spacing: 0) {
+                            Divider()
+                            Group {
+                                if let id = selection ?? liste.first?.id {
+                                    FicheResidentView(residentId: id).id(id)
+                                } else {
+                                    ContentUnavailableView("Aucun résident", systemImage: "person.crop.circle")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .frame(width: max(geo.size.width - 400, 0))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
             }
         }
         .navigationTitle("Résidents")

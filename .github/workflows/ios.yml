@@ -13,9 +13,15 @@ on:
       - 'backend/public/natif.*'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
+    inputs:
+      appareil:
+        description: "Simulateur : iPhone, ou iPad mini (taille proche de l'iPhone Duo deplie)"
+        default: iPhone
+        type: choice
+        options: [iPhone, iPad mini]
 
 concurrency:
-  group: ios-${{ github.ref }}
+  group: ios-${{ github.ref }}-${{ inputs.appareil || 'iPhone' }}
   cancel-in-progress: true
 
 jobs:
@@ -80,7 +86,12 @@ jobs:
           set -x
           cd ios/Locamp
           APP=$(find build/dd/Build/Products -name "${{ matrix.app }}.app" -maxdepth 3 | head -1)
-          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone 17 Pro') or x['name'].startswith('iPhone 16 Pro')))")
+          APPAREIL="${{ inputs.appareil || 'iPhone' }}"
+          UDID=$(xcrun simctl list devices available -j | APPAREIL="$APPAREIL" python3 -c "
+          import json,sys,os
+          d=json.load(sys.stdin)['devices']
+          voulu=('iPad mini',) if os.environ['APPAREIL']=='iPad mini' else ('iPhone 17 Pro','iPhone 16 Pro')
+          print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith(voulu)))")
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
@@ -119,7 +130,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: captures-${{ matrix.sous }}
+          name: captures-${{ matrix.sous }}${{ inputs.appareil == 'iPad mini' && '-grand-ecran' || '' }}
           path: ios/Locamp/captures
           if-no-files-found: ignore
 
@@ -127,7 +138,7 @@ jobs:
         if: always()
         env:
           DOSSIER: ios/Locamp/captures
-          SOUS: ${{ matrix.sous }}
+          SOUS: ${{ matrix.sous }}${{ inputs.appareil == 'iPad mini' && '-grand-ecran' || '' }}
         run: |
           [ -d "$DOSSIER" ] || exit 0
           git config user.name "locamp-tests"; git config user.email "tests@locamp.invalid"
